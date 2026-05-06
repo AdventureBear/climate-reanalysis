@@ -1,8 +1,5 @@
-# Python / React Stack 
-
-This is a stack for data heavy backend lifting and calculations combined with React front end for interactive visualizations 
-
----
+# Climate Reanalysis
+Replacement for the abandoned PSL interactive climate query tools for daily, weekly, and monthly climate anomaly and normals analysis
 
 # Proposed Stack
 
@@ -41,6 +38,7 @@ climate-reanalysis/
 * uv
 * FastAPI
 * uvicorn
+* requests
 
 ### Environment
 
@@ -61,7 +59,7 @@ backend/.venv/bin/python
 ```bash
 cd backend
 
-uv add fastapi uvicorn
+uv add fastapi uvicorn requests
 ```
 
 ### Run Python Script
