@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Popup, Rectangle } from 'react-leaflet';
 import { Wind } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
@@ -18,27 +18,53 @@ L.Marker.prototype.options.icon = DefaultIcon;
 
 interface AnomalyData {
     status: string;
-    variables: string[];
-    file_used: string;
+    grid: {
+        lat: number[];
+        lon: number[];
+        values: number[][]; // This is our 2D wind speed array
+    };
 }
 
 const App: React.FC = () => {
     const [data, setData] = useState<AnomalyData | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
+    const [maxWind, setMaxWind] = useState<number | null>(null);
 
-    const fetchAnomaly = async (): Promise<void> => {
+// Inside your App.tsx component
+
+
+    const fetchAnomaly = async () => {
         setLoading(true);
         try {
-            // Ensure your backend is running on 8000!
             const response = await fetch('http://127.0.0.1:8000/get-anomaly');
-            if (!response.ok) throw new Error('Network response was not ok');
-            const result: AnomalyData = await response.json();
+            const result = await response.json();
+
+            // Find the max value in the 2D array sent by Python
+            const allValues = result.grid.values.flat();
+            const max = Math.max(...allValues);
+
+            setMaxWind(max);
             setData(result);
-        } catch (error) {
-            console.error("Error fetching data:", error);
+        } catch (e) {
+            console.error(e);
         } finally {
             setLoading(false);
         }
+    };
+
+    const getColor = (speed: number) => {
+        // Converted from Knots to Meters per Second (m/s)
+        if (speed >= 41.1) return '#8b5a2b'; // 80 kt+ (Extreme)
+        if (speed >= 36.0) return '#cd853f'; // 70 kt
+        if (speed >= 30.8) return '#f4a460'; // 60 kt
+        if (speed >= 25.7) return '#e9967a'; // 50 kt
+        if (speed >= 23.1) return '#d02090'; // 45 kt
+        if (speed >= 20.5) return '#ba55d3'; // 40 kt
+        if (speed >= 18.0) return '#9370db'; // 35 kt
+        if (speed >= 15.4) return '#add8e6'; // 30 kt
+        if (speed >= 12.8) return '#b0e0e6'; // 25 kt
+        if (speed >= 10.3) return '#f0f8ff'; // 20 kt
+        return 'transparent';              // Below ~20kt / 10m/s
     };
 
     return (
@@ -73,23 +99,34 @@ const App: React.FC = () => {
             </header>
 
             <main style={{ flex: 1, position: 'relative' }}>
-                <MapContainer
-                    center={[39.82, -98.57]}
-                    zoom={4}
-                    style={{ height: '100%', width: '100%' }}
-                >
-                    <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    {data && (
-                        <Marker position={[39.82, -98.57]}>
-                            <Popup>
-                                <strong>CORE Model Success</strong> <br />
-                                File: {data.file_used} <br />
-                                Found: {data.variables.join(', ')}
-                            </Popup>
-                        </Marker>
+                <MapContainer center={[38, -97]} zoom={4} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+                    {data && data.grid.values.map((row, i) =>
+                        row.map((speed, j) => {
+                            // Only plot if there's significant wind to keep it fast
+                            if (speed < 5) return null;
+
+                            const lat = data.grid.lat[i];
+                            const lon = data.grid.lon[j];
+
+                            return (
+                                <Rectangle
+                                    key={`${i}-${j}`}
+                                    bounds={[
+                                        [lat, lon],
+                                        [lat - 0.5, lon + 0.5] // Adjust based on your GRIB resolution
+                                    ]}
+                                    pathOptions={{
+                                        fillColor: getColor(speed),
+                                        fillOpacity: 0.6,
+                                        stroke: false
+                                    }}
+                                >
+                                    <Popup>Speed: {speed.toFixed(1)} m/s</Popup>
+                                </Rectangle>
+                            );
+                        })
                     )}
                 </MapContainer>
             </main>
