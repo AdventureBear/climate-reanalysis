@@ -2,9 +2,19 @@ import xarray as xr
 import requests
 import os
 from fastapi import FastAPI, HTTPException
-
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+
+
+# Add this right after app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # For prototype only!
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def hello():
