@@ -1,3 +1,56 @@
+## The problem: 
+### Meteorology student posts: 
+Today I was thinking about the active and persistent wet pattern I've been experiencing here in the Sierra over the past few weeks and started poking around some of the models to analyze the STJ. It seems stronger than normal, which would fit with the recent pattern of unusually strong cut off lows affecting CA and the Sierra with abundant precipitation and cool temps. To confirm this, I wanted to get some analysis over the past month of how the STJ matched with climatology, and headed over to the NCEP reanalysis page. But it's done! Or at least the data ends at the middle of March 2026. 
+
+Is there another site where I can find similar info? Or do you know of a 250mb jet analysis that I can view with norm. anomalies? It'd be nice to see the past 30 days, but even just seeing the departure from climatology would be helpful. 
+
+### Professor Reponds:
+The NCEP reanalysis pages are no longer being maintained. The old data up through March 2026 will continue to be available, I believe, but the underlying dataset used to create the images was discontinued. There is a new version of the dataset, but as of now, PSL has no plans to make an updated version of the site (I suspect due to lack of personnel and resources...my understanding is that they have lost some people that were not replaced). They did provide some details on where to access the new data so that if anyone with coding know-how wants to create their own reanalysis page, they are welcome to do so.
+
+The University of Maine runs the Climate Reanalyzer site (https://climatereanalyzer.org/wx/todays-weather/?var_id=ws250-mslp&ortho=1&wt=1) , which uses different underlying reanalysis datasets, but it doesn't have all the customization options that the NCEP reanalysis page did. It only has monthly options, and since April isn't complete yet, the most recent month you can get is March 2026. So, in theory some time in early May, you should be able to produce a map of 250-mb wind speed anomalies for April under the Monthly Reanalysis section (in the "Research Tools" menu at the top). For now, this is about as good as it gets for "ready made" reanalyses. Right now the model is very much heading toward NOAA reducing the publicly available interfaces for ready-made products and hoping that individuals and the private/academic sectors will pick up the slack.
+
+### Student:
+it may be a bigger task than i can handle, but I coach for a coding academy and sometimes people are looking for projects to contribute to.  This seems like a worthwhile one.
+
+### Professor
+Yes, this would be a big task (it was definitely more than one person that developed and maintained the plotting pages at ESRL). There were lots of layers to the potential customization. Whoever is able to produce something with the updated data set (and make it publicly available) will be doing the field a major service.
+
+### Student
+so the issue is less that the data source is changing and more that the PSL will not be creating an interface and the U of Maine site doesn't have fine grained analysis options?
+
+Are these the maps we used a lot during tropical for the monsoon labs? Those were cool maps and a neat process to get very specific data.
+### Professor
+The root issue is that the old data source was discontinued, which is why the existing page stopped updating in March. It's still usable for data before then (yes these are the sets of pages that were used to generate maps on some Meteo 241 assignments).
+
+PSL (for now, at least) has no plans to create a similar interface using the new data set. The U of Maine site doesn't have the customization options (especially with respect to time periods) for archived data that the PSL site did. Like if you wanted a composite map of average 500-mb heights on 5 dates associated with major snow storms, or from March 20 - April 20 in a specific year, you could do that on the PSL page, but not on the U of Maine page.
+
+### Student
+I have a very simple working prototype just grabbing the new data set grid models.
+
+
+Can you send me a link to the exact interface so that I can see what type of features I’m trying to replicate?
+
+Grabbing the data is working I just need to create a front end. I shouldn’t say “just“ but I have a start already.
+
+I think I know what page it is, but I want to be sure, and understand the different chunks of information that you could compare. Like the five days versus a set of discreet days?
+
+### Professor
+
+There were several interfaces that pulled from the old data set, customized for different purposes. Between the interfaces, there were a lot of layers in how one could slice and dice the data.
+
+Monthly/Seasonal Composites (good for finding differences between certain time periods or creating composites from a list of months)
+
+Daily Mean Composites (good for creating composites based on multiple individual days, or producing plots of 1-day averages).
+
+6-hourly composites (similar, but for 0Z, 06Z, 12Z, and 18Z plots...I think this was probably the page that you used in Meteo 241)
+
+They also had some pages for plotting monthly time series and correlations, but I haven't used those much.
+
+Links to prior pages that still work for historical data, but will not work going forward:
+https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl
+https://psl.noaa.gov/data/composites/day/
+https://psl.noaa.gov/data/composites/hour/
+
 
 
 ### Project Briefing: Climate-Ocean Reanalysis (CORe) Restoration Project
@@ -100,3 +153,19 @@ The system prioritizes "Decision-Grade" visuals over aesthetic smoothing.
 * **The Principle:** Data must be rendered using discrete, stepped color boundaries (normalization) rather than smooth gradients.
 * **The Benefit:** This turns every map into a "Contour Analysis" tool. It allows a researcher to identify the exact physical boundary of a weather feature (e.g., a specific wind speed or temperature threshold) at a glance, which is a requirement for replicating the functionality of legacy agency tools.
 
+#### 6. Source URLs for Reference
+https://www.cpc.ncep.noaa.gov/products/CORe/index.html
+https://ftp.cpc.ncep.noaa.gov/CORe/get_core/get_core.txt
+https://psl.noaa.gov/data/coreinfo.html
+
+#### 7. Examples of prior interface pages that we are working to replace
+https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl
+https://psl.noaa.gov/data/composites/day/
+https://psl.noaa.gov/data/composites/hour/
+
+
+
+#### 8. Current Summary from Professor of Meteorology
+the NCEP reanalysis pages are no longer being maintained. The old data up through March 2026 will continue to be available, I believe, but the underlying dataset used to create the images was discontinued. There is a new version of the dataset, but as of now, PSL has no plans to make an updated version of the site (I suspect due to lack of personnel and resources...my understanding is that they have lost some people that were not replaced). They did provide some details on where to access the new data so that if anyone with coding know-how wants to create their own reanalysis page, they are welcome to do so.
+
+The University of Maine runs the Climate Reanalyzer site (https://climatereanalyzer.org/wx/todays-weather/?var_id=ws250-mslp&ortho=1&wt=1) , which uses different underlying reanalysis datasets, but it doesn't have all the customization options that the NCEP reanalysis page did. It only has monthly options, and since April isn't complete yet, the most recent month you can get is March 2026. So, in theory some time in early May, you should be able to produce a map of 250-mb wind speed anomalies for April under the Monthly Reanalysis section (in the "Research Tools" menu at the top). For now, this is about as good as it gets for "ready made" reanalyses. Right now the model is very much heading toward NOAA reducing the publicly available interfaces for ready-made products and hoping that individuals and the private/academic sectors will pick up the slack.

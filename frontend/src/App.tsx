@@ -16,7 +16,7 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-interface AnomalyData {
+interface MapData {
     status: string;
     grid: {
         lat: number[];
@@ -26,24 +26,18 @@ interface AnomalyData {
 }
 
 const App: React.FC = () => {
-    const [data, setData] = useState<AnomalyData | null>(null);
+    const [data, setData] = useState<MapData | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
-    const [maxWind, setMaxWind] = useState<number | null>(null);
 
 // Inside your App.tsx component
 
 
-    const fetchAnomaly = async () => {
+    const fetchMap = async () => {
         setLoading(true);
         try {
-            const response = await fetch('http://127.0.0.1:8000/get-anomaly');
+            const response = await fetch('http://127.0.0.1:8000/get-map');
             const result = await response.json();
 
-            // Find the max value in the 2D array sent by Python
-            const allValues = result.grid.values.flat();
-            const max = Math.max(...allValues);
-
-            setMaxWind(max);
             setData(result);
         } catch (e) {
             console.error(e);
@@ -54,16 +48,19 @@ const App: React.FC = () => {
 
     const getColor = (speed: number) => {
         // Converted from Knots to Meters per Second (m/s)
-        if (speed >= 41.1) return '#8b5a2b'; // 80 kt+ (Extreme)
-        if (speed >= 36.0) return '#cd853f'; // 70 kt
-        if (speed >= 30.8) return '#f4a460'; // 60 kt
-        if (speed >= 25.7) return '#e9967a'; // 50 kt
-        if (speed >= 23.1) return '#d02090'; // 45 kt
-        if (speed >= 20.5) return '#ba55d3'; // 40 kt
-        if (speed >= 18.0) return '#9370db'; // 35 kt
-        if (speed >= 15.4) return '#add8e6'; // 30 kt
-        if (speed >= 12.8) return '#b0e0e6'; // 25 kt
-        if (speed >= 10.3) return '#f0f8ff'; // 20 kt
+        if (speed >= 41.1) return '#a15d0a'; // 80 kt+ (Extreme)
+        if (speed >= 39.0) return '#8b5a2b'; // 75 kt
+        if (speed >= 36.0) return '#faf061'; // 70 kt
+        if (speed >= 31.0) return '#faf061'; // 65 kt
+        if (speed >= 30.8) return '#f04f4f'; // 60 kt
+        if (speed >= 28.2) return '#de2a3c'; // 55 kt
+        if (speed >= 25.7) return '#c90028'; // 50 kt
+        if (speed >= 23.1) return '#a11397'; // 45 kt
+        if (speed >= 20.5) return '#c95bbe'; // 40 kt
+        if (speed >= 18.0) return '#e695db'; // 35 kt
+        if (speed >= 15.4) return '#6b5acc'; // 30 kt
+        if (speed >= 12.8) return '#87cefa'; // 25 kt
+        if (speed >= 10.3) return '#f2f9ff'; // 20 kt
         return 'transparent';              // Below ~20kt / 10m/s
     };
 
@@ -82,7 +79,7 @@ const App: React.FC = () => {
                     <h1 style={{ fontSize: '1.5rem', margin: 0 }}>PyRe: Climate Reanalysis</h1>
                 </div>
                 <button
-                    onClick={fetchAnomaly}
+                    onClick={fetchMap}
                     style={{
                         padding: '0.6rem 1.2rem',
                         borderRadius: '6px',

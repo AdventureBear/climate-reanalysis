@@ -26,8 +26,8 @@ app.add_middleware(
 def hello():
     return {"message": "Hello World"}
 
-@app.get("/get-anomaly")
-def get_wind_anomaly():
+@app.get("/get-map")
+def get_map():
     file_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod/core.20260504/18/post/spost/core.t00z.spgb.ensmean.anl.grib2"
     # Updated URL for 0.25 Degree GFS (High Res)
     # file_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20260506/00/atmos/gfs.t00z.pgrb2.0p25.f000"
