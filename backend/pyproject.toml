@@ -13,3 +13,15 @@ dependencies = [
     "uvicorn>=0.46.0",
     "xarray>=2026.4.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: fetches .idx files only (~20KB each) — requires internet",
+    "validation: downloads a full GRIB file (~38MB) — run only when changing retrieval logic",
+]

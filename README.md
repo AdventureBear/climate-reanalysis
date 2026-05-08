@@ -161,9 +161,19 @@ cd frontend
 npm run dev
 ```
 
+## Testing
+###Default — unit tests only, no network, fast (every commit)
+`uv run pytest`
+
+### Integration — fetches .idx files only (~20KB each)
+`uv run pytest -m network`
+
+### Validation — one full GRIB download (~38MB), prints diagnostics
+
+`uv run pytest -m validation -s`
 ---
 
-# Planned Infrastructure
+## Planned Infrastructure
 
 * Dockerized frontend/backend services
 * Shared docker-compose development environment
@@ -173,7 +183,7 @@ npm run dev
 
 ---
 
-# Notes
+## Notes
 
 * Frontend dependencies are managed with npm.
 * Backend dependencies are managed with uv.

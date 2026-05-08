@@ -1,142 +1,103 @@
-import xarray as xr
-import requests
-import os
-import numpy as np
-from .visualizer import create_map_product
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from .config import REGIONS, VARIABLES
 
-app = FastAPI()
-base_dir = os.path.dirname(os.path.abspath(__file__))
+from .config import PRESSURE_LEVELS, REGIONS, VARIABLES
+from .retrieval import VALID_HOURS, fetch_field, fetch_relative_humidity, fetch_wind_components, fetch_wind_speed
+from .visualizer import create_map_product, temp_display_unit
 
+app = FastAPI(title="PyRe Climate Reanalysis API")
 
-# Add this right after app = FastAPI()
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Your React dev URL
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
-    allow_methods=["*"], # Allows GET, POST, etc.
-    allow_headers=["*"], # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+
 @app.get("/")
-def hello():
-    return {"message": "Hello World"}
+def root():
+    return {
+        "variables": list(VARIABLES.keys()),
+        "levels": PRESSURE_LEVELS,
+        "regions": list(REGIONS.keys()),
+        "valid_hours": VALID_HOURS,
+    }
 
-@app.get("/get-map")
-def get_map():
-    file_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod/core.20260504/18/post/spost/core.t00z.spgb.ensmean.anl.grib2"
-    # Updated URL for 0.25 Degree GFS (High Res)
-    # file_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20260506/00/atmos/gfs.t00z.pgrb2.0p25.f000"
-    #base_dir = os.path.dirname(os.path.abspath(__file__))
-    # local_filename = os.path.join(base_dir, "temp_data.grib2")
-    local_filename = os.path.join(base_dir, "core_20260504_00z_mean.grib2")
+
+@app.get("/api/map")
+async def get_map(
+    date: str,
+    hour: str,
+    variable: str = "wind_speed",
+    level: int = 850,
+    region: str = "CONUS",
+    wind_step: int = 0,
+    wind_type: str = "vectors",
+):
+    # Validate inputs at the boundary
+    if hour not in VALID_HOURS:
+        raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
+    if variable not in VARIABLES:
+        raise HTTPException(status_code=422, detail=f"variable must be one of {list(VARIABLES.keys())}")
+    if level not in PRESSURE_LEVELS:
+        raise HTTPException(status_code=422, detail=f"level must be one of {PRESSURE_LEVELS}")
+    if region not in REGIONS:
+        raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
+
     try:
-        # --- Download Logic (Same as before) ---
-        if not os.path.exists(local_filename):
-            r = requests.get(file_url, timeout=60)
-            r.raise_for_status()
-            with open(local_filename, 'wb') as f:
-                f.write(r.content)
+        if variable == "wind_speed":
+            data = fetch_wind_speed(date, hour, level)
+        elif variable == "rel_humidity":
+            data = fetch_relative_humidity(date, hour, level)
+        else:
+            grib_name = VARIABLES[variable]["grib_name"]
+            data = fetch_field(date, hour, grib_name, level)
 
-        # --- Processing Logic ---
-        ds = xr.open_dataset(
-            local_filename,
-            engine="cfgrib",
-            backend_kwargs={'indexpath': '', 'filter_by_keys': {'typeOfLevel': 'isobaricInhPa', 'level': 850}}
+        bounds = REGIONS[region]
+        subset = data.sel(
+            latitude=slice(bounds["lat"][1], bounds["lat"][0]),
+            longitude=slice(bounds["lon"][0], bounds["lon"][1]),
         )
-
-        # 1. Slice to North America to keep JSON small
-        # Lat: 20N to 60N, Lon: 230E to 300E (NOMADS uses 0-360 longitude)
-        subset = ds.sel(latitude=slice(60, 20), longitude=slice(235, 290))
-
-        # 2. Calculate Wind Speed Magnitude
-        u = subset.u.values
-        v = subset.v.values
-        speed = np.sqrt(u**2 + v**2)
-
-        #clean up NAN values
-        speed_cleaned = np.nan_to_num(speed, nan=0.0)
-
-        # 3. Create the JSON-friendly grid
-        # We use .tolist() because NumPy arrays aren't JSON serializable
-        grid_data = {
-            "lat": subset.latitude.values.tolist(),
-            "lon": (subset.longitude.values - 360).tolist(),
-            "values": speed_cleaned.tolist() # Use the cleaned version
-        }
-
-        # --- Cleanup ---
-        # Close the dataset so we can delete the file
-        ds.close()
-        if os.path.exists(local_filename):
-            os.remove(local_filename)
-
-        return {"status": "success", "grid": grid_data}
-
-    except Exception as e:
-        if os.path.exists(local_filename): os.remove(local_filename)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/map-image")
-async def get_map_image(date: str = "20260504", hour: str = "18", level: int = 850):
-    """
-    Restored dynamic routine:
-    Takes date (YYYYMMDD), hour (HH), and level (int) from the API.
-    """
-    # 1. Construct the REAL name (e.g., core.20260504.t00z.pgrb2.0p25.f000.grib2)
-    # We use the standard naming convention to maintain provenance.
-    true_filename = f"core.{date}.t{hour}z.pgrb2.0p25.f000.grib2"
-    local_file = os.path.join(base_dir, true_filename)
-
-    # 2. Check if the specific requested file exists
-    if not os.path.exists(local_file):
-        # Reconstruct the URL based on the same dynamic inputs
-        # Note: Adjust the URL path logic to match the NOAA directory structure
-        remote_url = f"https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod/core.{date}/{hour}/post/spost/core.t00z.spgb.ensmean.anl.grib2"
 
         try:
-            print(f"Fetching requested data: {true_filename}")
-            r = requests.get(remote_url, stream=True, timeout=30)
-            r.raise_for_status()
-            with open(local_file, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    f.write(chunk)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch {true_filename}: {e}")
+            valid_time = str(data.coords["valid_time"].dt.strftime("%Y-%m-%d %H:%M").values)
+        except (KeyError, AttributeError):
+            valid_time = f"{date[:4]}-{date[4:6]}-{date[6:]} {hour}z"
 
-    # 3. Process the file using the dynamic inputs
-    try:
-        # Load the file we confirmed by name
-        ds = xr.open_dataset(local_file, engine="cfgrib")
+        var_cfg = VARIABLES[variable]
+        units = temp_display_unit(level) if variable == "temp" else var_cfg["units"]
+        var_label = f"{var_cfg['name']} ({units})  {level}mb"
 
-        # Pull level dynamically (e.g., isobaricInhPa=850)
-        subset = ds.sel(isobaricInhPa=level).squeeze()
+        u_subset = v_subset = None
+        if wind_step > 0:
+            u_raw, v_raw = fetch_wind_components(date, hour, level)
+            u_subset = u_raw.sel(
+                latitude=slice(bounds["lat"][1], bounds["lat"][0]),
+                longitude=slice(bounds["lon"][0], bounds["lon"][1]),
+            )
+            v_subset = v_raw.sel(
+                latitude=slice(bounds["lat"][1], bounds["lat"][0]),
+                longitude=slice(bounds["lon"][0], bounds["lon"][1]),
+            )
 
-        # Region Slicing (using our North America config)
-        bounds = REGIONS["North America"]
-        subset = subset.sel(
-            latitude=slice(bounds["lat"][1], bounds["lat"][0]),
-            longitude=slice(bounds["lon"][0], bounds["lon"][1])
-        )
-
-        # 4. Math & Visualization
-        # We calculate wind speed and pass the real metadata to the visualizer
-        speed_data = (subset.u**2 + subset.v**2)**0.5
-        valid_time = str(subset.valid_time.dt.strftime('%Y-%m-%d %H:%M').values)
-
-        image_buffer = create_map_product(
-            data_array=speed_data,
+        buf = create_map_product(
+            data_array=subset,
             region_bounds=bounds,
-            var_name=f"COre {level}mb Wind Speed",
-            date_str=valid_time # The map validates itself from the data
+            var_name=var_label,
+            date_str=valid_time,
+            variable=variable,
+            level=level,
+            region=region,
+            u_array=u_subset,
+            v_array=v_subset,
+            wind_step=wind_step,
+            wind_type=wind_type,
         )
 
-        return StreamingResponse(image_buffer, media_type="image/png")
+        return StreamingResponse(buf, media_type="image/png")
 
     except Exception as e:
-        # If we hit an error (like the one you saw), we report it clearly
-        raise HTTPException(status_code=500, detail=f"Data processing error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -46,7 +46,7 @@ Daily Mean Composites (good for creating composites based on multiple individual
 
 They also had some pages for plotting monthly time series and correlations, but I haven't used those much.
 
-Links to prior pages that still work for historical data, but will not work going forward:
+Links to prior pages that still work for historical data, but will not work going forward:. thi
 https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl
 https://psl.noaa.gov/data/composites/day/
 https://psl.noaa.gov/data/composites/hour/
