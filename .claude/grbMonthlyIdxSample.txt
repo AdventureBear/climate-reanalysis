@@ -1,0 +1,51 @@
+1:0:d=1950010100:CPRAT:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+2:24900:d=1950010100:CSDLF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+3:61080:d=1950010100:CSDSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+4:92748:d=1950010100:CSULF:nom. top:0-6hr fcst ave:ave@6hr:NAve=124
+5:128928:d=1950010100:CSUSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+6:162852:d=1950010100:CSUSF:nom. top:0-6hr fcst ave:ave@6hr:NAve=124
+7:196776:d=1950010100:CWORK:atmos col:0-6hr fcst ave:ave@6hr:NAve=124
+8:230700:d=1950010100:DLWRF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+9:266880:d=1950010100:DSWRF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+10:300804:d=1950010100:DSWRF:nom. top:0-6hr fcst ave:ave@6hr:NAve=124
+11:332472:d=1950010100:GFLUX:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+12:344684:d=1950010100:ICEC:sfc:6hr fcst:ave@6hr:NAve=124
+13:370984:d=1950010100:LAND:sfc:6hr fcst:ave@6hr:NAve=124
+14:407164:d=1950010100:LHTFL:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+15:441088:d=1950010100:NBDSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+16:475012:d=1950010100:NDDSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+17:508936:d=1950010100:PEVPR:sfc:6hr fcst:ave@6hr:NAve=124
+18:522666:d=1950010100:PRATE:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+19:545310:d=1950010100:PRES:sfc:6hr fcst:ave@6hr:NAve=124
+20:581490:d=1950010100:PWAT:atmos col:6hr fcst:ave@6hr:NAve=124
+21:617670:d=1950010100:RUNOF:sfc:0-6hr fcst acc:ave@6hr:NAve=124
+22:632158:d=1950010100:SFCR:sfc:6hr fcst:ave@6hr:NAve=124
+23:646646:d=1950010100:SHTFL:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+24:680570:d=1950010100:SNOEV:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+25:714494:d=1950010100:SNOHF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+26:748418:d=1950010100:SOILW:0-10 cm down:6hr fcst:ave@6hr:NAve=124
+27:762906:d=1950010100:SPFH:2 m above gnd:6hr fcst:ave@6hr:NAve=124
+28:799086:d=1950010100:TCDC:atmos col:0-6hr fcst ave:ave@6hr:NAve=124
+29:835266:d=1950010100:TCDC:low cld lay:0-6hr fcst ave:ave@6hr:NAve=124
+30:871446:d=1950010100:TCDC:mid cld lay:0-6hr fcst ave:ave@6hr:NAve=124
+31:907626:d=1950010100:TCDC:high cld lay:0-6hr fcst ave:ave@6hr:NAve=124
+32:943806:d=1950010100:TMAX:2 m above gnd:0-6hr fcst ave:ave@6hr:NAve=124
+33:979986:d=1950010100:TMIN:2 m above gnd:0-6hr fcst ave:ave@6hr:NAve=124
+34:1016166:d=1950010100:TMP:sfc:6hr fcst:ave@6hr:NAve=124
+35:1052346:d=1950010100:TMP:2 m above gnd:6hr fcst:ave@6hr:NAve=124
+36:1088526:d=1950010100:UFLX:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+37:1120194:d=1950010100:UGRD:10 m above gnd:6hr fcst:ave@6hr:NAve=124
+38:1154118:d=1950010100:U-GWD:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+39:1188042:d=1950010100:ULWRF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+40:1221966:d=1950010100:ULWRF:nom. top:0-6hr fcst ave:ave@6hr:NAve=124
+41:1258146:d=1950010100:USWRF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+42:1292070:d=1950010100:USWRF:nom. top:0-6hr fcst ave:ave@6hr:NAve=124
+43:1325994:d=1950010100:VBDSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+44:1359918:d=1950010100:VDDSF:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+45:1393842:d=1950010100:VFLX:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+46:1425510:d=1950010100:VGRD:10 m above gnd:6hr fcst:ave@6hr:NAve=124
+47:1457178:d=1950010100:V-GWD:sfc:0-6hr fcst ave:ave@6hr:NAve=124
+48:1491102:d=1950010100:WEASD:sfc:6hr fcst:ave@6hr:NAve=124
+49:1525026:d=1950010100:SOILW:10-200 cm down:6hr fcst:ave@6hr:NAve=124
+50:1536478:d=1950010100:TMP:10-200 cm down:6hr fcst:ave@6hr:NAve=124
+51:1547930:d=1950010100:TMP:0-10 cm down:6hr fcst:ave@6hr:NAve=124

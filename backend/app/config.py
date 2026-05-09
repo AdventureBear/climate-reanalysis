@@ -5,6 +5,10 @@ REGIONS = {
         "lat": (15, 72),    # (min, max)
         "lon": (218, 315),  # (min, max) — NOAA 0-360 convention (-142 to -45 W)
     },
+    "Indian Ocean": {
+        "lat": (-5, 45),   # 5° padding beyond 0–40 N display extent
+        "lon": (25, 115),  # 5° padding beyond 30–110 E; 0-360 = same as degrees E
+    },
 }
 
 # Keyed by UI name. wind_speed is derived from UGRD+VGRD; all others are direct GRIB fields.

@@ -9,7 +9,9 @@ dependencies = [
     "cfgrib>=0.9.15.1",
     "fastapi>=0.136.1",
     "matplotlib>=3.10.9",
+    "netcdf4>=1.7.4",
     "requests>=2.33.1",
+    "scipy>=1.17.1",
     "uvicorn>=0.46.0",
     "xarray>=2026.4.0",
 ]
@@ -24,4 +26,5 @@ testpaths = ["tests"]
 markers = [
     "network: fetches .idx files only (~20KB each) — requires internet",
     "validation: downloads a full GRIB file (~38MB) — run only when changing retrieval logic",
+    "composite: fetches multiple GRIB fields to verify averaging math — requires internet, ~2 min",
 ]
