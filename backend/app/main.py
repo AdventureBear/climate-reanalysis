@@ -1,6 +1,7 @@
 import calendar as cal
 import logging
 import time
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +39,17 @@ from .visualizer import create_map_product, display_unit
 log = logging.getLogger("pyre.api")
 
 app = FastAPI(title="PyRe Climate Reanalysis API")
+cors_origins = os.getenv("CORS_ORIGINS", "")
+
+allowed_origins = [
+    origin.strip()
+    for origin in cors_origins.split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
