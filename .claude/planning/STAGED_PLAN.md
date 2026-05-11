@@ -107,6 +107,7 @@ Until then, the monthly mean baseline is the working standard. It is what PSL sh
 
 ```python
 # retrieval.py additions (when NetCDF exists):
+
 CLIMO_DAILY_PATH = Path(os.environ.get("CLIMO_DAILY_PATH", ""))
 
 def get_daily_climatology(variable, level, calendar_day) -> tuple[xr.DataArray, xr.DataArray]:

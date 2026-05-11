@@ -2,6 +2,7 @@ import io
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib.cm as mcm
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -265,6 +266,12 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
     ax = plt.axes(projection=proj)
 
+    # Phase 1: create the filled plot; collect colorbar config separately.
+    # The colorbar is added AFTER fig.canvas.draw() so we can read the final
+    # Cartopy-adjusted axes position and place cax to exactly match it.
+    plot_obj   = None
+    cbar_cfg   = None   # {ticks, ticklabels, ylabel} — None means no colorbar
+
     if mode in ("anomaly", "normalized"):
         if mode == "normalized":
             max_val    = _NORMALIZED_MAX
@@ -276,46 +283,50 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             unit_label = display_unit(variable, level)
             plot_vals  = _anomaly_to_display(data_array.values, variable, level)
 
-        # 1 step each side of 0 is white for both normalized and absolute
         white_steps = 1
         breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=white_steps)
         cmap = mcolors.ListedColormap(colors)
         cmap.set_under(colors[0])
         cmap.set_over(colors[-1])
         norm = mcolors.BoundaryNorm(breakpoints, ncolors=len(colors))
-        plot = ax.contourf(
+        plot_obj = ax.contourf(
             data_array.longitude, data_array.latitude, plot_vals,
             levels=breakpoints, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(), extend='both',
         )
-        cbar = plt.colorbar(plot, ax=ax, orientation='vertical', pad=0.03, shrink=0.85, aspect=25)
-        # ~4-5 symmetric ticks per side; always include 0
         n_steps = round(max_val / step)
         stride  = max(1, round(n_steps / 5))
         tick_vals = [round(i * step * stride, 9)
                      for i in range(-(n_steps // stride), n_steps // stride + 1)
                      if abs(i * step * stride) <= max_val + 1e-6]
-        cbar.set_ticks(tick_vals)
-        cbar.set_ticklabels([f"{v:+g}" if v != 0 else "0" for v in tick_vals])
         mode_label = "Anomaly" if mode == "anomaly" else "Normalized Anomaly"
-        cbar.ax.set_ylabel(f"{mode_label}  ({unit_label})")
+        cbar_cfg = {
+            'ticks':      tick_vals,
+            'ticklabels': [f"{v:+g}" if v != 0 else "0" for v in tick_vals],
+            'ylabel':     f"{mode_label}  ({unit_label})",
+            'extend':     'both',
+            'colors': colors, 'boundaries': breakpoints,
+        }
 
     elif variable == "wind_speed":
         breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(level, step_kt=color_step)
         cmap = mcolors.ListedColormap(interval_colors)
         cmap.set_over(mcolors.to_rgb(_WIND_COLORS[-1]))
         norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
-        plot = ax.contourf(
+        plot_obj = ax.contourf(
             data_array.longitude, data_array.latitude, data_array.values,
             levels=breakpoints_ms, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(), extend='max',
         )
-        cbar = plt.colorbar(plot, ax=ax, orientation='vertical', pad=0.03, shrink=0.85, aspect=25)
-        tick_step = max(color_step, 5)  # never crowd ticks below 5kt spacing
+        tick_step = max(color_step, 5)
         tick_kt = list(range(min_kt, max_kt + 1, tick_step))
-        cbar.set_ticks([kt * _KT_TO_MS for kt in tick_kt])
-        cbar.set_ticklabels([str(kt) for kt in tick_kt])
-        cbar.ax.set_ylabel(f'Wind Speed  ·  {min_kt}–{max_kt} kt')
+        cbar_cfg = {
+            'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
+            'ticklabels': [str(kt) for kt in tick_kt],
+            'ylabel':     f'Wind Speed  ·  {min_kt}–{max_kt} kt',
+            'extend':     'max',
+            'colors': interval_colors, 'boundaries': breakpoints_ms,
+        }
 
     elif variable == "temp" and level in _TEMP_SCALES:
         cfg = _TEMP_SCALES[level]
@@ -324,22 +335,24 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         cmap.set_under(interval_colors[0])
         cmap.set_over(mcolors.to_rgb(cfg["anchor_hex"][-1]))
         norm = mcolors.BoundaryNorm(breakpoints_k, ncolors=len(interval_colors))
-        plot = ax.contourf(
+        plot_obj = ax.contourf(
             data_array.longitude, data_array.latitude, data_array.values,
             levels=breakpoints_k, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(), extend='both',
         )
-        cbar = plt.colorbar(plot, ax=ax, orientation='vertical', pad=0.03, shrink=0.85, aspect=25)
-        unit_sym = f"°{cfg['unit']}"
         tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
         tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
-        cbar.set_ticks([to_k(t) for t in tick_vals])
-        cbar.set_ticklabels([str(t) for t in tick_vals])
-        cbar.ax.set_ylabel(f'Temperature  ·  {level} mb')
+        cbar_cfg = {
+            'ticks':      [to_k(t) for t in tick_vals],
+            'ticklabels': [str(t) for t in tick_vals],
+            'ylabel':     f'Temperature  ·  {level} mb',
+            'extend':     'both',
+            'colors': interval_colors, 'boundaries': breakpoints_k,
+        }
 
     elif variable == "height":
-        dam = data_array / 10.0  # gpm → decameters
-        interval = color_step * 4  # color_step=1 → 4 dam (standard 500 mb interval)
+        dam = data_array / 10.0
+        interval = color_step * 4
         v0 = float(np.floor(dam.values.min() / interval) * interval)
         v1 = float(np.ceil( dam.values.max() / interval) * interval)
         levels = np.arange(v0, v1 + interval / 2, interval)
@@ -349,6 +362,7 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             transform=ccrs.PlateCarree(),
         )
         ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
+        # height uses contour lines only — no colorbar
 
     elif variable == "rel_humidity":
         steps, interval_colors = _make_rh_scale(step=color_step)
@@ -356,27 +370,37 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         cmap.set_under(interval_colors[0])
         cmap.set_over(mcolors.to_rgb(_RH_ANCHOR_HEX[-1]))
         norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
-        plot = ax.contourf(
+        plot_obj = ax.contourf(
             data_array.longitude, data_array.latitude, data_array.values,
             levels=steps, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(), extend='both',
         )
-        cbar = plt.colorbar(plot, ax=ax, orientation='vertical', pad=0.03, shrink=0.85, aspect=25)
-        cbar.set_ticks(range(0, 101, 10))
-        cbar.set_ticklabels([str(v) for v in range(0, 101, 10)])
-        cbar.ax.set_ylabel('Relative Humidity')
+        cbar_cfg = {
+            'ticks':      list(range(0, 101, 10)),
+            'ticklabels': [str(v) for v in range(0, 101, 10)],
+            'ylabel':     'Relative Humidity',
+            'extend':     'both',
+            'colors': interval_colors, 'boundaries': steps,
+        }
 
     else:
         cmap = _VAR_CMAPS.get(variable, "viridis")
-        plot = ax.contourf(
+        plot_obj = ax.contourf(
             data_array.longitude, data_array.latitude, data_array.values,
             levels=15, cmap=cmap,
             transform=ccrs.PlateCarree(), extend='both',
         )
         units = {"humidity": "kg/kg"}.get(variable, "")
-        cbar = plt.colorbar(plot, ax=ax, orientation='vertical', pad=0.03, shrink=0.85, aspect=25)
-        cbar.ax.set_ylabel(f'{units}  (auto-scaled placeholder)')
+        cbar_cfg = {
+            'ticks':      None,
+            'ticklabels': None,
+            'ylabel':     f'{units}  (auto-scaled placeholder)',
+            'extend':     'both',
+            'colors': None, 'boundaries': None,
+            'cmap': cmap,
+        }
 
+    # Phase 2: wind overlay, title, extent, map features
     if wind_step > 0 and u_array is not None and v_array is not None:
         s = wind_step
         lons = u_array.longitude.values[::s]
@@ -390,7 +414,7 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
                 length=5, linewidth=0.6, color='black', alpha=0.75,
                 barb_increments=dict(half=2.57, full=5.14, flag=25.72),
             )
-        else:  # "vectors"
+        else:
             ax.quiver(
                 lons, lats, u, v,
                 transform=ccrs.PlateCarree(),
@@ -398,7 +422,7 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             )
 
     ax.set_title(
-        f"CORe REANALYSIS | {var_name}\n{date_str}",
+        f"PyReWeather | {var_name}\n{date_str}",
         loc='left', fontsize=11, fontweight='bold',
     )
 
@@ -411,6 +435,50 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     ax.coastlines(resolution='50m', color='black', linewidth=1.2)
     ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='black', alpha=0.4)
     ax.add_feature(cfeature.BORDERS, linewidth=1.2, edgecolor='black')
+
+    # Phase 3: colorbar + data source — placed after canvas draw so Cartopy's
+    # aspect-ratio adjustment is finalised and ax.get_position() is accurate.
+    fig.canvas.draw()
+    pos = ax.get_position()
+
+    if plot_obj is not None and cbar_cfg is not None:
+        # cax touches the map right edge exactly — no gap
+        cax = fig.add_axes([pos.x1, pos.y0, 0.018, pos.height])
+        # Build a fresh ListedColormap/BoundaryNorm from raw color lists so that
+        # any set_over/set_under calls on the plot cmap cannot bleed extra color
+        # slots into the colorbar LUT (which was causing uneven band widths).
+        cb_colors = cbar_cfg.get('colors')
+        cb_boundaries = cbar_cfg.get('boundaries')
+        if cb_colors is not None and cb_boundaries is not None:
+            cb_cmap = mcolors.ListedColormap(cb_colors)
+            cb_norm = mcolors.BoundaryNorm(cb_boundaries, ncolors=len(cb_colors))
+        else:
+            # Fallback: named-string cmap with auto-scaled norm from contourf
+            cb_cmap = cbar_cfg.get('cmap', 'viridis')
+            cb_norm = plot_obj.norm
+        sm = mcm.ScalarMappable(cmap=cb_cmap, norm=cb_norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cax, extend='neither')
+        if cbar_cfg['ticks'] is not None:
+            labels = list(cbar_cfg['ticklabels'])
+            ext = cbar_cfg.get('extend', 'neither')
+            if ext in ('max', 'both'):
+                labels[-1] = str(labels[-1]) + '+'
+            if ext in ('min', 'both'):
+                labels[0] = str(labels[0]) + '−'
+            cbar.set_ticks(cbar_cfg['ticks'])
+            cbar.set_ticklabels(labels)
+        cbar.ax.set_ylabel(cbar_cfg['ylabel'], fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
+
+    # Data source credit below the map
+    fig.text(
+        pos.x0, pos.y0 - 0.018,
+        'Data: CORe Reanalysis  ·  NCEP/CPC',
+        fontsize=7, color='#888',
+        ha='left', va='top',
+        transform=fig.transFigure,
+    )
 
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight', dpi=200)

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx vite *)",
+      "Bash(uv run *)",
+      "WebFetch(domain:www.cpc.ncep.noaa.gov)",
+      "WebFetch(domain:storage.googleapis.com)",
+      "Bash(npm run *)",
+      "Bash(curl -s \"https://ftp.cpc.ncep.noaa.gov/CORe/CDAS_clone_temporary/month/pgb/\")",
+      "Bash(curl -s \"https://ftp.cpc.ncep.noaa.gov/CORe/CDAS_clone_temporary/month/pgb/pgb.f00195001.idx\")",
+      "WebFetch(domain:ftp.cpc.ncep.noaa.gov)",
+      "Bash(uv add *)",
+      "Bash(curl -sI --max-time 15 \"https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis/pressure/hgt.1981-2010.ltm.nc\")",
+      "Bash(curl -sI --max-time 15 \"https://psl.noaa.gov/thredds/catalog/Datasets/ncep.reanalysis/pressure/catalog.html\")",
+      "Bash(curl -sI --max-time 10 https://downloads.psl.noaa.gov/Datasets/ncep.reanalysis/pressure/__TRACKED_VAR__)",
+      "Bash(curl -sL --max-time 15 \"https://nomads.ncep.noaa.gov/dods/\")",
+      "Read(//tmp/**)",
+      "WebFetch(domain:psl.noaa.gov)",
+      "Bash(echo \"Server started, PID: $!\")",
+      "Bash(curl *)",
+      "Bash(jobs *)",
+      "Read(//Users/suzanne2022/Developer/PyRe/climate-reanalysis/**)",
+      "Bash(pkill -f \"uvicorn app.main\")"
+    ]
+  }
+}
