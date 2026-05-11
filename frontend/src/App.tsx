@@ -346,7 +346,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(fetchParams)}`)
+      const res = await fetch(`${API_BASE}/api/get-map?${new URLSearchParams(fetchParams)}`)
       if (res.ok) {
         const blob = await res.blob()
         setMapSrc(URL.createObjectURL(blob))
