@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid } from 'lucide-react'
 
-// const API_BASE = 'http://127.0.0.1:8000'
-const API_BASE = import.meta.env.VITE_API_URL;
+const API_BASE = 'http://127.0.0.1:8000'
+// const API_BASE = import.meta.env.VITE_API_URL;
 
 const VARIABLES = [
   { key: 'wind_speed',   label: 'Wind Speed' },
@@ -346,7 +346,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/get-map?${new URLSearchParams(fetchParams)}`)
+      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(fetchParams)}`)
       if (res.ok) {
         const blob = await res.blob()
         setMapSrc(URL.createObjectURL(blob))

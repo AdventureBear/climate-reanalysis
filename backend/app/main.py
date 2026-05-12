@@ -2,6 +2,9 @@ import calendar as cal
 import logging
 import time
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +42,7 @@ from .visualizer import create_map_product, display_unit
 log = logging.getLogger("pyre.api")
 
 app = FastAPI(title="PyRe Climate Reanalysis API")
+
 cors_origins = os.getenv("CORS_ORIGINS", "")
 
 allowed_origins = [
@@ -46,6 +50,9 @@ allowed_origins = [
     for origin in cors_origins.split(",")
     if origin.strip()
 ]
+
+print("RAW:", os.getenv("CORS_ORIGINS"))
+print("Split Allowed origins", allowed_origins)
 
 app.add_middleware(
     CORSMiddleware,
