@@ -3,6 +3,7 @@ import io
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.cm as mcm
+import matplotlib.colorbar as mcolorbar
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,15 +41,84 @@ _WIND_COLORS = [
 # 400mb defaults to the 500mb (mid) range; try "high" if winds look clipped.
 _KT_TO_MS = 0.51444
 
-_LEVEL_KT_RANGES: dict[str, tuple[int, int]] = {
-    "surface": (10,  60),   # 1000mb
-    "low":     (20,  80),   # 925/850/700/600mb
-    "mid":     (20, 140),   # 500/400mb
-    "high":    (50, 170),   # 300mb and above
+_WIND_SCALE_CONFIGS: dict[str, dict] = {
+    "surface": {
+        "mapping": "scaled",
+        "domain_min": 10,
+        "domain_max": 60,
+        "anchor_colors": _WIND_COLORS,
+        "key_breakpoints": [],
+    },
+    "low": {
+        "mapping": "scaled",
+        "domain_min": 20,
+        "domain_max": 80,
+        "anchor_colors": _WIND_COLORS,
+        "key_breakpoints": [],
+    },
+    "mid": {
+        "mapping": "scaled",
+        "domain_min": 20,
+        "domain_max": 140,
+        "anchor_colors": _WIND_COLORS,
+        "key_breakpoints": [],
+    },
+    "high": {
+        "mapping": "scaled",
+        "domain_min": 50,
+        "domain_max": 170,
+        "anchor_colors": _WIND_COLORS,
+        "key_breakpoints": [],
+    },
 }
 
 
 _QUIVER_BASE_SCALE = 520  # calibrated at 925/850mb (80kt max); ~10% longer than prior value
+
+
+def _interval_midpoints(boundaries: list[float]) -> list[float]:
+    """Return the center value of each color interval defined by boundaries."""
+    return [
+        (boundaries[i] + boundaries[i + 1]) / 2
+        for i in range(len(boundaries) - 1)
+    ]
+
+
+def _resolve_anchor_values(scale_cfg: dict) -> list[float]:
+    mapping = scale_cfg["mapping"]
+    if mapping == "fixed_anchors":
+        return list(scale_cfg["anchor_values"])
+    if mapping == "scaled":
+        n = len(scale_cfg["anchor_colors"])
+        v0 = scale_cfg["domain_min"]
+        v1 = scale_cfg["domain_max"]
+        if n == 1:
+            return [v0]
+        return [v0 + i * (v1 - v0) / (n - 1) for i in range(n)]
+    raise ValueError(f"unsupported scale mapping: {mapping}")
+
+
+def _interpolate_interval_colors(
+    boundaries: list[float],
+    anchor_values: list[float],
+    anchor_hex: list[str],
+) -> list[tuple[float, float, float]]:
+    """
+    Reusable fixed-scale color sampling:
+    - boundaries define the actual color intervals shown on the bar/map
+    - anchor_values define where sampled palette colors live along that scale
+    - colors are evaluated at interval midpoints, so the result stays visually
+      proportional regardless of absolute magnitudes or breakpoint spacing
+    """
+    mids = _interval_midpoints(boundaries)
+    anchor_rgb = np.array([mcolors.to_rgb(c) for c in anchor_hex])
+    colors = []
+    for value in mids:
+        r = float(np.interp(value, anchor_values, anchor_rgb[:, 0]))
+        g = float(np.interp(value, anchor_values, anchor_rgb[:, 1]))
+        b = float(np.interp(value, anchor_values, anchor_rgb[:, 2]))
+        colors.append((r, g, b))
+    return colors
 
 def _quiver_scale(level: int) -> int:
     """
@@ -57,20 +127,20 @@ def _quiver_scale(level: int) -> int:
     Formula: base_scale * (this_group_max_kt / low_group_max_kt)
     """
     if level in (500, 400):
-        max_kt = _LEVEL_KT_RANGES["mid"][1]
+        max_kt = _WIND_SCALE_CONFIGS["mid"]["domain_max"]
     elif level not in (925, 850, 700, 600, 1000):
-        max_kt = _LEVEL_KT_RANGES["high"][1]
+        max_kt = _WIND_SCALE_CONFIGS["high"]["domain_max"]
     else:
-        max_kt = _LEVEL_KT_RANGES["low"][1]
-    return round(_QUIVER_BASE_SCALE * max_kt / _LEVEL_KT_RANGES["low"][1])
+        max_kt = _WIND_SCALE_CONFIGS["low"]["domain_max"]
+    return round(_QUIVER_BASE_SCALE * max_kt / _WIND_SCALE_CONFIGS["low"]["domain_max"])
 
 
 def _make_wind_scale(level: int, step_kt: int = 1) -> tuple[list[float], list[tuple], int, int]:
     """
     Interpolate wind colors at step_kt resolution across the level's kt range.
-    The 13 _WIND_COLORS are evenly-spaced anchors; RGB is interpolated between
-    them at every step_kt interval. Returns (breakpoints_ms, interval_colors,
-    min_kt, max_kt).
+    Colors are sampled at interval midpoints, not interval edges, so the first
+    and last anchor colors occupy their full bins instead of appearing visually
+    compressed toward the center of the bar.
     """
     if level == 1000:
         group = "surface"
@@ -81,18 +151,12 @@ def _make_wind_scale(level: int, step_kt: int = 1) -> tuple[list[float], list[tu
     else:
         group = "high"
 
-    min_kt, max_kt = _LEVEL_KT_RANGES[group]
-    n = len(_WIND_COLORS)
-    anchor_kt  = [min_kt + i * (max_kt - min_kt) / (n - 1) for i in range(n)]
-    anchor_rgb = np.array([mcolors.to_rgb(c) for c in _WIND_COLORS])
-
+    scale_cfg = _WIND_SCALE_CONFIGS[group]
+    min_kt = scale_cfg["domain_min"]
+    max_kt = scale_cfg["domain_max"]
+    anchor_kt = _resolve_anchor_values(scale_cfg)
     steps_kt = list(range(min_kt, max_kt, step_kt)) + [max_kt]
-    colors = []
-    for kt in steps_kt[:-1]:
-        r = float(np.interp(kt, anchor_kt, anchor_rgb[:, 0]))
-        g = float(np.interp(kt, anchor_kt, anchor_rgb[:, 1]))
-        b = float(np.interp(kt, anchor_kt, anchor_rgb[:, 2]))
-        colors.append((r, g, b))
+    colors = _interpolate_interval_colors(steps_kt, anchor_kt, scale_cfg["anchor_colors"])
 
     breakpoints_ms = [round(kt * _KT_TO_MS, 3) for kt in steps_kt]
     return breakpoints_ms, colors, min_kt, max_kt
@@ -113,6 +177,7 @@ _TEMP_LOW_ANCHOR_HEX = [
 
 _TEMP_SCALES: dict[int, dict] = {
     1000: {
+        "mapping": "fixed_anchors",
         "unit": "F",
         "anchors":    [-60, -40,   0,   1,  15,  31,  32,   50,   70,   80,  81,  100, 120],
         "anchor_hex": [
@@ -122,10 +187,11 @@ _TEMP_SCALES: dict[int, dict] = {
         ],
         "t_min": -60,
         "t_max": 120,
+        "key_breakpoints": [32],
     },
-    925: {"unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40},
-    850: {"unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40},
-    700: {"unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  30},
+    925: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
+    850: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
+    700: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  30, "key_breakpoints": [0]},
 }
 
 
@@ -145,13 +211,12 @@ def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple]
     """
     to_k = _c_to_k if cfg["unit"] == "C" else _f_to_k
     steps = list(range(cfg["t_min"], cfg["t_max"], step)) + [cfg["t_max"]]
-    anchor_rgb = np.array([mcolors.to_rgb(c) for c in cfg["anchor_hex"]])
-    colors = []
-    for t in steps[:-1]:
-        r = float(np.interp(t, cfg["anchors"], anchor_rgb[:, 0]))
-        g = float(np.interp(t, cfg["anchors"], anchor_rgb[:, 1]))
-        b = float(np.interp(t, cfg["anchors"], anchor_rgb[:, 2]))
-        colors.append((r, g, b))
+    scale_cfg = {
+        "mapping": cfg["mapping"],
+        "anchor_values": cfg["anchors"],
+        "anchor_colors": cfg["anchor_hex"],
+    }
+    colors = _interpolate_interval_colors(steps, _resolve_anchor_values(scale_cfg), cfg["anchor_hex"])
     breakpoints_k = [round(to_k(t), 4) for t in steps]
     return breakpoints_k, colors, to_k
 
@@ -179,18 +244,24 @@ def display_unit(variable: str, level: int) -> str:
 # 1 % steps, 0–100 %. Breakpoints are plain percentages (data is already in %).
 _RH_ANCHORS_PCT = [  0,   9,  39,  40,  89,  90, 100]
 _RH_ANCHOR_HEX  = ['#c87800', '#2d0d04', '#f0e8d0', '#c8f0c0', '#0f4c0f', '#0a3d0a', '#0a1860']
+_RH_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0,
+    "domain_max": 100,
+    "anchor_values": _RH_ANCHORS_PCT,
+    "anchor_colors": _RH_ANCHOR_HEX,
+    "key_breakpoints": [70, 90],
+}
 
 
 def _make_rh_scale(step: int = 1) -> tuple[list[int], list[tuple]]:
     """Breakpoints (0–100 %) and RGB interval colors at the given % step size."""
     steps = list(range(0, 100, step)) + [100]
-    anchor_rgb = np.array([mcolors.to_rgb(c) for c in _RH_ANCHOR_HEX])
-    colors = []
-    for pct in steps[:-1]:
-        r = float(np.interp(pct, _RH_ANCHORS_PCT, anchor_rgb[:, 0]))
-        g = float(np.interp(pct, _RH_ANCHORS_PCT, anchor_rgb[:, 1]))
-        b = float(np.interp(pct, _RH_ANCHORS_PCT, anchor_rgb[:, 2]))
-        colors.append((r, g, b))
+    colors = _interpolate_interval_colors(
+        steps,
+        _resolve_anchor_values(_RH_SCALE_CONFIG),
+        _RH_SCALE_CONFIG["anchor_colors"],
+    )
     return steps, colors
 
 
@@ -256,6 +327,188 @@ def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.nda
     if variable == "height":
         return values / 10                  # gpm → dam
     return values
+
+
+def _wind_group(level: int) -> str:
+    if level == 1000:
+        return "surface"
+    if level in (925, 850, 700, 600):
+        return "low"
+    if level in (500, 400):
+        return "mid"
+    return "high"
+
+
+def _preview(values: list[float], digits: int = 3, n: int = 6) -> str:
+    if not values:
+        return "[]"
+    if len(values) <= n * 2:
+        return "[" + ", ".join(f"{v:.{digits}f}" for v in values) + "]"
+    head = ", ".join(f"{v:.{digits}f}" for v in values[:n])
+    tail = ", ".join(f"{v:.{digits}f}" for v in values[-n:])
+    return f"[{head}, ..., {tail}]"
+
+
+def _scale_data_stats(values: np.ndarray, boundaries: list[float]) -> dict[str, object]:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return {}
+
+    pct_points = [0, 1, 5, 10, 25, 50, 75, 90, 95, 99, 100]
+    pct_vals = np.percentile(finite, pct_points)
+    under = 100.0 * np.mean(finite < boundaries[0])
+    over = 100.0 * np.mean(finite > boundaries[-1])
+    in_range = 100.0 - under - over
+
+    # Coarse occupancy by sixths of the scale, to expose whether values are
+    # bunching at the low end, middle, or high end irrespective of bin count.
+    band_edges = np.linspace(boundaries[0], boundaries[-1], 7)
+    band_counts, _ = np.histogram(finite, bins=band_edges)
+    band_pcts = [100.0 * c / finite.size for c in band_counts]
+
+    return {
+        "data_min": float(finite.min()),
+        "data_max": float(finite.max()),
+        "data_percentiles": {str(p): float(v) for p, v in zip(pct_points, pct_vals)},
+        "data_under_pct": under,
+        "data_over_pct": over,
+        "data_in_range_pct": in_range,
+        "scale_band_edges": [float(v) for v in band_edges],
+        "scale_band_pcts": band_pcts,
+    }
+
+
+def _rgb_to_hex(rgb: tuple[float, float, float]) -> str:
+    return "#" + "".join(f"{round(max(0, min(1, c)) * 255):02x}" for c in rgb)
+
+
+def _uniform_tick_positions(boundaries: list[float], ticks: list[float]) -> list[float]:
+    """
+    Map data-value ticks onto the colorbar's uniform interval coordinate system.
+    This keeps tick spacing proportional to the numeric scale even when the
+    rendered colorbar uses equal-height discrete bins.
+    """
+    if len(boundaries) < 2:
+        return ticks
+    idx = np.arange(len(boundaries), dtype=float)
+    return np.interp(ticks, boundaries, idx).tolist()
+
+
+def describe_color_scale(
+    variable: str,
+    level: int,
+    color_step: int,
+    mode: str,
+    data_array=None,
+) -> dict[str, object]:
+    """
+    Return render-time scale diagnostics in display units so backend logs can
+    explain exactly how color bands were derived for a given request.
+    """
+    if mode in ("anomaly", "normalized"):
+        if mode == "normalized":
+            max_val = _NORMALIZED_MAX
+            step = max(color_step * 0.5, 0.5)
+            unit = "σ"
+            breakpoints = [round(v, 6) for v in np.arange(-max_val, max_val + step / 2, step)]
+            anchor_values = _DIV_ANCHORS
+            anchor_hex = _DIV_HEX
+            plot_values = np.asarray(data_array.values, dtype=float) if data_array is not None else None
+        else:
+            max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
+            unit = display_unit(variable, level)
+            breakpoints, _ = _make_diverging_scale(max_val, step, white_steps=1)
+            anchor_values = _DIV_ANCHORS
+            anchor_hex = _DIV_HEX
+            plot_values = (
+                np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
+                if data_array is not None else None
+            )
+        mids = _interval_midpoints(breakpoints)
+        stats = _scale_data_stats(plot_values, breakpoints) if plot_values is not None else {}
+        return {
+            "scale_kind": mode,
+            "unit": unit,
+            "step": step,
+            "boundaries": breakpoints,
+            "interval_mids": mids,
+            "anchor_values": anchor_values,
+            "anchor_hex": anchor_hex,
+            **stats,
+        }
+
+    if variable == "wind_speed":
+        group = _wind_group(level)
+        scale_cfg = _WIND_SCALE_CONFIGS[group]
+        min_kt = scale_cfg["domain_min"]
+        max_kt = scale_cfg["domain_max"]
+        anchor_kt = _resolve_anchor_values(scale_cfg)
+        boundaries_ms, interval_colors, _, _ = _make_wind_scale(level, step_kt=color_step)
+        boundaries_kt = [b / _KT_TO_MS for b in boundaries_ms]
+        data_kt = np.asarray(data_array.values, dtype=float) / _KT_TO_MS if data_array is not None else None
+        stats = _scale_data_stats(data_kt, boundaries_kt) if data_kt is not None else {}
+        sample_edges = np.linspace(min_kt, max_kt, 7)
+        sample_labels = [
+            f"[{sample_edges[i]:.0f},{sample_edges[i+1]:.0f})"
+            for i in range(len(sample_edges) - 1)
+        ]
+        sample_idx = np.linspace(0, len(interval_colors) - 1, 6).round().astype(int).tolist()
+        sample_hex = [_rgb_to_hex(interval_colors[i]) for i in sample_idx]
+        return {
+            "scale_kind": "fixed-wind",
+            "group": group,
+            "unit": "kt",
+            "step": color_step,
+            "boundaries": boundaries_kt,
+            "interval_mids": _interval_midpoints(boundaries_kt),
+            "anchor_values": anchor_kt,
+            "anchor_hex": scale_cfg["anchor_colors"],
+            "key_breakpoints": scale_cfg["key_breakpoints"],
+            "sample_band_labels": sample_labels,
+            "sample_band_hex": sample_hex,
+            **stats,
+        }
+
+    if variable == "temp" and level in _TEMP_SCALES:
+        cfg = _TEMP_SCALES[level]
+        boundaries_k, _, _ = _make_temp_scale(cfg, step=color_step)
+        from_k = (lambda k: (k - 273.15) * 9.0 / 5.0 + 32.0) if cfg["unit"] == "F" else (lambda k: k - 273.15)
+        boundaries = [from_k(v) for v in boundaries_k]
+        data_vals = np.asarray([from_k(v) for v in np.ravel(data_array.values)], dtype=float) if data_array is not None else None
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-temp",
+            "unit": f"°{cfg['unit']}",
+            "step": color_step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "anchor_values": cfg["anchors"],
+            "anchor_hex": cfg["anchor_hex"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            **stats,
+        }
+
+    if variable == "rel_humidity":
+        boundaries, _ = _make_rh_scale(step=color_step)
+        data_vals = np.asarray(data_array.values, dtype=float) if data_array is not None else None
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-rh",
+            "unit": "%",
+            "step": color_step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "anchor_values": _RH_SCALE_CONFIG["anchor_values"],
+            "anchor_hex": _RH_SCALE_CONFIG["anchor_colors"],
+            "key_breakpoints": _RH_SCALE_CONFIG["key_breakpoints"],
+            **stats,
+        }
+
+    return {
+        "scale_kind": "auto-or-uninstrumented",
+        "unit": display_unit(variable, level),
+        "step": color_step,
+    }
 
 
 # ── Core rendering function ──────────────────────────────────────────────────────
@@ -450,15 +703,29 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         cb_colors = cbar_cfg.get('colors')
         cb_boundaries = cbar_cfg.get('boundaries')
         if cb_colors is not None and cb_boundaries is not None:
+            cb_axis_boundaries = list(np.arange(len(cb_boundaries), dtype=float))
+            cb_axis_values = [i + 0.5 for i in range(len(cb_colors))]
             cb_cmap = mcolors.ListedColormap(cb_colors)
-            cb_norm = mcolors.BoundaryNorm(cb_boundaries, ncolors=len(cb_colors))
+            cb_norm = mcolors.BoundaryNorm(cb_axis_boundaries, ncolors=len(cb_colors), clip=True)
+            # ColorbarBase respects our discrete interval boundaries exactly; the
+            # generic ScalarMappable path was compressing some fixed scales into
+            # the middle of the bar despite linear breakpoints.
+            cbar = mcolorbar.ColorbarBase(
+                cax,
+                cmap=cb_cmap,
+                norm=cb_norm,
+                boundaries=cb_axis_boundaries,
+                values=cb_axis_values,
+                spacing='uniform',
+                extend='neither',
+            )
         else:
             # Fallback: named-string cmap with auto-scaled norm from contourf
             cb_cmap = cbar_cfg.get('cmap', 'viridis')
             cb_norm = plot_obj.norm
-        sm = mcm.ScalarMappable(cmap=cb_cmap, norm=cb_norm)
-        sm.set_array([])
-        cbar = fig.colorbar(sm, cax=cax, extend='neither')
+            sm = mcm.ScalarMappable(cmap=cb_cmap, norm=cb_norm)
+            sm.set_array([])
+            cbar = fig.colorbar(sm, cax=cax, extend='neither')
         if cbar_cfg['ticks'] is not None:
             labels = list(cbar_cfg['ticklabels'])
             ext = cbar_cfg.get('extend', 'neither')
@@ -466,7 +733,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
                 labels[-1] = str(labels[-1]) + '+'
             if ext in ('min', 'both'):
                 labels[0] = str(labels[0]) + '−'
-            cbar.set_ticks(cbar_cfg['ticks'])
+            if cb_colors is not None and cb_boundaries is not None:
+                tick_positions = _uniform_tick_positions(cb_boundaries, cbar_cfg['ticks'])
+                cbar.set_ticks(tick_positions)
+            else:
+                cbar.set_ticks(cbar_cfg['ticks'])
             cbar.set_ticklabels(labels)
         cbar.ax.set_ylabel(cbar_cfg['ylabel'], fontsize=9)
         cbar.ax.tick_params(labelsize=8)

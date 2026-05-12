@@ -37,7 +37,7 @@ from .climo_r2 import (
     get_r2_monthly_climo_relative_humidity,
     get_r2_monthly_climo_wind_speed,
 )
-from .visualizer import create_map_product, display_unit
+from .visualizer import create_map_product, describe_color_scale, display_unit
 
 log = logging.getLogger("pyre.api")
 
@@ -64,6 +64,17 @@ app.add_middleware(
 
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
+
+
+def _preview(values, digits: int = 3, n: int = 6) -> str:
+    values = list(values)
+    if not values:
+        return "[]"
+    if len(values) <= n * 2:
+        return "[" + ", ".join(f"{v:.{digits}f}" for v in values) + "]"
+    head = ", ".join(f"{v:.{digits}f}" for v in values[:n])
+    tail = ", ".join(f"{v:.{digits}f}" for v in values[-n:])
+    return f"[{head}, ..., {tail}]"
 
 
 @app.get("/")
@@ -607,6 +618,69 @@ async def get_map(
         log.info("  region   : %s  (projection: %s)", region,
                  "Albers Equal-Area" if region == "CONUS" else "PlateCarree")
         log.info("  colormap : %s", "diverging (Blues/Reds)" if mode in ("anomaly","normalized") else "fixed-anchor stepped")
+        scale_diag = describe_color_scale(
+            variable=variable,
+            level=level,
+            color_step=color_step,
+            mode=mode,
+            data_array=subset,
+        )
+        log.info("  scale kind    : %s", scale_diag.get("scale_kind"))
+        if scale_diag.get("unit"):
+            log.info("  scale unit    : %s", scale_diag.get("unit"))
+        if scale_diag.get("step") is not None:
+            log.info("  color step    : %s", scale_diag.get("step"))
+        if scale_diag.get("group"):
+            log.info("  scale group   : %s", scale_diag.get("group"))
+        if scale_diag.get("data_in_range_pct") is not None:
+            log.info("  data in range : %.1f%%", scale_diag.get("data_in_range_pct"))
+        if scale_diag.get("data_under_pct") is not None or scale_diag.get("data_over_pct") is not None:
+            log.info("  under / over  : %.1f%% / %.1f%%",
+                     scale_diag.get("data_under_pct", 0.0),
+                     scale_diag.get("data_over_pct", 0.0))
+        if scale_diag.get("data_min") is not None and scale_diag.get("data_max") is not None:
+            log.info("  data display  : [%.3f, %.3f] %s",
+                     scale_diag.get("data_min"),
+                     scale_diag.get("data_max"),
+                     scale_diag.get("unit", ""))
+        boundaries = scale_diag.get("boundaries")
+        if boundaries:
+            log.info("  boundaries    : %s", _preview(boundaries, digits=3))
+        mids = scale_diag.get("interval_mids")
+        if mids:
+            log.info("  interval mids : %s", _preview(mids, digits=3))
+        anchor_values = scale_diag.get("anchor_values")
+        if anchor_values:
+            log.info("  anchors       : %s", _preview(anchor_values, digits=3))
+        key_breakpoints = scale_diag.get("key_breakpoints")
+        if key_breakpoints:
+            log.info("  key breaks    : %s", _preview(key_breakpoints, digits=3))
+        anchor_hex = scale_diag.get("anchor_hex")
+        if anchor_hex:
+            if len(anchor_hex) <= 10:
+                log.info("  anchor colors : %s", anchor_hex)
+            else:
+                log.info("  anchor colors : %s ... %s", anchor_hex[:5], anchor_hex[-5:])
+        sample_labels = scale_diag.get("sample_band_labels")
+        sample_hex = scale_diag.get("sample_band_hex")
+        if sample_labels and sample_hex:
+            samples = "  ".join(f"{label}={hex_}" for label, hex_ in zip(sample_labels, sample_hex))
+            log.info("  band colors   : %s", samples)
+        pct = scale_diag.get("data_percentiles")
+        if pct:
+            log.info(
+                "  percentiles   : p01=%.3f  p05=%.3f  p25=%.3f  p50=%.3f  p75=%.3f  p95=%.3f  p99=%.3f %s",
+                pct["1"], pct["5"], pct["25"], pct["50"], pct["75"], pct["95"], pct["99"],
+                scale_diag.get("unit", ""),
+            )
+        band_edges = scale_diag.get("scale_band_edges")
+        band_pcts = scale_diag.get("scale_band_pcts")
+        if band_edges and band_pcts:
+            band_parts = [
+                f"[{band_edges[i]:.1f},{band_edges[i+1]:.1f})={band_pcts[i]:.1f}%"
+                for i in range(len(band_pcts))
+            ]
+            log.info("  scale bands   : %s", "  ".join(band_parts))
         buf = create_map_product(
             data_array=subset,
             region_bounds=bounds,
