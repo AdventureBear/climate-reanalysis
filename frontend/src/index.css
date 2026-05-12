@@ -6,3 +6,78 @@
            focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent;
   }
 }
+
+@layer components {
+  .faq-doc h1 {
+    @apply text-3xl font-bold tracking-tight text-slate-50 mb-5;
+  }
+
+  .faq-doc h2 {
+    @apply mt-10 mb-3 text-xl font-semibold text-slate-100;
+  }
+
+  .faq-doc h3 {
+    @apply mt-8 mb-2 text-lg font-semibold text-slate-100;
+  }
+
+  .faq-doc p {
+    @apply my-3 text-sm leading-7 text-slate-300;
+  }
+
+  .faq-doc ul,
+  .faq-doc ol {
+    @apply my-4 pl-6 text-sm leading-7 text-slate-300;
+  }
+
+  .faq-doc ul {
+    list-style: disc;
+  }
+
+  .faq-doc ol {
+    list-style: decimal;
+  }
+
+  .faq-doc li {
+    @apply my-1;
+  }
+
+  .faq-doc strong {
+    @apply font-semibold text-slate-100;
+  }
+
+  .faq-doc code {
+    @apply rounded bg-slate-800 px-1.5 py-0.5 text-[0.9em] text-sky-200;
+  }
+
+  .faq-doc pre {
+    @apply my-4 overflow-x-auto rounded-xl border border-slate-700 bg-slate-950 p-4;
+  }
+
+  .faq-doc pre code {
+    @apply bg-transparent p-0 text-slate-200;
+  }
+
+  .faq-doc hr {
+    @apply my-8 border-slate-700;
+  }
+
+  .faq-doc a {
+    @apply text-sky-300 underline decoration-sky-700 underline-offset-2 hover:text-sky-200;
+  }
+
+  .faq-doc table {
+    @apply my-5 w-full border-collapse overflow-hidden rounded-xl border border-slate-700 text-sm;
+  }
+
+  .faq-doc thead {
+    @apply bg-slate-800;
+  }
+
+  .faq-doc th {
+    @apply border border-slate-700 px-3 py-2 text-left font-semibold text-slate-100;
+  }
+
+  .faq-doc td {
+    @apply border border-slate-700 px-3 py-2 align-top text-slate-300;
+  }
+}

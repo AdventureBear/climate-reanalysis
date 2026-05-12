@@ -211,8 +211,6 @@ Observation data (CORe fields) is **not** disk-cached — it changes every 6 hou
 
 ---
 
----
-
 ## 18. Should PyRe pre-compute all climatology files in advance or compute on demand?
 
 **Short answer: pre-compute. Run the batch script once.**
@@ -243,7 +241,7 @@ The pre-computed files are in the same format the API already reads — no serve
 
 ## 19. Why does the batch script use a 5-day window but the on-demand code uses 1 day per year?
 
-The batch script computes a ±2 day window (5 samples per year × 30 years = **150 samples** per DOY). The on-demand code was written for simplicity and uses the exact date only (**30 samples** per DOY). 
+The batch script computes a ±2 day window (5 samples per year × 30 years = **150 samples** per DOY). The on-demand code was written for simplicity and uses the exact date only (**30 samples** per DOY).
 
 The 5-day window is how PSL computed their own LTM values. It is strictly better: more samples produce lower variance in the climatological mean and sigma estimates, which makes anomaly maps more accurate. Once the pre-computed files exist, all requests use the better 150-sample version automatically — the on-demand fallback is only reached for combinations the batch script hasn't covered yet.
 

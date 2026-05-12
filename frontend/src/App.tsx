@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid, CircleHelp } from 'lucide-react'
 
 // const API_BASE = 'http://127.0.0.1:8000'
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -488,6 +488,14 @@ export default function App() {
 
         {/* Time scale — far right of header */}
         <div className="ml-auto flex items-center gap-3">
+          <Link
+            to="/faq"
+            className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+            title="Open FAQ"
+          >
+            <CircleHelp size={14} />
+            FAQ
+          </Link>
           <TabStrip
             options={[
               { value: '6-hourly',    label: '6-Hourly' },
