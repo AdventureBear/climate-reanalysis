@@ -81,7 +81,34 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 ---
 
-## 8. How is the standard deviation (sigma) calculated?
+## 8. How are wind anomalies defined?
+
+PyRe distinguishes between two valid but different wind-anomaly diagnostics:
+
+### Wind speed anomaly (scalar)
+
+This treats wind as a scalar magnitude field:
+
+- Compute wind speed at each grid point as `|V| = sqrt(U² + V²)`
+- Compute the climatological mean wind speed for the same calendar period
+- Form the anomaly as `|V|_obs − |V|_climo`
+
+This is a **signed** anomaly. Positive values indicate stronger-than-normal wind speed; negative values indicate weaker-than-normal wind speed. It answers the question: how much faster or slower was the flow than climatology at this location?
+
+### Vector wind anomaly magnitude
+
+This treats wind as a vector field and preserves directional departures:
+
+- Compute component anomalies `U' = U_obs − U_climo` and `V' = V_obs − V_climo`
+- Compute the magnitude of the anomaly vector as `|V'| = sqrt(U'² + V'²)`
+
+This is a **positive-definite** field. It does not indicate stronger vs weaker than normal in a signed sense; instead it measures the magnitude of the departure from the climatological flow vector. When plotted with anomaly arrows, it highlights anomalous jet corridors and circulation shifts, especially in tropical and monsoon analyses where directional departures can be as important as scalar speed changes.
+
+These two products are not interchangeable. A circulation can have a small scalar speed anomaly but a large vector anomaly if the flow direction changes substantially.
+
+---
+
+## 9. How is the standard deviation (sigma) calculated?
 
 PyRe computes sigma **itself** from the raw R2 time series — it is not pre-fetched from a file.
 
@@ -93,7 +120,7 @@ PyRe computes sigma **itself** from the raw R2 time series — it is not pre-fet
 
 ---
 
-## 9. Why does PyRe mask low wind speeds on normalized anomaly maps?
+## 10. Why does PyRe mask low wind speeds on normalized anomaly maps?
 
 A normalized anomaly of +5σ at 850mb is meaningless if the actual wind speed is 3 m/s. The background flow is essentially calm — there is no jet or meaningful circulation to be anomalous. The σ denominator can be very small in regions of weak climatological flow, producing inflated sigma values that look dramatic but carry no physical significance.
 
@@ -115,7 +142,7 @@ Other variables (temperature, height, humidity) do not require this masking — 
 
 ---
 
-## 10. Why does CORe produce better maps than what PSL was showing?
+## 11. Why does CORe produce better maps than what PSL was showing?
 
 | Attribute | PSL (R1) | PyRe (CORe) |
 |---|---|---|
@@ -128,7 +155,7 @@ The practical effect: features like the low-level jet (LLJ), frontal boundaries,
 
 ---
 
-## 11. My CORe map looks different from the old PSL map for the same date. Which is right?
+## 12. My CORe map looks different from the old PSL map for the same date. Which is right?
 
 CORe, almost certainly. The differences are usually explained by:
 
@@ -140,7 +167,7 @@ The best independent validation for a specific historical date is **ERA5** (ECMW
 
 ---
 
-## 12. What data sources are researchers actually using for case studies?
+## 13. What data sources are researchers actually using for case studies?
 
 This varies by event date and paper vintage:
 
@@ -158,7 +185,7 @@ For the 2011 Super Outbreak, researchers most commonly use ERA5 or NARR. CORe at
 
 ---
 
-## 13. What is the R2 daily climatology, specifically?
+## 14. What is the R2 daily climatology, specifically?
 
 For a given calendar day (e.g., April 27), the R2 daily climatology is computed as follows:
 
@@ -171,13 +198,13 @@ The R2 daily climatology is the correct baseline for 6-hourly and daily mode ano
 
 ---
 
-## 14. Why is there no R2 February 29 climatology entry?
+## 15. Why is there no R2 February 29 climatology entry?
 
 The R2 daily climatology uses 1991–2020. Not every year has Feb 29. PyRe maps leap day observations (Feb 29) to Feb 28 for the purpose of climatology lookup. This is standard practice and introduces negligible error.
 
 ---
 
-## 15. What does the wind overlay show and does it cost extra fetches?
+## 16. What does the wind overlay show and does it cost extra fetches?
 
 The wind overlay draws vectors or barbs on top of any scalar field. It requires U and V wind components.
 
@@ -187,7 +214,7 @@ The wind overlay draws vectors or barbs on top of any scalar field. It requires 
 
 ---
 
-## 16. What does "surgical byte-range extraction" mean?
+## 17. What does "surgical byte-range extraction" mean?
 
 PyRe never downloads an entire GRIB2 file. Instead:
 
@@ -199,7 +226,7 @@ This is the same technique NOMADS uses internally and what enables PyRe to respo
 
 ---
 
-## 17. Where is data cached and why?
+## 18. Where is data cached and why?
 
 Climatology data (R2 daily and monthly means/sigmas) is cached to disk on the server after the first computation. This is appropriate because:
 
@@ -211,7 +238,7 @@ Observation data (CORe fields) is **not** disk-cached — it changes every 6 hou
 
 ---
 
-## 18. Should PyRe pre-compute all climatology files in advance or compute on demand?
+## 19. Should PyRe pre-compute all climatology files in advance or compute on demand?
 
 **Short answer: pre-compute. Run the batch script once.**
 
@@ -239,7 +266,7 @@ The pre-computed files are in the same format the API already reads — no serve
 
 ---
 
-## 19. Why does the batch script use a 5-day window but the on-demand code uses 1 day per year?
+## 20. Why does the batch script use a 5-day window but the on-demand code uses 1 day per year?
 
 The batch script computes a ±2 day window (5 samples per year × 30 years = **150 samples** per DOY). The on-demand code was written for simplicity and uses the exact date only (**30 samples** per DOY).
 

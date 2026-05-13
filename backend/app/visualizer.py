@@ -135,27 +135,26 @@ def _quiver_scale(level: int) -> int:
     return round(_QUIVER_BASE_SCALE * max_kt / _WIND_SCALE_CONFIGS["low"]["domain_max"])
 
 
-def _make_wind_scale(level: int, step_kt: int = 1) -> tuple[list[float], list[tuple], int, int]:
+def _make_wind_scale(
+    level: int,
+    step_kt: int = 1,
+    scale_overrides: dict[str, float] | None = None,
+) -> tuple[list[float], list[tuple], int, int]:
     """
     Interpolate wind colors at step_kt resolution across the level's kt range.
     Colors are sampled at interval midpoints, not interval edges, so the first
     and last anchor colors occupy their full bins instead of appearing visually
     compressed toward the center of the bar.
     """
-    if level == 1000:
-        group = "surface"
-    elif level in (925, 850, 700, 600):
-        group = "low"
-    elif level in (500, 400):
-        group = "mid"
-    else:
-        group = "high"
-
-    scale_cfg = _WIND_SCALE_CONFIGS[group]
+    _, scale_cfg = _resolved_wind_scale_config(level, scale_overrides)
     min_kt = scale_cfg["domain_min"]
     max_kt = scale_cfg["domain_max"]
     anchor_kt = _resolve_anchor_values(scale_cfg)
-    steps_kt = list(range(min_kt, max_kt, step_kt)) + [max_kt]
+    steps_kt = np.arange(min_kt, max_kt, step_kt, dtype=float).tolist()
+    if not steps_kt or abs(steps_kt[0] - min_kt) > 1e-9:
+        steps_kt.insert(0, float(min_kt))
+    if abs(steps_kt[-1] - max_kt) > 1e-9:
+        steps_kt.append(float(max_kt))
     colors = _interpolate_interval_colors(steps_kt, anchor_kt, scale_cfg["anchor_colors"])
 
     breakpoints_ms = [round(kt * _KT_TO_MS, 3) for kt in steps_kt]
@@ -290,6 +289,11 @@ _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "humidity":     (0.003, 0.0003),
 }
 
+_WIND_VECTOR_ANOMALY_HEX = [
+    "#ffffff", "#d8d5ff", "#1d19ff", "#1d5ae0", "#1aa0b8",
+    "#16b87b", "#26ff00", "#cfff00", "#ffe100", "#ff9a00", "#ff2500",
+]
+
 _NORMALIZED_MAX = 5.0   # standard deviations (±5σ, 0.5σ step)
 
 
@@ -315,6 +319,24 @@ def _make_diverging_scale(max_val: float, step: float, white_steps: int = 2) -> 
     return breakpoints, colors
 
 
+def _make_positive_scale(max_val: float, step: float, anchor_hex: list[str]) -> tuple[list[float], list[tuple]]:
+    """
+    Positive-only stepped scale from 0 to max_val using evenly distributed anchors.
+    Intended for magnitude-style diagnostics such as vector wind anomaly magnitude.
+    """
+    breakpoints = [round(v, 6) for v in np.arange(0.0, max_val + step / 2, step)]
+    if breakpoints[-1] < max_val - 1e-9:
+        breakpoints.append(round(max_val, 6))
+    scale_cfg = {
+        "mapping": "scaled",
+        "domain_min": 0.0,
+        "domain_max": max_val,
+        "anchor_colors": anchor_hex,
+    }
+    colors = _interpolate_interval_colors(breakpoints, _resolve_anchor_values(scale_cfg), anchor_hex)
+    return breakpoints, colors
+
+
 def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.ndarray:
     """Convert anomaly array from native GRIB units to the variable's display units."""
     if variable == "wind_speed":
@@ -337,6 +359,17 @@ def _wind_group(level: int) -> str:
     if level in (500, 400):
         return "mid"
     return "high"
+
+
+def _resolved_wind_scale_config(level: int, scale_overrides: dict[str, float] | None = None) -> tuple[str, dict]:
+    group = _wind_group(level)
+    scale_cfg = dict(_WIND_SCALE_CONFIGS[group])
+    if scale_overrides:
+        if scale_overrides.get("domain_min") is not None:
+            scale_cfg["domain_min"] = float(scale_overrides["domain_min"])
+        if scale_overrides.get("domain_max") is not None:
+            scale_cfg["domain_max"] = float(scale_overrides["domain_max"])
+    return group, scale_cfg
 
 
 def _preview(values: list[float], digits: int = 3, n: int = 6) -> str:
@@ -394,12 +427,20 @@ def _uniform_tick_positions(boundaries: list[float], ticks: list[float]) -> list
     return np.interp(ticks, boundaries, idx).tolist()
 
 
+def _format_scale_value(value: float) -> str:
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
 def describe_color_scale(
     variable: str,
     level: int,
     color_step: int,
     mode: str,
     data_array=None,
+    scale_overrides: dict[str, float] | None = None,
+    wind_anomaly_style: str = "speed_diff",
 ) -> dict[str, object]:
     """
     Return render-time scale diagnostics in display units so backend logs can
@@ -414,36 +455,49 @@ def describe_color_scale(
             anchor_values = _DIV_ANCHORS
             anchor_hex = _DIV_HEX
             plot_values = np.asarray(data_array.values, dtype=float) if data_array is not None else None
+            _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
+            scale_kind = mode
         else:
             max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
             unit = display_unit(variable, level)
-            breakpoints, _ = _make_diverging_scale(max_val, step, white_steps=1)
-            anchor_values = _DIV_ANCHORS
-            anchor_hex = _DIV_HEX
-            plot_values = (
-                np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
-                if data_array is not None else None
-            )
+            if variable == "wind_speed" and wind_anomaly_style == "vector_mag":
+                breakpoints, interval_colors = _make_positive_scale(max_val, step, _WIND_VECTOR_ANOMALY_HEX)
+                anchor_values = list(np.linspace(0.0, max_val, len(_WIND_VECTOR_ANOMALY_HEX)))
+                anchor_hex = _WIND_VECTOR_ANOMALY_HEX
+                plot_values = (
+                    np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
+                    if data_array is not None else None
+                )
+                scale_kind = "vector-anomaly-magnitude"
+            else:
+                breakpoints, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
+                anchor_values = _DIV_ANCHORS
+                anchor_hex = _DIV_HEX
+                plot_values = (
+                    np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
+                    if data_array is not None else None
+                )
+                scale_kind = mode
         mids = _interval_midpoints(breakpoints)
         stats = _scale_data_stats(plot_values, breakpoints) if plot_values is not None else {}
         return {
-            "scale_kind": mode,
+            "scale_kind": scale_kind,
             "unit": unit,
             "step": step,
             "boundaries": breakpoints,
             "interval_mids": mids,
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
             "anchor_values": anchor_values,
             "anchor_hex": anchor_hex,
             **stats,
         }
 
     if variable == "wind_speed":
-        group = _wind_group(level)
-        scale_cfg = _WIND_SCALE_CONFIGS[group]
+        group, scale_cfg = _resolved_wind_scale_config(level, scale_overrides)
         min_kt = scale_cfg["domain_min"]
         max_kt = scale_cfg["domain_max"]
         anchor_kt = _resolve_anchor_values(scale_cfg)
-        boundaries_ms, interval_colors, _, _ = _make_wind_scale(level, step_kt=color_step)
+        boundaries_ms, interval_colors, _, _ = _make_wind_scale(level, step_kt=color_step, scale_overrides=scale_overrides)
         boundaries_kt = [b / _KT_TO_MS for b in boundaries_ms]
         data_kt = np.asarray(data_array.values, dtype=float) / _KT_TO_MS if data_array is not None else None
         stats = _scale_data_stats(data_kt, boundaries_kt) if data_kt is not None else {}
@@ -461,9 +515,12 @@ def describe_color_scale(
             "step": color_step,
             "boundaries": boundaries_kt,
             "interval_mids": _interval_midpoints(boundaries_kt),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
             "anchor_values": anchor_kt,
             "anchor_hex": scale_cfg["anchor_colors"],
             "key_breakpoints": scale_cfg["key_breakpoints"],
+            "domain_min": min_kt,
+            "domain_max": max_kt,
             "sample_band_labels": sample_labels,
             "sample_band_hex": sample_hex,
             **stats,
@@ -471,7 +528,7 @@ def describe_color_scale(
 
     if variable == "temp" and level in _TEMP_SCALES:
         cfg = _TEMP_SCALES[level]
-        boundaries_k, _, _ = _make_temp_scale(cfg, step=color_step)
+        boundaries_k, interval_colors, _ = _make_temp_scale(cfg, step=color_step)
         from_k = (lambda k: (k - 273.15) * 9.0 / 5.0 + 32.0) if cfg["unit"] == "F" else (lambda k: k - 273.15)
         boundaries = [from_k(v) for v in boundaries_k]
         data_vals = np.asarray([from_k(v) for v in np.ravel(data_array.values)], dtype=float) if data_array is not None else None
@@ -482,6 +539,7 @@ def describe_color_scale(
             "step": color_step,
             "boundaries": boundaries,
             "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
             "anchor_values": cfg["anchors"],
             "anchor_hex": cfg["anchor_hex"],
             "key_breakpoints": cfg["key_breakpoints"],
@@ -489,7 +547,7 @@ def describe_color_scale(
         }
 
     if variable == "rel_humidity":
-        boundaries, _ = _make_rh_scale(step=color_step)
+        boundaries, interval_colors = _make_rh_scale(step=color_step)
         data_vals = np.asarray(data_array.values, dtype=float) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
         return {
@@ -498,6 +556,7 @@ def describe_color_scale(
             "step": color_step,
             "boundaries": boundaries,
             "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
             "anchor_values": _RH_SCALE_CONFIG["anchor_values"],
             "anchor_hex": _RH_SCALE_CONFIG["anchor_colors"],
             "key_breakpoints": _RH_SCALE_CONFIG["key_breakpoints"],
@@ -513,7 +572,7 @@ def describe_color_scale(
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw"):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_anomaly_style: str = "speed_diff"):
     plt.close('all')
     fig = plt.figure(figsize=(14, 9))
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
@@ -535,34 +594,58 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
             unit_label = display_unit(variable, level)
             plot_vals  = _anomaly_to_display(data_array.values, variable, level)
-
-        white_steps = 1
-        breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=white_steps)
-        cmap = mcolors.ListedColormap(colors)
-        cmap.set_under(colors[0])
-        cmap.set_over(colors[-1])
-        norm = mcolors.BoundaryNorm(breakpoints, ncolors=len(colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, plot_vals,
-            levels=breakpoints, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='both',
-        )
-        n_steps = round(max_val / step)
-        stride  = max(1, round(n_steps / 5))
-        tick_vals = [round(i * step * stride, 9)
-                     for i in range(-(n_steps // stride), n_steps // stride + 1)
-                     if abs(i * step * stride) <= max_val + 1e-6]
-        mode_label = "Anomaly" if mode == "anomaly" else "Normalized Anomaly"
-        cbar_cfg = {
-            'ticks':      tick_vals,
-            'ticklabels': [f"{v:+g}" if v != 0 else "0" for v in tick_vals],
-            'ylabel':     f"{mode_label}  ({unit_label})",
-            'extend':     'both',
-            'colors': colors, 'boundaries': breakpoints,
-        }
+        if mode == "anomaly" and variable == "wind_speed" and wind_anomaly_style == "vector_mag":
+            breakpoints, colors = _make_positive_scale(max_val, step, _WIND_VECTOR_ANOMALY_HEX)
+            cmap = mcolors.ListedColormap(colors)
+            cmap.set_under(colors[0])
+            cmap.set_over(mcolors.to_rgb(_WIND_VECTOR_ANOMALY_HEX[-1]))
+            norm = mcolors.BoundaryNorm(breakpoints, ncolors=len(colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, plot_vals,
+                levels=breakpoints, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='max',
+            )
+            tick_step = max(step, 2.0)
+            tick_vals = np.arange(0.0, max_val + tick_step / 2, tick_step, dtype=float).tolist()
+            cbar_cfg = {
+                'ticks': tick_vals,
+                'ticklabels': [_format_scale_value(v) for v in tick_vals],
+                'ylabel': f'Wind Vector Anomaly Magnitude  ({unit_label})',
+                'extend': 'max',
+                'colors': colors, 'boundaries': breakpoints,
+            }
+        else:
+            white_steps = 1
+            breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=white_steps)
+            cmap = mcolors.ListedColormap(colors)
+            cmap.set_under(colors[0])
+            cmap.set_over(colors[-1])
+            norm = mcolors.BoundaryNorm(breakpoints, ncolors=len(colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, plot_vals,
+                levels=breakpoints, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='both',
+            )
+            n_steps = round(max_val / step)
+            stride  = max(1, round(n_steps / 5))
+            tick_vals = [round(i * step * stride, 9)
+                         for i in range(-(n_steps // stride), n_steps // stride + 1)
+                         if abs(i * step * stride) <= max_val + 1e-6]
+            mode_label = "Anomaly" if mode == "anomaly" else "Normalized Anomaly"
+            cbar_cfg = {
+                'ticks':      tick_vals,
+                'ticklabels': [f"{v:+g}" if v != 0 else "0" for v in tick_vals],
+                'ylabel':     f"{mode_label}  ({unit_label})",
+                'extend':     'both',
+                'colors': colors, 'boundaries': breakpoints,
+            }
 
     elif variable == "wind_speed":
-        breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(level, step_kt=color_step)
+        breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
+            level,
+            step_kt=color_step,
+            scale_overrides=scale_overrides,
+        )
         cmap = mcolors.ListedColormap(interval_colors)
         cmap.set_over(mcolors.to_rgb(_WIND_COLORS[-1]))
         norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
@@ -572,11 +655,13 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             transform=ccrs.PlateCarree(), extend='max',
         )
         tick_step = max(color_step, 5)
-        tick_kt = list(range(min_kt, max_kt + 1, tick_step))
+        tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
+        if abs(tick_kt[-1] - max_kt) > 1e-9:
+            tick_kt.append(float(max_kt))
         cbar_cfg = {
             'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
-            'ticklabels': [str(kt) for kt in tick_kt],
-            'ylabel':     f'Wind Speed  ·  {min_kt}–{max_kt} kt',
+            'ticklabels': [_format_scale_value(kt) for kt in tick_kt],
+            'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_kt)}–{_format_scale_value(max_kt)} kt',
             'extend':     'max',
             'colors': interval_colors, 'boundaries': breakpoints_ms,
         }

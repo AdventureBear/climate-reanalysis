@@ -551,6 +551,23 @@ def get_r2_daily_climo_wind_speed(
     return result["mean"], result["std"]
 
 
+def get_r2_daily_climo_wind_components(
+    month: int,
+    day: int,
+    level: int,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """(mean_u, mean_v) wind components (m/s) for the given calendar day."""
+    u_result = _load(
+        "uwnd", level, month, day,
+        fetch_fn=lambda: _fetch_scalar_climo("uwnd", level, month, day),
+    )
+    v_result = _load(
+        "vwnd", level, month, day,
+        fetch_fn=lambda: _fetch_scalar_climo("vwnd", level, month, day),
+    )
+    return u_result["mean"], v_result["mean"]
+
+
 # ── Public API — monthly climatology ─────────────────────────────────────────
 
 def get_r2_monthly_climo_field(
@@ -600,3 +617,19 @@ def get_r2_monthly_climo_wind_speed(
         fetch_fn=lambda: _fetch_r2m_monthly_wind_speed(level, month),
     )
     return result["mean"], result["std"]
+
+
+def get_r2_monthly_climo_wind_components(
+    month: int,
+    level: int,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """(mean_u, mean_v) monthly wind components (m/s) for the given calendar month."""
+    u_result = _load_monthly(
+        "uwnd_monthly", level, month,
+        fetch_fn=lambda: _fetch_r2m_monthly_scalar("uwnd", level, month),
+    )
+    v_result = _load_monthly(
+        "vwnd_monthly", level, month,
+        fetch_fn=lambda: _fetch_r2m_monthly_scalar("vwnd", level, month),
+    )
+    return u_result["mean"], v_result["mean"]

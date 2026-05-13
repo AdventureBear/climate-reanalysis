@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid, CircleHelp } from 'lucide-react'
 
@@ -20,6 +20,36 @@ type TimeScale   = '6-hourly' | 'daily' | 'monthly' | 'climatology'
 type SubMode     = 'single' | 'range' | 'list'
 type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
+type WindAnomalyStyle = 'speed_diff' | 'vector_mag'
+type ScaleMeta = {
+  scale_kind?: string
+  group?: string
+  unit?: string
+  step?: number
+  boundaries?: number[]
+  interval_mids?: number[]
+  interval_hex?: string[]
+  anchor_values?: number[]
+  anchor_hex?: string[]
+  key_breakpoints?: number[]
+  domain_min?: number
+  domain_max?: number
+}
+
+const SCALE_LAB_VARIABLES = [
+  { key: 'wind_speed', label: 'Wind' },
+  { key: 'temp', label: 'Temp' },
+  { key: 'rel_humidity', label: 'RH' },
+  { key: 'height', label: 'Height' },
+  { key: 'humidity', label: 'Spec. Humidity' },
+] as const
+
+type ScaleFamily = {
+  key: string
+  label: string
+  levels: number[]
+  description: string
+}
 
 // ── Region catalogue ──────────────────────────────────────────────────────────
 
@@ -150,6 +180,66 @@ function dateRange(startISO: string, endISO: string): string[] {
   return result
 }
 
+function formatScaleValue(value: number): string {
+  if (Math.abs(value - Math.round(value)) < 1e-9) return String(Math.round(value))
+  return value.toFixed(1).replace(/\.0$/, '')
+}
+
+function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFamily[] {
+  if (mode !== 'raw') {
+    return [
+      {
+        key: 'shared',
+        label: 'Shared',
+        levels: LEVELS,
+        description: 'This analysis scale is shared across levels for the selected variable.',
+      },
+    ]
+  }
+
+  if (variable === 'wind_speed') {
+    return [
+      { key: 'surface', label: 'Surface', levels: [1000], description: 'Surface wind scale.' },
+      { key: 'low', label: 'Low', levels: [925, 850, 700, 600], description: 'Lower-tropospheric wind scale.' },
+      { key: 'mid', label: 'Mid', levels: [500, 400], description: 'Mid-level wind scale.' },
+      { key: 'high', label: 'High', levels: [300, 250, 200, 150, 100, 70, 50, 20, 10], description: 'Upper-level wind scale.' },
+    ]
+  }
+
+  if (variable === 'temp') {
+    return [
+      { key: 'surface', label: 'Surface', levels: [1000], description: 'Surface temperature scale with Fahrenheit breakpoints.' },
+      { key: 'low', label: 'Low', levels: [925, 850, 700], description: 'Lower-level temperature scales with fixed meteorological anchors.' },
+      { key: 'other', label: 'Other', levels: [600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10], description: 'Levels currently using the generic fallback path.' },
+    ]
+  }
+
+  if (variable === 'rel_humidity') {
+    return [
+      {
+        key: 'shared',
+        label: 'Shared',
+        levels: LEVELS,
+        description: 'Relative humidity uses one shared stepped scale across levels.',
+      },
+    ]
+  }
+
+  return [
+    {
+      key: 'shared',
+      label: 'Shared',
+      levels: LEVELS,
+      description: 'This variable currently uses one shared scale family across levels.',
+    },
+  ]
+}
+
+function resolveScaleFamily(variable: string, mode: DisplayMode, level: string): ScaleFamily {
+  const families = getScaleFamilies(variable, mode)
+  return families.find(f => f.levels.includes(Number(level))) ?? families[0]
+}
+
 // ── Design primitives ─────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -214,7 +304,7 @@ function Section({ children, className = '' }: { children: React.ReactNode; clas
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function App() {
+export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [, setSearchParams] = useSearchParams()
 
   const [timeScale,    setTimeScale]    = useState<TimeScale>('6-hourly')
@@ -245,14 +335,25 @@ export default function App() {
   const [windOn,    setWindOn]    = useState(false)
   const [windStep,  setWindStep]  = useState('2')
   const [windType,  setWindType]  = useState('vectors')
+  const [windAnomalyStyle, setWindAnomalyStyle] = useState<WindAnomalyStyle>('speed_diff')
   const [colorStep, setColorStep] = useState('1')
+  const [scaleMin,  setScaleMin]  = useState('')
+  const [scaleMax,  setScaleMax]  = useState('')
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [scaleLabOpen, setScaleLabOpen] = useState(false)
   const [climoSource,  setClimoSource]  = useState<ClimoSource>('r2-monthly')
 
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+  const [labVariable, setLabVariable] = useState('wind_speed')
+  const [labLevel, setLabLevel] = useState('850')
+  const [labMode, setLabMode] = useState<DisplayMode>('raw')
+  const [labFamily, setLabFamily] = useState('low')
+  const [scaleMeta, setScaleMeta] = useState<ScaleMeta | null>(null)
+  const [scaleMetaError, setScaleMetaError] = useState<string | null>(null)
+  const [scaleMetaLoading, setScaleMetaLoading] = useState(false)
 
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
@@ -260,6 +361,56 @@ export default function App() {
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
   const isSixHourly = timeScale === '6-hourly'
+  const labFamilies = getScaleFamilies(labVariable, labMode)
+  const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
+
+  useEffect(() => {
+    if (!adminMode) return
+
+    const params = new URLSearchParams({
+      variable: labVariable,
+      level: labLevel,
+      color_step: colorStep || '1',
+      mode: labMode,
+    })
+    if (labVariable === 'wind_speed' && labMode === 'anomaly') {
+      params.set('wind_anomaly_style', windAnomalyStyle)
+    }
+    if (labVariable === 'wind_speed') {
+      if (scaleMin.trim()) params.set('scale_min', scaleMin.trim())
+      if (scaleMax.trim()) params.set('scale_max', scaleMax.trim())
+    }
+
+    const controller = new AbortController()
+    setScaleMetaLoading(true)
+    setScaleMetaError(null)
+
+    fetch(`${API_BASE}/api/scale-meta?${params.toString()}`, { signal: controller.signal })
+      .then(async res => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+          throw new Error(body.detail ?? `HTTP ${res.status}`)
+        }
+        return res.json()
+      })
+      .then(data => setScaleMeta(data))
+      .catch(err => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setScaleMetaError(err instanceof Error ? err.message : String(err))
+        setScaleMeta(null)
+      })
+      .finally(() => setScaleMetaLoading(false))
+
+    return () => controller.abort()
+  }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle])
+
+  useEffect(() => {
+    if (!scaleLabOpen) return
+    setLabVariable(variable)
+    setLabLevel(level)
+    setLabMode(isClimo ? 'raw' : displayMode)
+    setLabFamily(resolveScaleFamily(variable, isClimo ? 'raw' : displayMode, level).key)
+  }, [displayMode, isClimo, level, scaleLabOpen, variable])
 
   // ── Generate label ───────────────────────────────────────────────────────────
   function generateLabel(): string {
@@ -332,6 +483,13 @@ export default function App() {
 
     if (windOn && windStep) { params.wind_step = windStep; params.wind_type = windType }
     if (colorStep && colorStep !== '1') params.color_step = colorStep
+    if (variable === 'wind_speed' && displayMode === 'anomaly') {
+      params.wind_anomaly_style = windAnomalyStyle
+    }
+    if (variable === 'wind_speed') {
+      if (scaleMin.trim()) params.scale_min = scaleMin.trim()
+      if (scaleMax.trim()) params.scale_max = scaleMax.trim()
+    }
 
     setSearchParams(params)
     setLoading(true)
@@ -475,6 +633,309 @@ export default function App() {
     )
   }
 
+  function renderScaleInspector() {
+    if (!adminMode) return null
+
+    const boundaries = scaleMeta?.boundaries ?? []
+    const intervalHex = scaleMeta?.interval_hex ?? []
+    const anchors = scaleMeta?.anchor_values ?? []
+    const keyBreaks = scaleMeta?.key_breakpoints ?? []
+    const min = boundaries[0]
+    const max = boundaries[boundaries.length - 1]
+    const keyBreakOffsets = (min !== undefined && max !== undefined && max > min)
+      ? keyBreaks
+          .filter(v => v >= min && v <= max)
+          .map(v => ({ value: v, left: ((v - min) / (max - min)) * 100 }))
+      : []
+
+    return (
+      <div className="flex flex-col gap-4">
+        {labVariable === 'wind_speed' && (
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <Label>Experimental Wind Scale</Label>
+                <p className="text-sm text-slate-200 mt-1">Remap the wind domain while keeping the same palette and interpolation.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setScaleMin(''); setScaleMax('') }}
+                className="text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1">Min</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={scaleMin}
+                  onChange={e => setScaleMin(e.target.value)}
+                  placeholder="default"
+                  className="input w-28"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-1">Max</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={scaleMax}
+                  onChange={e => setScaleMax(e.target.value)}
+                  placeholder="default"
+                  className="input w-28"
+                />
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+              Useful for trying ranges like <span className="font-mono text-slate-400">5–80 kt</span> or <span className="font-mono text-slate-400">10–60 kt</span> without changing renderer code.
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Label>Admin Scale Lab</Label>
+            <p className="text-sm text-slate-200 mt-1">
+              Browse the resolved backend scales by variable, level, and analysis mode.
+            </p>
+          </div>
+          {scaleMeta && (
+            <div className="text-right text-[11px] text-slate-400 leading-relaxed">
+              <div>Kind: <span className="text-slate-200">{scaleMeta.scale_kind ?? 'n/a'}</span></div>
+              {scaleMeta.group && <div>Group: <span className="text-slate-200">{scaleMeta.group}</span></div>}
+              {scaleMeta.unit && <div>Unit: <span className="text-slate-200">{scaleMeta.unit}</span></div>}
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[1.3fr_1fr_1fr]">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Variable</p>
+            <div className="flex flex-wrap gap-2">
+              {SCALE_LAB_VARIABLES.map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => {
+                    const nextFamily = resolveScaleFamily(opt.key, labMode, labLevel)
+                    setLabVariable(opt.key)
+                    setLabFamily(nextFamily.key)
+                    if (!nextFamily.levels.includes(Number(labLevel))) {
+                      setLabLevel(String(nextFamily.levels[0]))
+                    }
+                  }}
+                  className={`rounded px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
+                    labVariable === opt.key
+                      ? 'bg-sky-700 text-white'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Mode</p>
+            <TabStrip
+              options={[
+                { value: 'raw', label: 'Raw' },
+                { value: 'anomaly', label: 'Anomaly' },
+                { value: 'normalized', label: 'Norm' },
+              ]}
+              value={labMode}
+              onChange={v => {
+                const nextMode = v as DisplayMode
+                const nextFamily = resolveScaleFamily(labVariable, nextMode, labLevel)
+                setLabMode(nextMode)
+                setLabFamily(nextFamily.key)
+                if (!nextFamily.levels.includes(Number(labLevel))) {
+                  setLabLevel(String(nextFamily.levels[0]))
+                }
+              }}
+              fullWidth
+            />
+          </div>
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Color Interval</p>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={colorStep}
+              onChange={e => setColorStep(e.target.value)}
+              className="input w-24"
+            />
+          </div>
+        </div>
+
+        {labVariable === 'wind_speed' && labMode === 'anomaly' && (
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Wind Anomaly Type</p>
+            <TabStrip
+              options={[
+                { value: 'speed_diff', label: 'Speed Diff' },
+                { value: 'vector_mag', label: 'Vector Mag' },
+              ]}
+              value={windAnomalyStyle}
+              onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
+              fullWidth
+            />
+          </div>
+        )}
+
+        <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500">Scale Family</p>
+            <p className="text-[11px] text-slate-500">Browse shared scale definitions before choosing a level.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {labFamilies.map(family => (
+              <button
+                key={family.key}
+                type="button"
+                onClick={() => {
+                  setLabFamily(family.key)
+                  if (!family.levels.includes(Number(labLevel))) {
+                    setLabLevel(String(family.levels[0]))
+                  }
+                }}
+                className={`rounded px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
+                  activeFamily?.key === family.key
+                    ? 'bg-sky-700 text-white'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                {family.label}
+              </button>
+            ))}
+          </div>
+          {activeFamily && (
+            <p className="text-[11px] text-slate-500 mb-3">{activeFamily.description}</p>
+          )}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500">Levels In Family</p>
+            <p className="text-[11px] text-slate-500">
+              {activeFamily ? `${activeFamily.levels.length} level${activeFamily.levels.length === 1 ? '' : 's'}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(activeFamily?.levels ?? LEVELS).map(lvl => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setLabLevel(String(lvl))}
+                className={`rounded px-2.5 py-1.5 text-xs font-mono transition-colors cursor-pointer ${
+                  labLevel === String(lvl)
+                    ? 'bg-sky-700 text-white'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                {lvl}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {scaleMetaLoading && <p className="text-sm text-slate-400 animate-pulse">Resolving scale…</p>}
+        {scaleMetaError && (
+          <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 text-sm">
+            {scaleMetaError}
+          </div>
+        )}
+
+        {scaleMeta && boundaries.length > 1 && intervalHex.length > 0 && (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-xl border border-slate-700/70 bg-slate-950/50 p-4">
+              <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400 mb-2">
+                <span>
+                  Domain: <span className="text-slate-200">{formatScaleValue(min)}–{formatScaleValue(max)} {scaleMeta.unit ?? ''}</span>
+                </span>
+                <span>
+                  Intervals: <span className="text-slate-200">{intervalHex.length}</span>
+                </span>
+              </div>
+              <div className="relative">
+                <div className="h-8 w-full overflow-hidden rounded-md border border-slate-700 flex">
+                  {intervalHex.map((hex, idx) => (
+                    <div key={`${hex}-${idx}`} className="h-full flex-1" style={{ backgroundColor: hex }} />
+                  ))}
+                </div>
+                {keyBreakOffsets.map(bp => (
+                  <div
+                    key={bp.value}
+                    className="absolute top-0 bottom-0 w-px bg-white/80"
+                    style={{ left: `${bp.left}%` }}
+                    title={`Key breakpoint ${formatScaleValue(bp.value)} ${scaleMeta.unit ?? ''}`}
+                  />
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                <span>{formatScaleValue(min)}</span>
+                <span>{formatScaleValue((min + max) / 2)}</span>
+                <span>{formatScaleValue(max)}</span>
+              </div>
+              {keyBreakOffsets.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {keyBreakOffsets.map(bp => (
+                    <span key={`key-${bp.value}`} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-300 font-mono">
+                      key {formatScaleValue(bp.value)} {scaleMeta.unit ?? ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+                <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Anchors</p>
+                <div className="flex flex-wrap gap-2">
+                  {anchors.map((value, idx) => (
+                    <span key={`anchor-${value}-${idx}`} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 font-mono">
+                      {formatScaleValue(value)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+                <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Anchor Colors</p>
+                <div className="flex flex-wrap gap-2">
+                  {(scaleMeta.anchor_hex ?? []).map((hex, idx) => (
+                    <span key={`${hex}-${idx}`} className="inline-flex items-center gap-2 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 font-mono">
+                      <span className="h-3 w-3 rounded-sm border border-slate-500" style={{ backgroundColor: hex }} />
+                      {hex}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+                <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Resolved Config</p>
+                <div className="space-y-1 text-[11px] text-slate-300 font-mono">
+                  <div>variable: {labVariable}</div>
+                  <div>family: {activeFamily?.key ?? 'n/a'}</div>
+                  <div>level: {labLevel} mb</div>
+                  <div>mode: {labMode}</div>
+                  {labVariable === 'wind_speed' && labMode === 'anomaly' && <div>anomaly: {windAnomalyStyle}</div>}
+                  {scaleMeta.domain_min !== undefined && scaleMeta.domain_max !== undefined && (
+                    <div>domain: {formatScaleValue(scaleMeta.domain_min)} to {formatScaleValue(scaleMeta.domain_max)}</div>
+                  )}
+                  {scaleMeta.step !== undefined && <div>color_step: {scaleMeta.step}</div>}
+                  <div>boundaries: {boundaries.length}</div>
+                  <div>intervals: {intervalHex.length}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className={`bg-slate-950 text-slate-100 flex flex-col ${isVertical ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
@@ -506,6 +967,16 @@ export default function App() {
             value={timeScale}
             onChange={v => setTimeScale(v as TimeScale)}
           />
+          {adminMode && (
+            <button
+              type="button"
+              onClick={() => setScaleLabOpen(true)}
+              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              title="Open scale lab"
+            >
+              Scale Lab
+            </button>
+          )}
           <button type="button"
             onClick={() => setLayoutMode(m => m === 'horizontal' ? 'vertical' : 'horizontal')}
             className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
@@ -622,6 +1093,20 @@ export default function App() {
                 onChange={v => setDisplayMode(v as DisplayMode)}
                 fullWidth
               />
+            )}
+            {variable === 'wind_speed' && !isClimo && displayMode === 'anomaly' && (
+              <div className="mt-2">
+                <Label>Wind Anomaly Type</Label>
+                <TabStrip
+                  options={[
+                    { value: 'speed_diff', label: 'Speed Diff' },
+                    { value: 'vector_mag', label: 'Vector Mag' },
+                  ]}
+                  value={windAnomalyStyle}
+                  onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
+                  fullWidth
+                />
+              </div>
             )}
             <button type="submit" disabled={loading}
               className="mt-1 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700
@@ -775,6 +1260,32 @@ export default function App() {
                   the temporal resolution of the request. Check the map title for the source actually used.
                 </p>
               </section>
+            </div>
+          </div>
+        </>
+      )}
+
+      {adminMode && scaleLabOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setScaleLabOpen(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-[min(980px,92vw)] shadow-2xl flex flex-col max-h-[88vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
+                <div>
+                  <span className="font-semibold text-base">Scale Lab</span>
+                  <p className="text-xs text-slate-400 mt-1">Admin-only scale preview and experimental controls.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScaleLabOpen(false)}
+                  className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 cursor-pointer transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5">
+                {renderScaleInspector()}
+              </div>
             </div>
           </div>
         </>

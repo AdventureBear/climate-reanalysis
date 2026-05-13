@@ -32,9 +32,11 @@ from .retrieval import (
 from .climo_r2 import (
     get_r2_daily_climo_field,
     get_r2_daily_climo_relative_humidity,
+    get_r2_daily_climo_wind_components,
     get_r2_daily_climo_wind_speed,
     get_r2_monthly_climo_field,
     get_r2_monthly_climo_relative_humidity,
+    get_r2_monthly_climo_wind_components,
     get_r2_monthly_climo_wind_speed,
 )
 from .visualizer import create_map_product, describe_color_scale, display_unit
@@ -64,6 +66,7 @@ app.add_middleware(
 
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
+VALID_WIND_ANOMALY_STYLES = ("speed_diff", "vector_mag")
 
 
 def _preview(values, digits: int = 3, n: int = 6) -> str:
@@ -88,6 +91,56 @@ def root():
     }
 
 
+def _scale_overrides_from_query(
+    variable: str,
+    scale_min: float | None,
+    scale_max: float | None,
+) -> dict[str, float] | None:
+    if variable != "wind_speed":
+        return None
+    if scale_min is None and scale_max is None:
+        return None
+    overrides: dict[str, float] = {}
+    if scale_min is not None:
+        overrides["domain_min"] = float(scale_min)
+    if scale_max is not None:
+        overrides["domain_max"] = float(scale_max)
+    return overrides
+
+
+@app.get("/api/scale-meta")
+def get_scale_meta(
+    variable: str = "wind_speed",
+    level: int = 850,
+    color_step: int = 1,
+    mode: str = "raw",
+    scale_min: float | None = None,
+    scale_max: float | None = None,
+    wind_anomaly_style: str = "speed_diff",
+):
+    if variable not in VARIABLES:
+        raise HTTPException(status_code=422, detail=f"variable must be one of {list(VARIABLES.keys())}")
+    if level not in PRESSURE_LEVELS:
+        raise HTTPException(status_code=422, detail=f"level must be one of {PRESSURE_LEVELS}")
+    if mode not in VALID_MODES:
+        raise HTTPException(status_code=422, detail=f"mode must be one of {list(VALID_MODES)}")
+    if color_step < 1:
+        raise HTTPException(status_code=422, detail="color_step must be at least 1")
+    if wind_anomaly_style not in VALID_WIND_ANOMALY_STYLES:
+        raise HTTPException(status_code=422, detail=f"wind_anomaly_style must be one of {list(VALID_WIND_ANOMALY_STYLES)}")
+    if scale_min is not None and scale_max is not None and scale_min >= scale_max:
+        raise HTTPException(status_code=422, detail="scale_min must be less than scale_max")
+
+    return describe_color_scale(
+        variable=variable,
+        level=level,
+        color_step=color_step,
+        mode=mode,
+        scale_overrides=_scale_overrides_from_query(variable, scale_min, scale_max),
+        wind_anomaly_style=wind_anomaly_style,
+    )
+
+
 @app.get("/api/map")
 async def get_map(
     date: str = "",
@@ -101,8 +154,11 @@ async def get_map(
     wind_step: int = 0,
     wind_type: str = "vectors",
     color_step: int = 1,
+    scale_min: float | None = None,
+    scale_max: float | None = None,
     mode: str = "raw",
     climo_source: str = "monthly-pgb",
+    wind_anomaly_style: str = "speed_diff",
 ):
     # Resolve input — three mutually exclusive date modes:
     #   months  → monthly mean archive (YYYYMM list)
@@ -150,6 +206,10 @@ async def get_map(
         raise HTTPException(status_code=422, detail=f"mode must be one of {list(VALID_MODES)}")
     if climo_source not in VALID_CLIMO_SOURCES:
         raise HTTPException(status_code=422, detail=f"climo_source must be one of {list(VALID_CLIMO_SOURCES)}")
+    if wind_anomaly_style not in VALID_WIND_ANOMALY_STYLES:
+        raise HTTPException(status_code=422, detail=f"wind_anomaly_style must be one of {list(VALID_WIND_ANOMALY_STYLES)}")
+    if scale_min is not None and scale_max is not None and scale_min >= scale_max:
+        raise HTTPException(status_code=422, detail="scale_min must be less than scale_max")
 
     # ── Resolve climatology source ────────────────────────────────────────────
     # The user's preference is a hint. Rules:
@@ -312,15 +372,26 @@ async def get_map(
     log.info("  date/period : %s", _period_desc)
     log.info("  region      : %s", region)
     log.info("  map type    : %s", _MODE_NAMES.get(mode, mode))
+    if scale_min is not None or scale_max is not None:
+        log.info("  scale tweak : min=%s  max=%s",
+                 "default" if scale_min is None else f"{scale_min:g}",
+                 "default" if scale_max is None else f"{scale_max:g}")
     if mode != "raw":
         log.info("  climo source: %s", climo_source)
+    if variable == "wind_speed" and mode == "anomaly":
+        log.info("  anomaly type: %s", wind_anomaly_style)
     log.info("══════════════════════════════════════════════════════════════")
 
     try:
         step = 0
+        scale_overrides = _scale_overrides_from_query(variable, scale_min, scale_max)
+        use_vector_wind_anomaly = (
+            variable == "wind_speed" and mode == "anomaly" and wind_anomaly_style == "vector_mag"
+        )
 
         # ── Climatology (mean + std) ─────────────────────────────────────────
         climo_mean = climo_std = None
+        climo_u_mean = climo_v_mean = None
         if mode != "raw":
             step += 1
             _multi_month_climo = monthly_mode and len(set(m for _, m in year_months)) > 1
@@ -339,29 +410,68 @@ async def get_map(
             if _multi_month_climo:
                 log.info("  Note    : multiple calendar months → day-weighted mean of per-month climos")
 
+            def _fetch_wind_climo_components(month: int, day: int):
+                if climo_source == "r2-daily":
+                    return get_r2_daily_climo_wind_components(month, day, level)
+                if climo_source == "r2-monthly":
+                    return get_r2_monthly_climo_wind_components(month, level)
+                return (
+                    get_climatology_field(month, "UGRD", level)[0],
+                    get_climatology_field(month, "VGRD", level)[0],
+                )
+
+            def _fetch_weighted_wind_climo_components(year_months_list: list[tuple[int, int]]):
+                unique_months = sorted(set(m for _, m in year_months_list))
+                if len(unique_months) == 1:
+                    return _fetch_wind_climo_components(unique_months[0], 15)
+                day_weights = [cal.monthrange(2001, m)[1] for m in unique_months]
+                total_days = sum(day_weights)
+                comps = [_fetch_wind_climo_components(m, 15) for m in unique_months]
+                mean_u = sum(w * cu for w, (cu, _) in zip(day_weights, comps)) / total_days
+                mean_v = sum(w * cv for w, (_, cv) in zip(day_weights, comps)) / total_days
+                return mean_u, mean_v
+
             t0 = time.perf_counter()
-            if _multi_month_climo:
+            if use_vector_wind_anomaly:
+                if _multi_month_climo:
+                    climo_u_mean, climo_v_mean = _fetch_weighted_wind_climo_components(year_months)
+                else:
+                    climo_u_mean, climo_v_mean = _fetch_wind_climo_components(obs_month, obs_day)
+            elif _multi_month_climo:
                 climo_mean, climo_std = _fetch_climo_weighted(year_months)
             else:
                 climo_mean, climo_std = _fetch_climo(obs_month, obs_day)
             _climo_elapsed = time.perf_counter() - t0
 
-            climo_mean_sel = _sel(climo_mean)
-            climo_std_sel  = _sel(climo_std)
             log.info("STEP %d ✓  climatology ready  (%.1fs)", step, _climo_elapsed)
-            log.info("  climo grid  : %s", "×".join(str(s) for s in climo_mean_sel.shape))
-            log.info("  mean range  : [%.3g, %.3g] %s  (region subset)",
-                     float(climo_mean_sel.min()), float(climo_mean_sel.max()),
-                     VARIABLES[variable].get("units", ""))
-            log.info("  σ range     : [%.3g, %.3g] %s  (region subset)",
-                     float(climo_std_sel.min()), float(climo_std_sel.max()),
-                     VARIABLES[variable].get("units", ""))
-            climo_mean = climo_mean_sel
-            climo_std  = climo_std_sel
+            if use_vector_wind_anomaly:
+                climo_u_sel = _sel(climo_u_mean)
+                climo_v_sel = _sel(climo_v_mean)
+                log.info("  climo grid  : %s", "×".join(str(s) for s in climo_u_sel.shape))
+                log.info("  U mean      : [%.3g, %.3g] m/s  (region subset)",
+                         float(climo_u_sel.min()), float(climo_u_sel.max()))
+                log.info("  V mean      : [%.3g, %.3g] m/s  (region subset)",
+                         float(climo_v_sel.min()), float(climo_v_sel.max()))
+                climo_u_mean = climo_u_sel
+                climo_v_mean = climo_v_sel
+            else:
+                climo_mean_sel = _sel(climo_mean)
+                climo_std_sel  = _sel(climo_std)
+                log.info("  climo grid  : %s", "×".join(str(s) for s in climo_mean_sel.shape))
+                log.info("  mean range  : [%.3g, %.3g] %s  (region subset)",
+                         float(climo_mean_sel.min()), float(climo_mean_sel.max()),
+                         VARIABLES[variable].get("units", ""))
+                log.info("  σ range     : [%.3g, %.3g] %s  (region subset)",
+                         float(climo_std_sel.min()), float(climo_std_sel.max()),
+                         VARIABLES[variable].get("units", ""))
+                climo_mean = climo_mean_sel
+                climo_std  = climo_std_sel
 
         # ── Observation data (skipped for pure climatology maps) ─────────────
         obs_source = "CORe-pgb"
         _cached_u = _cached_v = None   # set when wind_speed obs and overlay share one fetch
+        obs_u_subset = obs_v_subset = None
+        anomaly_u_subset = anomaly_v_subset = None
 
         if mode == "climatology":
             subset = climo_mean
@@ -396,12 +506,13 @@ async def get_map(
                 _obs_method = "CORe GCS archive  |  surgical byte-range  (idx → Range → cfgrib decode)"
 
             log.info("")
-            if variable == "wind_speed" and wind_step > 0:
+            if variable == "wind_speed" and (wind_step > 0 or use_vector_wind_anomaly):
                 # Combined fetch: U+V once for both wind speed (obs) and the overlay.
                 # Avoids fetching the same files twice when wind_speed is the mapped variable.
-                log.info("STEP %d  Fetch U + V components @ %dmb  (wind speed + overlay — single fetch)", step, level)
+                purpose = "wind speed + overlay" if wind_step > 0 else "wind vector anomaly"
+                log.info("STEP %d  Fetch U + V components @ %dmb  (%s — single fetch)", step, level, purpose)
                 log.info("  Method  : %s", _obs_method)
-                log.info("  Note    : U and V fetched together; speed = √(U²+V²); components reused for overlay")
+                log.info("  Note    : U and V fetched together; speed = √(U²+V²); components reused downstream")
                 t0 = time.perf_counter()
                 _cached_u, _cached_v = _fetch_wind()
                 _obs_elapsed = time.perf_counter() - t0
@@ -418,6 +529,9 @@ async def get_map(
 
             obs_source = obs.attrs.get("_pyre_obs_source", obs_source)
             obs_subset = _sel(obs)
+            if _cached_u is not None and _cached_v is not None:
+                obs_u_subset = _sel(_cached_u)
+                obs_v_subset = _sel(_cached_v)
 
             log.info("STEP %d ✓  obs ready  (%.1fs)  source=%s", step, _obs_elapsed, obs_source)
             log.info("  obs grid    : %s", "×".join(str(s) for s in obs_subset.shape))
@@ -427,32 +541,55 @@ async def get_map(
 
             if mode in ("anomaly", "normalized"):
                 step += 1
-                _climo_grid_before = "×".join(str(s) for s in climo_mean.shape)
                 log.info("")
                 log.info("STEP %d  Regrid climatology to observation grid", step)
-                log.info("  From    : %s  (climo grid, ~2.5°)", _climo_grid_before)
                 log.info("  To      : %s  (obs grid, 0.25°)", "×".join(str(s) for s in obs_subset.shape))
                 log.info("  Method  : bilinear interpolation  (xarray interp_like)")
-                climo_mean = climo_mean.interp_like(obs_subset)
-                if climo_std is not None:
-                    climo_std = climo_std.interp_like(obs_subset)
+                if use_vector_wind_anomaly:
+                    log.info("  From    : %s  (climo U/V grid, ~2.5°)", "×".join(str(s) for s in climo_u_mean.shape))
+                    climo_u_mean = climo_u_mean.interp_like(obs_u_subset)
+                    climo_v_mean = climo_v_mean.interp_like(obs_v_subset)
+                else:
+                    _climo_grid_before = "×".join(str(s) for s in climo_mean.shape)
+                    log.info("  From    : %s  (climo grid, ~2.5°)", _climo_grid_before)
+                    climo_mean = climo_mean.interp_like(obs_subset)
+                    if climo_std is not None:
+                        climo_std = climo_std.interp_like(obs_subset)
                 log.info("STEP %d ✓  regrid complete", step)
 
             if mode == "anomaly":
                 step += 1
                 log.info("")
-                log.info("STEP %d  Compute anomaly  =  obs − climo_mean", step)
-                subset = obs_subset - climo_mean
+                if use_vector_wind_anomaly:
+                    log.info("STEP %d  Compute vector anomaly magnitude  =  sqrt((U−U_climo)^2 + (V−V_climo)^2)", step)
+                    anomaly_u_subset = obs_u_subset - climo_u_mean
+                    anomaly_v_subset = obs_v_subset - climo_v_mean
+                    subset = (anomaly_u_subset ** 2 + anomaly_v_subset ** 2) ** 0.5
+                    subset.attrs.update({"units": "m/s", "long_name": "Wind Vector Anomaly Magnitude"})
+                    if "valid_time" in obs_subset.coords:
+                        subset = subset.assign_coords(valid_time=obs_subset.coords["valid_time"])
+                else:
+                    log.info("STEP %d  Compute anomaly  =  obs − climo_mean", step)
+                    subset = obs_subset - climo_mean
                 log.info("STEP %d ✓  anomaly computed", step)
                 log.info("  obs range   : [%.3g, %.3g] %s",
                          float(obs_subset.min()), float(obs_subset.max()),
                          VARIABLES[variable].get("units", ""))
-                log.info("  climo_mean  : [%.3g, %.3g] %s  (after regrid)",
-                         float(climo_mean.min()), float(climo_mean.max()),
-                         VARIABLES[variable].get("units", ""))
-                log.info("  anomaly     : [%.3g, %.3g] %s",
-                         float(subset.min()), float(subset.max()),
-                         VARIABLES[variable].get("units", ""))
+                if use_vector_wind_anomaly:
+                    log.info("  climo U     : [%.3g, %.3g] m/s  (after regrid)",
+                             float(climo_u_mean.min()), float(climo_u_mean.max()))
+                    log.info("  climo V     : [%.3g, %.3g] m/s  (after regrid)",
+                             float(climo_v_mean.min()), float(climo_v_mean.max()))
+                    log.info("  anomaly |V'|: [%.3g, %.3g] %s",
+                             float(subset.min()), float(subset.max()),
+                             VARIABLES[variable].get("units", ""))
+                else:
+                    log.info("  climo_mean  : [%.3g, %.3g] %s  (after regrid)",
+                             float(climo_mean.min()), float(climo_mean.max()),
+                             VARIABLES[variable].get("units", ""))
+                    log.info("  anomaly     : [%.3g, %.3g] %s",
+                             float(subset.min()), float(subset.max()),
+                             VARIABLES[variable].get("units", ""))
 
             elif mode == "normalized":
                 step += 1
@@ -519,7 +656,10 @@ async def get_map(
             else:
                 period = f"{_ym_label(year_months[0])} – {_ym_label(year_months[-1])}  ({len(year_months)} months)"
             if mode in ("anomaly", "normalized"):
-                mode_label = "ANOMALY" if mode == "anomaly" else "NORMALIZED ANOMALY"
+                if mode == "anomaly" and use_vector_wind_anomaly:
+                    mode_label = "VECTOR ANOMALY MAGNITUDE"
+                else:
+                    mode_label = "ANOMALY" if mode == "anomaly" else "NORMALIZED ANOMALY"
                 date_str = (
                     f"MONTHLY {mode_label} · {period}{_obs_source_tag}\n"
                     f"{climo_ref}"
@@ -532,7 +672,10 @@ async def get_map(
                 f"{_climo_period}"
             )
         elif mode in ("anomaly", "normalized"):
-            mode_label = "ANOMALY" if mode == "anomaly" else "NORMALIZED ANOMALY"
+            if mode == "anomaly" and use_vector_wind_anomaly:
+                mode_label = "VECTOR ANOMALY MAGNITUDE"
+            else:
+                mode_label = "ANOMALY" if mode == "anomaly" else "NORMALIZED ANOMALY"
             fmt = lambda s: f"{s[:4]}-{s[4:6]}-{s[6:]}"
             if is_daily_composite:
                 hours_label = "/".join(h + "z" for h in daily_hours)
@@ -588,14 +731,22 @@ async def get_map(
         # ── Variable label ───────────────────────────────────────────────────
         var_cfg   = VARIABLES[variable]
         units     = display_unit(variable, level)
-        var_label = f"{var_cfg['name']} ({units})  {level}mb"
+        if use_vector_wind_anomaly:
+            var_label = f"Wind Vector Anomaly Magnitude ({units})  {level}mb"
+        else:
+            var_label = f"{var_cfg['name']} ({units})  {level}mb"
 
         # ── Wind overlay ─────────────────────────────────────────────────────────
         u_subset = v_subset = None
         if wind_step > 0 and mode != "climatology":
             step += 1
             log.info("")
-            if _cached_u is not None:
+            if use_vector_wind_anomaly and anomaly_u_subset is not None and anomaly_v_subset is not None:
+                log.info("STEP %d  Wind overlay  (reusing computed anomaly U+V)", step)
+                u_subset = anomaly_u_subset
+                v_subset = anomaly_v_subset
+                log.info("STEP %d ✓  wind overlay ready  (anomaly vectors cached)", step)
+            elif _cached_u is not None:
                 # U+V were already fetched in the obs step — reuse them, no extra network call.
                 log.info("STEP %d  Wind overlay  (reusing U+V from obs step — no additional fetch)", step)
                 u_subset = _sel(_cached_u)
@@ -617,13 +768,18 @@ async def get_map(
         log.info("  variable : %s  %dmb", _VAR_NAMES.get(variable, variable), level)
         log.info("  region   : %s  (projection: %s)", region,
                  "Albers Equal-Area" if region == "CONUS" else "PlateCarree")
-        log.info("  colormap : %s", "diverging (Blues/Reds)" if mode in ("anomaly","normalized") else "fixed-anchor stepped")
+        if mode == "anomaly" and use_vector_wind_anomaly:
+            log.info("  colormap : positive sequential (vector anomaly magnitude)")
+        else:
+            log.info("  colormap : %s", "diverging (Blues/Reds)" if mode in ("anomaly","normalized") else "fixed-anchor stepped")
         scale_diag = describe_color_scale(
             variable=variable,
             level=level,
             color_step=color_step,
             mode=mode,
             data_array=subset,
+            scale_overrides=scale_overrides,
+            wind_anomaly_style=wind_anomaly_style,
         )
         log.info("  scale kind    : %s", scale_diag.get("scale_kind"))
         if scale_diag.get("unit"):
@@ -695,6 +851,8 @@ async def get_map(
             wind_type=wind_type,
             color_step=color_step,
             mode=mode,
+            scale_overrides=scale_overrides,
+            wind_anomaly_style=wind_anomaly_style,
         )
 
         log.info("STEP %d ✓  render complete → streaming PNG", step)
