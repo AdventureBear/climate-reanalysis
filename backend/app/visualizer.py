@@ -340,17 +340,19 @@ def _make_positive_scale(
     step: float,
     anchor_hex: list[str],
     white_below: float = 0.0,
+    color_start: float = 0.0,
+    start_at: float = 0.0,
 ) -> tuple[list[float], list[tuple]]:
     """
     Positive-only stepped scale from 0 to max_val using evenly distributed anchors.
     Intended for magnitude-style diagnostics such as vector wind anomaly magnitude.
     """
-    breakpoints = [round(v, 6) for v in np.arange(0.0, max_val + step / 2, step)]
+    breakpoints = [round(v, 6) for v in np.arange(start_at, max_val + step / 2, step)]
     if breakpoints[-1] < max_val - 1e-9:
         breakpoints.append(round(max_val, 6))
     scale_cfg = {
         "mapping": "scaled",
-        "domain_min": 0.0,
+        "domain_min": color_start,
         "domain_max": max_val,
         "anchor_colors": anchor_hex,
     }
@@ -362,6 +364,51 @@ def _make_positive_scale(
             for mid, color in zip(mids, colors)
         ]
     return breakpoints, colors
+
+
+def _wind_vector_anomaly_native_config(
+    wind_unit: str,
+    color_step: int,
+    plot_values: np.ndarray | None = None,
+) -> dict[str, object]:
+    """
+    Native display-unit scale for positive-only wind vector anomaly magnitude.
+    Uses the original smoother positive palette, but lets the upper end follow
+    the actual plotted values for the current request.
+    """
+    native_step = 1.0 if wind_unit == "m/s" else 2.0
+    start_val = native_step
+    white_below = 2.0 if wind_unit == "m/s" else 4.0
+    step = native_step * max(color_step, 1)
+
+    data_max = None
+    if plot_values is not None:
+        finite = np.asarray(plot_values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size:
+            data_max = float(np.nanmax(finite))
+
+    fallback_max = 10.0 if wind_unit == "m/s" else 20.0
+    target_max = max(data_max or fallback_max, white_below + step, start_val + step)
+    max_val = float(np.ceil(target_max / step) * step)
+
+    boundaries, colors = _make_positive_scale(
+        max_val=max_val,
+        step=step,
+        anchor_hex=_WIND_VECTOR_ANOMALY_HEX,
+        white_below=white_below,
+        color_start=white_below,
+        start_at=start_val,
+    )
+    tick_vals = list(boundaries)
+    return {
+        "max_val": max_val,
+        "step": step,
+        "breakpoints": boundaries,
+        "colors": colors,
+        "tick_vals": tick_vals,
+        "over_color": _WIND_VECTOR_ANOMALY_HEX[-1],
+    }
 
 
 def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.ndarray:
@@ -497,15 +544,11 @@ def describe_color_scale(
                 step *= _KT_TO_MS
             unit = display_unit(variable, level, wind_unit=wind_unit)
             if variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-                white_below = 2.0 if wind_unit == "m/s" else 2.0 / _KT_TO_MS
-                breakpoints, interval_colors = _make_positive_scale(
-                    max_val,
-                    step,
-                    _WIND_VECTOR_ANOMALY_HEX,
-                    white_below=white_below,
-                )
-                anchor_values = list(np.linspace(0.0, max_val, len(_WIND_VECTOR_ANOMALY_HEX)))
-                anchor_hex = _WIND_VECTOR_ANOMALY_HEX
+                native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step)
+                breakpoints = native_cfg["breakpoints"]
+                interval_colors = native_cfg["colors"]
+                anchor_values = breakpoints[:-1]
+                anchor_hex = [_rgb_to_hex(c) for c in interval_colors]
                 plot_values = (
                     np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
                     if data_array is not None else None
@@ -642,13 +685,9 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             unit_label = display_unit(variable, level, wind_unit=wind_unit)
             plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit)
         if mode == "anomaly" and variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-            white_below = 2.0 if wind_unit == "m/s" else 2.0 / _KT_TO_MS
-            breakpoints, colors = _make_positive_scale(
-                max_val,
-                step,
-                _WIND_VECTOR_ANOMALY_HEX,
-                white_below=white_below,
-            )
+            native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step)
+            breakpoints = native_cfg["breakpoints"]
+            colors = native_cfg["colors"]
             cmap = mcolors.ListedColormap(colors)
             cmap.set_under(colors[0])
             cmap.set_over(mcolors.to_rgb(_WIND_VECTOR_ANOMALY_HEX[-1]))
@@ -658,11 +697,9 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
                 levels=breakpoints, cmap=cmap, norm=norm,
                 transform=ccrs.PlateCarree(), extend='max',
             )
-            tick_step = max(step, 2.0)
-            tick_vals = np.arange(0.0, max_val + tick_step / 2, tick_step, dtype=float).tolist()
             cbar_cfg = {
-                'ticks': tick_vals,
-                'ticklabels': [_format_scale_value(v) for v in tick_vals],
+                'ticks': native_cfg["tick_vals"],
+                'ticklabels': [_format_scale_value(v) for v in native_cfg["tick_vals"]],
                 'ylabel': f'Wind Vector Anomaly Magnitude  ({unit_label})',
                 'extend': 'max',
                 'colors': colors, 'boundaries': breakpoints,

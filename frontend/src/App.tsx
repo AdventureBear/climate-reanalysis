@@ -775,6 +775,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               onChange={e => setColorStep(e.target.value)}
               className="input w-24"
             />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Changes displayed bin spacing only. It does not spatially smooth the underlying data field.
+            </p>
           </div>
         </div>
 
@@ -987,7 +990,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             value={timeScale}
             onChange={v => setTimeScale(v as TimeScale)}
           />
-          {adminMode && (
+          {adminMode ? (
             <button
               type="button"
               onClick={() => setScaleLabOpen(true)}
@@ -996,6 +999,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             >
               Scale Lab
             </button>
+          ) : (
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              title="Open scale lab"
+            >
+              Scale Lab
+            </Link>
           )}
           <button type="button"
             onClick={() => setLayoutMode(m => m === 'horizontal' ? 'vertical' : 'horizontal')}
@@ -1259,13 +1270,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-7">
               <section>
                 <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Render Options</h3>
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Color Interval</label>
-                    <input type="number" min={1} max={50} value={colorStep}
-                      onChange={e => setColorStep(e.target.value)} className="input w-24" />
-                  </div>
-                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  General render controls live here. Scale-specific controls are available in the Scale Lab.
+                </p>
               </section>
               <section>
                 <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Climatology Source</h3>
