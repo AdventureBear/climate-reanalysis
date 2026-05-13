@@ -21,6 +21,7 @@ type SubMode     = 'single' | 'range' | 'list'
 type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
 type WindAnomalyStyle = 'speed_diff' | 'vector_mag'
+type WindUnit = 'kt' | 'm/s'
 type ScaleMeta = {
   scale_kind?: string
   group?: string
@@ -336,6 +337,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windStep,  setWindStep]  = useState('2')
   const [windType,  setWindType]  = useState('vectors')
   const [windAnomalyStyle, setWindAnomalyStyle] = useState<WindAnomalyStyle>('speed_diff')
+  const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [colorStep, setColorStep] = useState('1')
   const [scaleMin,  setScaleMin]  = useState('')
   const [scaleMax,  setScaleMax]  = useState('')
@@ -377,6 +379,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       params.set('wind_anomaly_style', windAnomalyStyle)
     }
     if (labVariable === 'wind_speed') {
+      params.set('wind_unit', windUnit)
       if (scaleMin.trim()) params.set('scale_min', scaleMin.trim())
       if (scaleMax.trim()) params.set('scale_max', scaleMax.trim())
     }
@@ -402,7 +405,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       .finally(() => setScaleMetaLoading(false))
 
     return () => controller.abort()
-  }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle])
+  }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle, windUnit])
 
   useEffect(() => {
     if (!scaleLabOpen) return
@@ -487,6 +490,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       params.wind_anomaly_style = windAnomalyStyle
     }
     if (variable === 'wind_speed') {
+      params.wind_unit = windUnit
       if (scaleMin.trim()) params.scale_min = scaleMin.trim()
       if (scaleMax.trim()) params.scale_max = scaleMax.trim()
     }
@@ -692,7 +696,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </div>
             </div>
             <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-              Useful for trying ranges like <span className="font-mono text-slate-400">5–80 kt</span> or <span className="font-mono text-slate-400">10–60 kt</span> without changing renderer code.
+              Useful for trying alternate wind-scale ranges in the currently selected unit without changing renderer code.
             </p>
           </div>
         )}
@@ -784,6 +788,21 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               ]}
               value={windAnomalyStyle}
               onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
+              fullWidth
+            />
+          </div>
+        )}
+
+        {labVariable === 'wind_speed' && (
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
+            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Wind Units</p>
+            <TabStrip
+              options={[
+                { value: 'kt', label: 'Knots' },
+                { value: 'm/s', label: 'm/s' },
+              ]}
+              value={windUnit}
+              onChange={v => setWindUnit(v as WindUnit)}
               fullWidth
             />
           </div>
@@ -921,6 +940,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   <div>level: {labLevel} mb</div>
                   <div>mode: {labMode}</div>
                   {labVariable === 'wind_speed' && labMode === 'anomaly' && <div>anomaly: {windAnomalyStyle}</div>}
+                  {labVariable === 'wind_speed' && <div>unit: {windUnit}</div>}
                   {scaleMeta.domain_min !== undefined && scaleMeta.domain_max !== undefined && (
                     <div>domain: {formatScaleValue(scaleMeta.domain_min)} to {formatScaleValue(scaleMeta.domain_max)}</div>
                   )}
@@ -1104,6 +1124,20 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   ]}
                   value={windAnomalyStyle}
                   onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
+                  fullWidth
+                />
+              </div>
+            )}
+            {variable === 'wind_speed' && (
+              <div className="mt-2">
+                <Label>Wind Units</Label>
+                <TabStrip
+                  options={[
+                    { value: 'kt', label: 'Knots' },
+                    { value: 'm/s', label: 'm/s' },
+                  ]}
+                  value={windUnit}
+                  onChange={v => setWindUnit(v as WindUnit)}
                   fullWidth
                 />
               </div>

@@ -76,6 +76,22 @@ _WIND_SCALE_CONFIGS: dict[str, dict] = {
 _QUIVER_BASE_SCALE = 520  # calibrated at 925/850mb (80kt max); ~10% longer than prior value
 
 
+def _wind_unit_factor(wind_unit: str) -> float:
+    return 1.0 if wind_unit == "m/s" else 1.0 / _KT_TO_MS
+
+
+def _wind_unit_label(wind_unit: str) -> str:
+    return "m/s" if wind_unit == "m/s" else "kt"
+
+
+def _wind_display_value(value_ms: float, wind_unit: str) -> float:
+    return value_ms * _wind_unit_factor(wind_unit)
+
+
+def _wind_scale_display_value(value_kt: float, wind_unit: str) -> float:
+    return value_kt * _KT_TO_MS if wind_unit == "m/s" else value_kt
+
+
 def _interval_midpoints(boundaries: list[float]) -> list[float]:
     """Return the center value of each color interval defined by boundaries."""
     return [
@@ -220,13 +236,13 @@ def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple]
     return breakpoints_k, colors, to_k
 
 
-def display_unit(variable: str, level: int) -> str:
+def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
     """
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
     """
     if variable == "wind_speed":
-        return "kt"
+        return _wind_unit_label(wind_unit)
     if variable == "temp":
         cfg = _TEMP_SCALES.get(level)
         return f"°{cfg['unit']}" if cfg else "K"
@@ -319,7 +335,12 @@ def _make_diverging_scale(max_val: float, step: float, white_steps: int = 2) -> 
     return breakpoints, colors
 
 
-def _make_positive_scale(max_val: float, step: float, anchor_hex: list[str]) -> tuple[list[float], list[tuple]]:
+def _make_positive_scale(
+    max_val: float,
+    step: float,
+    anchor_hex: list[str],
+    white_below: float = 0.0,
+) -> tuple[list[float], list[tuple]]:
     """
     Positive-only stepped scale from 0 to max_val using evenly distributed anchors.
     Intended for magnitude-style diagnostics such as vector wind anomaly magnitude.
@@ -334,13 +355,24 @@ def _make_positive_scale(max_val: float, step: float, anchor_hex: list[str]) -> 
         "anchor_colors": anchor_hex,
     }
     colors = _interpolate_interval_colors(breakpoints, _resolve_anchor_values(scale_cfg), anchor_hex)
+    if white_below > 0:
+        mids = _interval_midpoints(breakpoints)
+        colors = [
+            (1.0, 1.0, 1.0) if mid <= white_below + 1e-9 else color
+            for mid, color in zip(mids, colors)
+        ]
     return breakpoints, colors
 
 
 def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.ndarray:
     """Convert anomaly array from native GRIB units to the variable's display units."""
+    return _anomaly_to_display_with_unit(values, variable, level)
+
+
+def _anomaly_to_display_with_unit(values: np.ndarray, variable: str, level: int, wind_unit: str = "kt") -> np.ndarray:
+    """Convert anomaly array from native units to the requested display units."""
     if variable == "wind_speed":
-        return values / _KT_TO_MS          # m/s → kt
+        return values * _wind_unit_factor(wind_unit)
     if variable == "temp":
         cfg = _TEMP_SCALES.get(level)
         if cfg and cfg["unit"] == "F":
@@ -441,6 +473,7 @@ def describe_color_scale(
     data_array=None,
     scale_overrides: dict[str, float] | None = None,
     wind_anomaly_style: str = "speed_diff",
+    wind_unit: str = "kt",
 ) -> dict[str, object]:
     """
     Return render-time scale diagnostics in display units so backend logs can
@@ -459,13 +492,22 @@ def describe_color_scale(
             scale_kind = mode
         else:
             max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
-            unit = display_unit(variable, level)
+            if variable == "wind_speed" and wind_unit == "m/s":
+                max_val *= _KT_TO_MS
+                step *= _KT_TO_MS
+            unit = display_unit(variable, level, wind_unit=wind_unit)
             if variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-                breakpoints, interval_colors = _make_positive_scale(max_val, step, _WIND_VECTOR_ANOMALY_HEX)
+                white_below = 2.0 if wind_unit == "m/s" else 2.0 / _KT_TO_MS
+                breakpoints, interval_colors = _make_positive_scale(
+                    max_val,
+                    step,
+                    _WIND_VECTOR_ANOMALY_HEX,
+                    white_below=white_below,
+                )
                 anchor_values = list(np.linspace(0.0, max_val, len(_WIND_VECTOR_ANOMALY_HEX)))
                 anchor_hex = _WIND_VECTOR_ANOMALY_HEX
                 plot_values = (
-                    np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
+                    np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
                     if data_array is not None else None
                 )
                 scale_kind = "vector-anomaly-magnitude"
@@ -474,7 +516,7 @@ def describe_color_scale(
                 anchor_values = _DIV_ANCHORS
                 anchor_hex = _DIV_HEX
                 plot_values = (
-                    np.asarray(_anomaly_to_display(data_array.values, variable, level), dtype=float)
+                    np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
                     if data_array is not None else None
                 )
                 scale_kind = mode
@@ -498,10 +540,12 @@ def describe_color_scale(
         max_kt = scale_cfg["domain_max"]
         anchor_kt = _resolve_anchor_values(scale_cfg)
         boundaries_ms, interval_colors, _, _ = _make_wind_scale(level, step_kt=color_step, scale_overrides=scale_overrides)
-        boundaries_kt = [b / _KT_TO_MS for b in boundaries_ms]
-        data_kt = np.asarray(data_array.values, dtype=float) / _KT_TO_MS if data_array is not None else None
-        stats = _scale_data_stats(data_kt, boundaries_kt) if data_kt is not None else {}
-        sample_edges = np.linspace(min_kt, max_kt, 7)
+        boundaries = [_wind_display_value(b, wind_unit) for b in boundaries_ms]
+        data_vals = np.asarray(data_array.values, dtype=float) * _wind_unit_factor(wind_unit) if data_array is not None else None
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        domain_min = _wind_scale_display_value(min_kt, wind_unit)
+        domain_max = _wind_scale_display_value(max_kt, wind_unit)
+        sample_edges = np.linspace(domain_min, domain_max, 7)
         sample_labels = [
             f"[{sample_edges[i]:.0f},{sample_edges[i+1]:.0f})"
             for i in range(len(sample_edges) - 1)
@@ -511,16 +555,16 @@ def describe_color_scale(
         return {
             "scale_kind": "fixed-wind",
             "group": group,
-            "unit": "kt",
+            "unit": _wind_unit_label(wind_unit),
             "step": color_step,
-            "boundaries": boundaries_kt,
-            "interval_mids": _interval_midpoints(boundaries_kt),
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
             "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
-            "anchor_values": anchor_kt,
+            "anchor_values": [_wind_scale_display_value(v, wind_unit) for v in anchor_kt],
             "anchor_hex": scale_cfg["anchor_colors"],
             "key_breakpoints": scale_cfg["key_breakpoints"],
-            "domain_min": min_kt,
-            "domain_max": max_kt,
+            "domain_min": domain_min,
+            "domain_max": domain_max,
             "sample_band_labels": sample_labels,
             "sample_band_hex": sample_hex,
             **stats,
@@ -565,14 +609,14 @@ def describe_color_scale(
 
     return {
         "scale_kind": "auto-or-uninstrumented",
-        "unit": display_unit(variable, level),
+        "unit": display_unit(variable, level, wind_unit=wind_unit),
         "step": color_step,
     }
 
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_anomaly_style: str = "speed_diff"):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_anomaly_style: str = "speed_diff", wind_unit: str = "kt"):
     plt.close('all')
     fig = plt.figure(figsize=(14, 9))
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
@@ -592,10 +636,19 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             plot_vals  = data_array.values
         else:
             max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
-            unit_label = display_unit(variable, level)
-            plot_vals  = _anomaly_to_display(data_array.values, variable, level)
+            if variable == "wind_speed" and wind_unit == "m/s":
+                max_val *= _KT_TO_MS
+                step *= _KT_TO_MS
+            unit_label = display_unit(variable, level, wind_unit=wind_unit)
+            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit)
         if mode == "anomaly" and variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-            breakpoints, colors = _make_positive_scale(max_val, step, _WIND_VECTOR_ANOMALY_HEX)
+            white_below = 2.0 if wind_unit == "m/s" else 2.0 / _KT_TO_MS
+            breakpoints, colors = _make_positive_scale(
+                max_val,
+                step,
+                _WIND_VECTOR_ANOMALY_HEX,
+                white_below=white_below,
+            )
             cmap = mcolors.ListedColormap(colors)
             cmap.set_under(colors[0])
             cmap.set_over(mcolors.to_rgb(_WIND_VECTOR_ANOMALY_HEX[-1]))
@@ -634,7 +687,10 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             mode_label = "Anomaly" if mode == "anomaly" else "Normalized Anomaly"
             cbar_cfg = {
                 'ticks':      tick_vals,
-                'ticklabels': [f"{v:+g}" if v != 0 else "0" for v in tick_vals],
+                'ticklabels': [
+                    ("0" if abs(v) < 1e-9 else f"{'+' if v > 0 else '-'}{_format_scale_value(abs(v))}")
+                    for v in tick_vals
+                ],
                 'ylabel':     f"{mode_label}  ({unit_label})",
                 'extend':     'both',
                 'colors': colors, 'boundaries': breakpoints,
@@ -658,10 +714,13 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
         if abs(tick_kt[-1] - max_kt) > 1e-9:
             tick_kt.append(float(max_kt))
+        tick_display = [_wind_scale_display_value(kt, wind_unit) for kt in tick_kt]
+        min_display = _wind_scale_display_value(min_kt, wind_unit)
+        max_display = _wind_scale_display_value(max_kt, wind_unit)
         cbar_cfg = {
             'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
-            'ticklabels': [_format_scale_value(kt) for kt in tick_kt],
-            'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_kt)}–{_format_scale_value(max_kt)} kt',
+            'ticklabels': [_format_scale_value(v) for v in tick_display],
+            'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
             'extend':     'max',
             'colors': interval_colors, 'boundaries': breakpoints_ms,
         }

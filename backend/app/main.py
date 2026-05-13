@@ -67,6 +67,7 @@ app.add_middleware(
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
 VALID_WIND_ANOMALY_STYLES = ("speed_diff", "vector_mag")
+VALID_WIND_UNITS = ("kt", "m/s")
 
 
 def _preview(values, digits: int = 3, n: int = 6) -> str:
@@ -95,16 +96,18 @@ def _scale_overrides_from_query(
     variable: str,
     scale_min: float | None,
     scale_max: float | None,
+    wind_unit: str = "kt",
 ) -> dict[str, float] | None:
     if variable != "wind_speed":
         return None
     if scale_min is None and scale_max is None:
         return None
+    unit_factor = 1.0 if wind_unit == "kt" else 1.0 / 0.51444
     overrides: dict[str, float] = {}
     if scale_min is not None:
-        overrides["domain_min"] = float(scale_min)
+        overrides["domain_min"] = float(scale_min) * unit_factor
     if scale_max is not None:
-        overrides["domain_max"] = float(scale_max)
+        overrides["domain_max"] = float(scale_max) * unit_factor
     return overrides
 
 
@@ -117,6 +120,7 @@ def get_scale_meta(
     scale_min: float | None = None,
     scale_max: float | None = None,
     wind_anomaly_style: str = "speed_diff",
+    wind_unit: str = "kt",
 ):
     if variable not in VARIABLES:
         raise HTTPException(status_code=422, detail=f"variable must be one of {list(VARIABLES.keys())}")
@@ -128,6 +132,8 @@ def get_scale_meta(
         raise HTTPException(status_code=422, detail="color_step must be at least 1")
     if wind_anomaly_style not in VALID_WIND_ANOMALY_STYLES:
         raise HTTPException(status_code=422, detail=f"wind_anomaly_style must be one of {list(VALID_WIND_ANOMALY_STYLES)}")
+    if wind_unit not in VALID_WIND_UNITS:
+        raise HTTPException(status_code=422, detail=f"wind_unit must be one of {list(VALID_WIND_UNITS)}")
     if scale_min is not None and scale_max is not None and scale_min >= scale_max:
         raise HTTPException(status_code=422, detail="scale_min must be less than scale_max")
 
@@ -136,8 +142,9 @@ def get_scale_meta(
         level=level,
         color_step=color_step,
         mode=mode,
-        scale_overrides=_scale_overrides_from_query(variable, scale_min, scale_max),
+        scale_overrides=_scale_overrides_from_query(variable, scale_min, scale_max, wind_unit=wind_unit),
         wind_anomaly_style=wind_anomaly_style,
+        wind_unit=wind_unit,
     )
 
 
@@ -159,6 +166,7 @@ async def get_map(
     mode: str = "raw",
     climo_source: str = "monthly-pgb",
     wind_anomaly_style: str = "speed_diff",
+    wind_unit: str = "kt",
 ):
     # Resolve input — three mutually exclusive date modes:
     #   months  → monthly mean archive (YYYYMM list)
@@ -208,6 +216,8 @@ async def get_map(
         raise HTTPException(status_code=422, detail=f"climo_source must be one of {list(VALID_CLIMO_SOURCES)}")
     if wind_anomaly_style not in VALID_WIND_ANOMALY_STYLES:
         raise HTTPException(status_code=422, detail=f"wind_anomaly_style must be one of {list(VALID_WIND_ANOMALY_STYLES)}")
+    if wind_unit not in VALID_WIND_UNITS:
+        raise HTTPException(status_code=422, detail=f"wind_unit must be one of {list(VALID_WIND_UNITS)}")
     if scale_min is not None and scale_max is not None and scale_min >= scale_max:
         raise HTTPException(status_code=422, detail="scale_min must be less than scale_max")
 
@@ -384,7 +394,7 @@ async def get_map(
 
     try:
         step = 0
-        scale_overrides = _scale_overrides_from_query(variable, scale_min, scale_max)
+        scale_overrides = _scale_overrides_from_query(variable, scale_min, scale_max, wind_unit=wind_unit)
         use_vector_wind_anomaly = (
             variable == "wind_speed" and mode == "anomaly" and wind_anomaly_style == "vector_mag"
         )
@@ -730,7 +740,7 @@ async def get_map(
 
         # ── Variable label ───────────────────────────────────────────────────
         var_cfg   = VARIABLES[variable]
-        units     = display_unit(variable, level)
+        units     = display_unit(variable, level, wind_unit=wind_unit)
         if use_vector_wind_anomaly:
             var_label = f"Wind Vector Anomaly Magnitude ({units})  {level}mb"
         else:
@@ -780,6 +790,7 @@ async def get_map(
             data_array=subset,
             scale_overrides=scale_overrides,
             wind_anomaly_style=wind_anomaly_style,
+            wind_unit=wind_unit,
         )
         log.info("  scale kind    : %s", scale_diag.get("scale_kind"))
         if scale_diag.get("unit"):
@@ -853,6 +864,7 @@ async def get_map(
             mode=mode,
             scale_overrides=scale_overrides,
             wind_anomaly_style=wind_anomaly_style,
+            wind_unit=wind_unit,
         )
 
         log.info("STEP %d ✓  render complete → streaming PNG", step)
