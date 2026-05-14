@@ -20,6 +20,7 @@ const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'preci
 
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
+const SHOW_WIND_OVERLAY_CONTROLS = false
 
 type TimeScale   = '6-hourly' | 'daily' | 'monthly' | 'climatology'
 type SubMode     = 'single' | 'range' | 'list'
@@ -437,7 +438,15 @@ function HourStepper({ hour, setHour }: { hour: string; setHour: (h: string) => 
 
 function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-slate-900 border border-slate-700/60 rounded-xl p-4 flex flex-col gap-2.5 ${className}`}>
+    <div className={`bg-slate-900 border border-slate-700/60 rounded-xl p-4 flex flex-col gap-3 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+function CardRow({ children = null, className = '' }: { children?: React.ReactNode; className?: string }) {
+  return (
+    <div className={`min-h-[50px] ${className}`}>
       {children}
     </div>
   )
@@ -691,6 +700,23 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     { value: 'list',   label: 'List'   },
   ]
 
+  function renderTemporalModeControls() {
+    if (isClimo) {
+      return (
+        <TabStrip
+          options={[{ value: 'climatology', label: 'Climatology Month' }]}
+          value="climatology"
+          onChange={() => {}}
+          fullWidth
+        />
+      )
+    }
+    if (isMonthly) {
+      return <TabStrip options={subModeOpts} value={monthSubMode} onChange={v => setMonthSubMode(v as SubMode)} fullWidth />
+    }
+    return <TabStrip options={subModeOpts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
+  }
+
   function renderTemporalInputs() {
     if (isClimo) {
       return (
@@ -702,7 +728,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (isMonthly) {
       return (
         <>
-          <TabStrip options={subModeOpts} value={monthSubMode} onChange={v => setMonthSubMode(v as SubMode)} fullWidth />
           {monthSubMode === 'single' && (
             <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="input" />
           )}
@@ -742,7 +767,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     // 6-hourly or daily
     return (
       <>
-        <TabStrip options={subModeOpts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
         {dateSubMode === 'single' && (
           <div className="flex gap-2 items-center">
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input flex-1" />
@@ -1193,10 +1217,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         {/* ── Card panels ─────────────────────────────────────────────────── */}
         <div className={isVertical
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
-          : 'grid grid-cols-2 xl:grid-cols-4 gap-3 items-start'}>
+          : 'grid grid-cols-2 xl:grid-cols-4 gap-3 items-stretch'}>
 
           {/* 1 · Variable & Level */}
-          <Section>
+          <Section className="h-full">
+            <CardRow>
             <div className="flex gap-2 items-end">
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <Label>Variable</Label>
@@ -1223,8 +1248,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </div>
 
             </div>
+            </CardRow>
             {(variable === 'wind_speed' || variable === 'wind_10m' || variable === 'temp' || variable === 'temp_2m' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
-              <div className="pt-2 border-t border-slate-700/40">
+              <CardRow>
                 {(variable === 'wind_speed' || variable === 'wind_10m') && (
                   <VariableDisplayControl label="Wind Units">
                     <TabStrip
@@ -1279,9 +1305,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
-              </div>
+              </CardRow>
             )}
             {/* ── Wind overlay ─────────────────────────────────────────────── */}
+            {SHOW_WIND_OVERLAY_CONTROLS && (
             <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 ${isFlxVariable ? 'opacity-45' : ''}`}>
               <Label>Wind Overlay</Label>
               <button type="button" role="switch" aria-checked={windOn}
@@ -1308,40 +1335,55 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 </div>
               </div>
             </div>
+            )}
           </Section>
 
           {/* 2 · Temporal Range */}
-          <Section>
-            <Label>{isClimo ? 'Climatology Month' : (isMonthly ? 'Month' : 'Date')}</Label>
-            {renderTemporalInputs()}
+          <Section className="h-full">
+            <CardRow>
+              <VariableDisplayControl label={isClimo ? 'Climatology' : (isMonthly ? 'Month Mode' : 'Date Mode')}>
+                {renderTemporalModeControls()}
+              </VariableDisplayControl>
+            </CardRow>
+            <CardRow>
+              <VariableDisplayControl label={isClimo ? 'Month' : (isMonthly ? 'Month' : 'Date')}>
+                {renderTemporalInputs()}
+              </VariableDisplayControl>
+            </CardRow>
           </Section>
 
           {/* 3 · Region */}
-          <Section>
-            <Label>Region</Label>
-            <div className="flex flex-col gap-2">
+          <Section className="h-full">
+            <CardRow>
+            <VariableDisplayControl label="Region">
               <button type="button" onClick={() => setRegion('CONUS')}
-                className={`w-full py-2.5 px-4 rounded-lg text-sm font-semibold text-center cursor-pointer transition-colors ${
+                className={`w-full px-3 py-1.5 rounded text-xs font-semibold text-center cursor-pointer transition-colors ${
                   region === 'CONUS'
                     ? 'bg-sky-700 text-white'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}>
                 CONUS
               </button>
+            </VariableDisplayControl>
+            </CardRow>
+            <CardRow>
+            <VariableDisplayControl label="Region List">
               <button type="button" onClick={() => setRegionsOpen(true)}
-                className={`w-full py-2.5 px-4 rounded-lg text-sm font-semibold text-center cursor-pointer transition-colors ${
+                className={`w-full px-3 py-1.5 rounded text-xs font-semibold text-center cursor-pointer transition-colors ${
                   region !== 'CONUS'
                     ? 'bg-sky-700 text-white'
                     : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                 }`}>
                 {region !== 'CONUS' ? region : 'All Regions'}
               </button>
-            </div>
+            </VariableDisplayControl>
+            </CardRow>
           </Section>
 
           {/* 4 · Analysis + Generate */}
-          <Section>
-            <Label>Analysis</Label>
+          <Section className="h-full">
+            <CardRow>
+            <VariableDisplayControl label="Analysis">
             {isClimo ? (
               <TabStrip
                 options={[{ value: 'climatology', label: 'Climatology Mean' }]}
@@ -1360,6 +1402,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 fullWidth
               />
             )}
+            </VariableDisplayControl>
+            </CardRow>
             {variable === 'wind_speed' && !isClimo && displayMode === 'anomaly' && (
               <div className="mt-2">
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -1378,11 +1422,15 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{windAnomalyRecommendation.label}</p>
               </div>
             )}
+            <CardRow>
+            <VariableDisplayControl label="Render">
             <button type="submit" disabled={loading}
-              className="mt-1 px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700
-                         disabled:opacity-50 font-bold text-sm tracking-wide cursor-pointer transition-colors w-full">
+              className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 active:bg-sky-700
+                         disabled:opacity-50 font-bold text-xs tracking-wide cursor-pointer transition-colors w-full">
               {generateLabel()}
             </button>
+            </VariableDisplayControl>
+            </CardRow>
           </Section>
 
         </div>
