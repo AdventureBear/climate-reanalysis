@@ -9,8 +9,7 @@ const VARIABLES = [
   { key: 'wind_speed',   label: 'Wind Speed' },
   { key: 'temp',         label: 'Temperature' },
   { key: 'height',       label: 'Geopot. Height' },
-  { key: 'rel_humidity', label: 'Rel. Humidity' },
-  { key: 'humidity',     label: 'Spec. Humidity' },
+  { key: 'rel_humidity', label: 'Humidity' },
 ]
 
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
@@ -22,6 +21,8 @@ type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
 type WindAnomalyStyle = 'speed_diff' | 'vector_mag'
 type WindUnit = 'kt' | 'm/s'
+type TemperatureUnit = 'F' | 'C'
+type HeightDisplay = 'contoured' | 'shaded'
 type WindAnomalyRecommendation = {
   style: WindAnomalyStyle
   label: string
@@ -331,20 +332,23 @@ function Label({ children }: { children: React.ReactNode }) {
 }
 
 // Connected horizontal tab strip — pass fullWidth to stretch across the parent
-function TabStrip({ options, value, onChange, fullWidth = false }: {
+function TabStrip({ options, value, onChange, fullWidth = false, disabled = false }: {
   options: { value: string; label: string }[]
   value: string
   onChange: (v: string) => void
   fullWidth?: boolean
+  disabled?: boolean
 }) {
   return (
     <div className={`flex rounded overflow-hidden border border-slate-600 text-xs font-medium ${fullWidth ? 'w-full' : 'w-fit'}`}>
       {options.map(opt => (
-        <button key={opt.value} type="button" onClick={() => onChange(opt.value)}
-          className={`${fullWidth ? 'flex-1 text-center' : ''} px-2.5 py-1 cursor-pointer transition-colors ${
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)} disabled={disabled}
+          className={`${fullWidth ? 'flex-1 text-center' : ''} px-2.5 py-1 transition-colors ${
+            disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'
+          } ${
             value === opt.value
               ? 'bg-sky-700 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              : `bg-slate-800 text-slate-400 ${disabled ? '' : 'hover:bg-slate-700'}`
           }`}>
           {opt.label}
         </button>
@@ -374,6 +378,28 @@ function WindAnomalyInfo({ open, onToggle }: { open: boolean; onToggle: () => vo
           </p>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function VariableDisplayControl({
+  label,
+  status,
+  children,
+}: {
+  label: string
+  status?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-h-[50px] flex-col gap-1">
+      <div className="flex h-4 items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <span className={`text-[10px] leading-none text-slate-500 ${status ? '' : 'invisible'}`}>
+          {status || 'Ready'}
+        </span>
+      </div>
+      {children}
     </div>
   )
 }
@@ -443,6 +469,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windType,  setWindType]  = useState('vectors')
   const [windAnomalyStyle, setWindAnomalyStyle] = useState<WindAnomalyStyle>('speed_diff')
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('F')
+  const [heightDisplay, setHeightDisplay] = useState<HeightDisplay>('contoured')
   const [colorStep, setColorStep] = useState('1')
   const [scaleMin,  setScaleMin]  = useState('')
   const [scaleMax,  setScaleMax]  = useState('')
@@ -1155,7 +1183,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <div className="flex gap-2 items-end">
               <div className="flex flex-col gap-1 flex-1 min-w-0">
                 <Label>Variable</Label>
-                <select value={variable} onChange={e => setVariable(e.target.value)} className="input w-full">
+                <select
+                  value={variable === 'humidity' ? 'rel_humidity' : variable}
+                  onChange={e => setVariable(e.target.value)}
+                  className="input w-full"
+                >
                   {VARIABLES.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
                 </select>
               </div>
@@ -1167,6 +1199,64 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </div>
 
             </div>
+            {(variable === 'wind_speed' || variable === 'temp' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
+              <div className="pt-2 border-t border-slate-700/40">
+                {variable === 'wind_speed' && (
+                  <VariableDisplayControl label="Wind Units">
+                    <TabStrip
+                      options={[
+                        { value: 'kt', label: 'Knots' },
+                        { value: 'm/s', label: 'm/s' },
+                      ]}
+                      value={windUnit}
+                      onChange={v => setWindUnit(v as WindUnit)}
+                      fullWidth
+                    />
+                  </VariableDisplayControl>
+                )}
+                {variable === 'temp' && (
+                  <VariableDisplayControl label="Temperature Units" status="Coming soon">
+                    <TabStrip
+                      options={[
+                        { value: 'F', label: '°F' },
+                        { value: 'C', label: '°C' },
+                      ]}
+                      value={temperatureUnit}
+                      onChange={v => setTemperatureUnit(v as TemperatureUnit)}
+                      fullWidth
+                      disabled
+                    />
+                  </VariableDisplayControl>
+                )}
+                {variable === 'height' && (
+                  <VariableDisplayControl label="Height Display" status="Coming soon">
+                    <TabStrip
+                      options={[
+                        { value: 'contoured', label: 'Contoured' },
+                        { value: 'shaded', label: 'Shaded' },
+                      ]}
+                      value={heightDisplay}
+                      onChange={v => setHeightDisplay(v as HeightDisplay)}
+                      fullWidth
+                      disabled
+                    />
+                  </VariableDisplayControl>
+                )}
+                {(variable === 'rel_humidity' || variable === 'humidity') && (
+                  <VariableDisplayControl label="Humidity Type">
+                    <TabStrip
+                      options={[
+                        { value: 'rel_humidity', label: 'Relative' },
+                        { value: 'humidity', label: 'Specific' },
+                      ]}
+                      value={variable}
+                      onChange={setVariable}
+                      fullWidth
+                    />
+                  </VariableDisplayControl>
+                )}
+              </div>
+            )}
             {/* ── Wind overlay ─────────────────────────────────────────────── */}
             <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
               <Label>Wind Overlay</Label>
@@ -1261,20 +1351,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   fullWidth
                 />
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{windAnomalyRecommendation.label}</p>
-              </div>
-            )}
-            {variable === 'wind_speed' && (
-              <div className="mt-2">
-                <Label>Wind Units</Label>
-                <TabStrip
-                  options={[
-                    { value: 'kt', label: 'Knots' },
-                    { value: 'm/s', label: 'm/s' },
-                  ]}
-                  value={windUnit}
-                  onChange={v => setWindUnit(v as WindUnit)}
-                  fullWidth
-                />
               </div>
             )}
             <button type="submit" disabled={loading}
