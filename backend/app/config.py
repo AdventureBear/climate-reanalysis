@@ -5,9 +5,149 @@ REGIONS = {
         "lat": (15, 72),    # (min, max)
         "lon": (218, 315),  # (min, max) — NOAA 0-360 convention (-142 to -45 W)
     },
+    "Northwest US": {
+        "lat": (36, 55),
+        "lon": (231, 253),
+    },
+    "Northern Plains": {
+        "lat": (38, 55),
+        "lon": (250, 273),
+    },
+    "Central Plains": {
+        "lat": (30, 48),
+        "lon": (253, 277),
+    },
+    "Northeast": {
+        "lat": (36, 50),
+        "lon": (280, 307),
+    },
+    "Eastern US": {
+        "lat": (23, 50),
+        "lon": (266, 307),
+    },
+    "Southwest US": {
+        "lat": (28, 43),
+        "lon": (234, 257),
+    },
+    "South Central": {
+        "lat": (24, 40),
+        "lon": (254, 279),
+    },
+    "Southeast US": {
+        "lat": (23, 39),
+        "lon": (270, 297),
+    },
+    "Western US": {
+        "lat": (29, 52),
+        "lon": (231, 259),
+    },
+    "Alaska": {
+        "lat": (48, 75),
+        "lon": (188, 236),
+    },
+    "Hawaii": {
+        "lat": (16, 25),
+        "lon": (197, 207),
+    },
+    "North America": {
+        "lat": (5, 85),
+        "lon": (190, 330),
+    },
+    "Northern Hemisphere": {
+        "lat": (0, 90),
+        "lon": (0, 360),
+    },
+    "North Pacific": {
+        "lat": (0, 70),
+        "lon": (120, 260),
+    },
+    "Northern Africa": {
+        "lat": (0, 40),
+        "lon": (335, 60),
+    },
+    "Europe": {
+        "lat": (30, 75),
+        "lon": (330, 45),
+    },
+    "Asia": {
+        "lat": (5, 70),
+        "lon": (55, 160),
+    },
+    "Middle East": {
+        "lat": (5, 45),
+        "lon": (25, 75),
+    },
+    "East Asia": {
+        "lat": (10, 60),
+        "lon": (95, 160),
+    },
+    "Australia": {
+        "lat": (-45, -5),
+        "lon": (105, 165),
+    },
+    "Southeast Canada": {
+        "lat": (40, 70),
+        "lon": (260, 320),
+    },
+    "Western Canada": {
+        "lat": (45, 75),
+        "lon": (220, 275),
+    },
+    "Canada": {
+        "lat": (40, 85),
+        "lon": (220, 320),
+    },
+    "South America": {
+        "lat": (-60, 15),
+        "lon": (275, 330),
+    },
+    "World": {
+        "lat": (-60, 85),
+        "lon": (0, 360),
+    },
     "Indian Ocean": {
-        "lat": (-5, 45),   # 5° padding beyond 0–40 N display extent
+        "lat": (-20, 45),  # expanded southward for tropical diagnostics
         "lon": (25, 115),  # 5° padding beyond 30–110 E; 0-360 = same as degrees E
+    },
+    "North Atlantic": {
+        "lat": (-5, 45),
+        "lon": (270, 350),
+    },
+    "Western Atlantic": {
+        "lat": (-5, 45),
+        "lon": (255, 320),
+    },
+    "Tropical Atlantic": {
+        "lat": (-10, 35),
+        "lon": (295, 359),
+    },
+    "Western Pacific": {
+        "lat": (-10, 40),
+        "lon": (105, 180),
+    },
+    "Central Pacific": {
+        "lat": (-10, 35),
+        "lon": (181, 245),
+    },
+    "Eastern Pacific": {
+        "lat": (-15, 35),
+        "lon": (205, 285),
+    },
+    "Southwest Pacific": {
+        "lat": (-35, 10),
+        "lon": (135, 180),
+    },
+    "Southeast Pacific": {
+        "lat": (-40, 10),
+        "lon": (215, 295),
+    },
+    "India": {
+        "lat": (-5, 40),
+        "lon": (55, 105),
+    },
+    "Southern Africa": {
+        "lat": (-40, 10),
+        "lon": (5, 50),
     },
 }
 

@@ -22,6 +22,11 @@ type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
 type WindAnomalyStyle = 'speed_diff' | 'vector_mag'
 type WindUnit = 'kt' | 'm/s'
+type WindAnomalyRecommendation = {
+  style: WindAnomalyStyle
+  label: string
+  reason: string
+}
 type ScaleMeta = {
   scale_kind?: string
   group?: string
@@ -62,57 +67,57 @@ const REGION_GROUPS: RegionGroup[] = [
     category: 'United States',
     regions: [
       { key: 'CONUS',          label: 'CONUS',          available: true  },
-      { key: 'Northwest US',   label: 'Northwest US',   available: false },
-      { key: 'Northern Plains',label: 'Northern Plains',available: false },
-      { key: 'Central Plains', label: 'Central Plains', available: false },
-      { key: 'Northeast',      label: 'Northeast',      available: false },
-      { key: 'Eastern US',     label: 'Eastern US',     available: false },
-      { key: 'Southwest US',   label: 'Southwest US',   available: false },
-      { key: 'South Central',  label: 'South Central',  available: false },
-      { key: 'Southeast US',   label: 'Southeast US',   available: false },
-      { key: 'Western US',     label: 'Western US',     available: false },
-      { key: 'Alaska',         label: 'Alaska',         available: false },
-      { key: 'Hawaii',         label: 'Hawaii',         available: false },
+      { key: 'Northwest US',   label: 'Northwest US',   available: true  },
+      { key: 'Northern Plains',label: 'Northern Plains',available: true  },
+      { key: 'Central Plains', label: 'Central Plains', available: true  },
+      { key: 'Northeast',      label: 'Northeast',      available: true  },
+      { key: 'Eastern US',     label: 'Eastern US',     available: true  },
+      { key: 'Southwest US',   label: 'Southwest US',   available: true  },
+      { key: 'South Central',  label: 'South Central',  available: true  },
+      { key: 'Southeast US',   label: 'Southeast US',   available: true  },
+      { key: 'Western US',     label: 'Western US',     available: true  },
+      { key: 'Alaska',         label: 'Alaska',         available: true  },
+      { key: 'Hawaii',         label: 'Hawaii',         available: true  },
     ],
   },
   {
     category: 'World',
     regions: [
-      { key: 'North America',       label: 'North America',       available: false },
-      { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: false },
-      { key: 'North Pacific',       label: 'North Pacific',       available: false },
-      { key: 'Northern Africa',     label: 'Northern Africa',     available: false },
-      { key: 'Europe',              label: 'Europe',              available: false },
-      { key: 'Asia',                label: 'Asia',                available: false },
-      { key: 'Middle East',         label: 'Middle East',         available: false },
-      { key: 'East Asia',           label: 'East Asia',           available: false },
-      { key: 'Australia',           label: 'Australia',           available: false },
-      { key: 'Southeast Canada',    label: 'Southeast Canada',    available: false },
-      { key: 'Western Canada',      label: 'Western Canada',      available: false },
-      { key: 'Canada',              label: 'Canada',              available: false },
-      { key: 'South America',       label: 'South America',       available: false },
-      { key: 'World',               label: 'World',               available: false },
+      { key: 'North America',       label: 'North America',       available: true  },
+      { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: true  },
+      { key: 'North Pacific',       label: 'North Pacific',       available: true  },
+      { key: 'Northern Africa',     label: 'Northern Africa',     available: true  },
+      { key: 'Europe',              label: 'Europe',              available: true  },
+      { key: 'Asia',                label: 'Asia',                available: true  },
+      { key: 'Middle East',         label: 'Middle East',         available: true  },
+      { key: 'East Asia',           label: 'East Asia',           available: true  },
+      { key: 'Australia',           label: 'Australia',           available: true  },
+      { key: 'Southeast Canada',    label: 'Southeast Canada',    available: true  },
+      { key: 'Western Canada',      label: 'Western Canada',      available: true  },
+      { key: 'Canada',              label: 'Canada',              available: true  },
+      { key: 'South America',       label: 'South America',       available: true  },
+      { key: 'World',               label: 'World',               available: true  },
     ],
   },
   {
     category: 'Tropics — Oceanic & Coastal',
     regions: [
       { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true  },
-      { key: 'North Atlantic',    label: 'North Atlantic',    available: false },
-      { key: 'Western Atlantic',  label: 'Western Atlantic',  available: false },
-      { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: false },
-      { key: 'Western Pacific',   label: 'Western Pacific',   available: false },
-      { key: 'Central Pacific',   label: 'Central Pacific',   available: false },
-      { key: 'Eastern Pacific',   label: 'Eastern Pacific',   available: false },
-      { key: 'Southwest Pacific', label: 'Southwest Pacific', available: false },
-      { key: 'Southeast Pacific', label: 'Southeast Pacific', available: false },
+      { key: 'North Atlantic',    label: 'North Atlantic',    available: true  },
+      { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true  },
+      { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true  },
+      { key: 'Western Pacific',   label: 'Western Pacific',   available: true  },
+      { key: 'Central Pacific',   label: 'Central Pacific',   available: true  },
+      { key: 'Eastern Pacific',   label: 'Eastern Pacific',   available: true  },
+      { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true  },
+      { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true  },
     ],
   },
   {
     category: 'Tropics — Land Based',
     regions: [
-      { key: 'India',          label: 'India',          available: false },
-      { key: 'Southern Africa',label: 'Southern Africa',available: false },
+      { key: 'India',          label: 'India',          available: true  },
+      { key: 'Southern Africa',label: 'Southern Africa',available: true  },
     ],
   },
 ]
@@ -149,6 +154,43 @@ const CLIMO_SOURCES: {
     available: false,
   },
 ]
+
+const WIND_ANOMALY_OPTIONS: { value: WindAnomalyStyle; label: string }[] = [
+  { value: 'speed_diff', label: 'Speed Anomaly' },
+  { value: 'vector_mag', label: 'Vector Anomaly' },
+]
+
+const US_WIND_REGIONS = new Set([
+  'CONUS',
+  'Northwest US',
+  'Northern Plains',
+  'Central Plains',
+  'Northeast',
+  'Eastern US',
+  'Southwest US',
+  'South Central',
+  'Southeast US',
+  'Western US',
+  'Alaska',
+  'Hawaii',
+])
+
+const TROPICAL_FLOW_REGIONS = new Set([
+  'Indian Ocean',
+  'India',
+  'Northern Africa',
+  'Southern Africa',
+  'Tropical Atlantic',
+  'Western Pacific',
+  'Central Pacific',
+  'Eastern Pacific',
+  'Southwest Pacific',
+  'Southeast Pacific',
+  'North Atlantic',
+  'Western Atlantic',
+  'Asia',
+  'Middle East',
+])
 
 function defaultDate(): string {
   const d = new Date()
@@ -241,6 +283,43 @@ function resolveScaleFamily(variable: string, mode: DisplayMode, level: string):
   return families.find(f => f.levels.includes(Number(level))) ?? families[0]
 }
 
+function getWindAnomalyRecommendation(region: string, level: string): WindAnomalyRecommendation {
+  const mb = Number(level)
+  if (US_WIND_REGIONS.has(region) && mb >= 700 && mb <= 1000) {
+    return {
+      style: 'speed_diff',
+      label: 'Recommended: Speed Anomaly',
+      reason: '850 mb wind anomalies over U.S. regions usually start with intensity departures.',
+    }
+  }
+  if (TROPICAL_FLOW_REGIONS.has(region) && mb >= 700 && mb <= 1000) {
+    return {
+      style: 'vector_mag',
+      label: 'Recommended: Vector Anomaly',
+      reason: 'Low-level tropical and monsoon analyses often hinge on directional departures from climatology.',
+    }
+  }
+  if (mb <= 300) {
+    return {
+      style: 'speed_diff',
+      label: 'Often useful: Speed Anomaly',
+      reason: 'Upper-level jet diagnostics often start with faster or slower than normal flow, though displaced jets may still need vector anomaly.',
+    }
+  }
+  if (mb >= 700) {
+    return {
+      style: 'speed_diff',
+      label: 'Often useful: Speed Anomaly',
+      reason: 'Low-level wind anomaly maps often start with intensity unless the circulation direction is the focus.',
+    }
+  }
+  return {
+    style: 'vector_mag',
+    label: 'Choose by question',
+    reason: 'Vector anomaly shows circulation departures; speed anomaly shows intensity departures.',
+  }
+}
+
 // ── Design primitives ─────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -269,6 +348,31 @@ function TabStrip({ options, value, onChange, fullWidth = false }: {
           {opt.label}
         </button>
       ))}
+    </div>
+  )
+}
+
+function WindAnomalyInfo({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <div className="relative inline-flex">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer"
+        aria-label="Wind anomaly guidance"
+        aria-expanded={open}
+      >
+        <CircleHelp size={13} />
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-6 z-30 w-72 rounded-lg border border-slate-600 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300 shadow-xl">
+          <p>Use vector wind anomaly when direction matters.</p>
+          <p className="mt-1">Use wind speed anomaly when intensity matters.</p>
+          <p className="mt-2 text-slate-500">
+            Vector anomaly overlays show departure flow. Calculation details are on the FAQ page.
+          </p>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -344,6 +448,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [scaleLabOpen, setScaleLabOpen] = useState(false)
+  const [windAnomalyHelpOpen, setWindAnomalyHelpOpen] = useState(false)
   const [climoSource,  setClimoSource]  = useState<ClimoSource>('r2-monthly')
 
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
@@ -365,6 +470,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isSixHourly = timeScale === '6-hourly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
+  const windAnomalyRecommendation = getWindAnomalyRecommendation(region, level)
+  const labWindAnomalyRecommendation = getWindAnomalyRecommendation(region, labLevel)
 
   useEffect(() => {
     if (!adminMode) return
@@ -385,35 +492,39 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     }
 
     const controller = new AbortController()
-    setScaleMetaLoading(true)
-    setScaleMetaError(null)
 
-    fetch(`${API_BASE}/api/scale-meta?${params.toString()}`, { signal: controller.signal })
-      .then(async res => {
+    async function loadScaleMeta() {
+      setScaleMetaLoading(true)
+      setScaleMetaError(null)
+
+      try {
+        const res = await fetch(`${API_BASE}/api/scale-meta?${params.toString()}`, { signal: controller.signal })
         if (!res.ok) {
           const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
           throw new Error(body.detail ?? `HTTP ${res.status}`)
         }
-        return res.json()
-      })
-      .then(data => setScaleMeta(data))
-      .catch(err => {
+        setScaleMeta(await res.json())
+      } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
         setScaleMetaError(err instanceof Error ? err.message : String(err))
         setScaleMeta(null)
-      })
-      .finally(() => setScaleMetaLoading(false))
+      } finally {
+        setScaleMetaLoading(false)
+      }
+    }
+
+    void loadScaleMeta()
 
     return () => controller.abort()
   }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle, windUnit])
 
-  useEffect(() => {
-    if (!scaleLabOpen) return
+  function openScaleLab() {
     setLabVariable(variable)
     setLabLevel(level)
     setLabMode(isClimo ? 'raw' : displayMode)
     setLabFamily(resolveScaleFamily(variable, isClimo ? 'raw' : displayMode, level).key)
-  }, [displayMode, isClimo, level, scaleLabOpen, variable])
+    setScaleLabOpen(true)
+  }
 
   // ── Generate label ───────────────────────────────────────────────────────────
   function generateLabel(): string {
@@ -480,7 +591,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       } else {
         const dates = customDates.filter(Boolean).map(toApiDate)
         if (!dates.length) { setError('Add at least one date.'); return }
-        dates.length === 1 ? (params.date = dates[0]) : (params.dates = dates.join(','))
+        if (dates.length === 1) {
+          params.date = dates[0]
+        } else {
+          params.dates = dates.join(',')
+        }
       }
     }
 
@@ -783,16 +898,20 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
         {labVariable === 'wind_speed' && labMode === 'anomaly' && (
           <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
-            <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Wind Anomaly Type</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-widest text-slate-500">Wind Anomaly Type</p>
+              <WindAnomalyInfo
+                open={windAnomalyHelpOpen}
+                onToggle={() => setWindAnomalyHelpOpen(open => !open)}
+              />
+            </div>
             <TabStrip
-              options={[
-                { value: 'speed_diff', label: 'Speed Diff' },
-                { value: 'vector_mag', label: 'Vector Mag' },
-              ]}
+              options={WIND_ANOMALY_OPTIONS}
               value={windAnomalyStyle}
               onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
               fullWidth
             />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{labWindAnomalyRecommendation.label}</p>
           </div>
         )}
 
@@ -990,13 +1109,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             value={timeScale}
             onChange={v => setTimeScale(v as TimeScale)}
           />
-          {adminMode ? (
-            <button
-              type="button"
-              onClick={() => setScaleLabOpen(true)}
-              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-              title="Open scale lab"
-            >
+	          {adminMode ? (
+	            <button
+	              type="button"
+	              onClick={openScaleLab}
+	              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+	              title="Open scale lab"
+	            >
               Scale Lab
             </button>
           ) : (
@@ -1127,16 +1246,20 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             )}
             {variable === 'wind_speed' && !isClimo && displayMode === 'anomaly' && (
               <div className="mt-2">
-                <Label>Wind Anomaly Type</Label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <Label>Wind Anomaly Type</Label>
+                  <WindAnomalyInfo
+                    open={windAnomalyHelpOpen}
+                    onToggle={() => setWindAnomalyHelpOpen(open => !open)}
+                  />
+                </div>
                 <TabStrip
-                  options={[
-                    { value: 'speed_diff', label: 'Speed Diff' },
-                    { value: 'vector_mag', label: 'Vector Mag' },
-                  ]}
+                  options={WIND_ANOMALY_OPTIONS}
                   value={windAnomalyStyle}
                   onChange={v => setWindAnomalyStyle(v as WindAnomalyStyle)}
                   fullWidth
                 />
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{windAnomalyRecommendation.label}</p>
               </div>
             )}
             {variable === 'wind_speed' && (
@@ -1232,11 +1355,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                           type="button"
                           disabled={!r.available}
                           onClick={() => { setRegion(r.key); setRegionsOpen(false) }}
-                          className={`px-4 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
+                          className={`min-h-[56px] px-4 py-3 rounded-lg text-sm font-medium text-left transition-colors ${
                             r.available
                               ? region === r.key
                                 ? 'bg-sky-700 text-white cursor-pointer'
-                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer'
+                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white cursor-pointer'
                               : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
                           }`}
                         >

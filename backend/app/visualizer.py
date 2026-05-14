@@ -6,6 +6,7 @@ import matplotlib.cm as mcm
 import matplotlib.colorbar as mcolorbar
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 
 # ── Per-region map projection and extent ─────────────────────────────────────────
@@ -18,12 +19,82 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
         central_latitude=37.5,
         standard_parallels=(29.5, 45.5),  # USGS standard parallels for CONUS
     ),
-    "Indian Ocean": ccrs.PlateCarree(),   # equidistant cylindrical suits tropical/subtropical
+    "Northwest US": ccrs.AlbersEqualArea(central_longitude=-118, central_latitude=44, standard_parallels=(34, 46)),
+    "Northern Plains": ccrs.AlbersEqualArea(central_longitude=-99, central_latitude=45, standard_parallels=(36, 48)),
+    "Central Plains": ccrs.AlbersEqualArea(central_longitude=-97, central_latitude=39, standard_parallels=(31, 43)),
+    "Northeast": ccrs.AlbersEqualArea(central_longitude=-73, central_latitude=43, standard_parallels=(38, 46)),
+    "Eastern US": ccrs.AlbersEqualArea(central_longitude=-80, central_latitude=36, standard_parallels=(26, 43)),
+    "Southwest US": ccrs.AlbersEqualArea(central_longitude=-114, central_latitude=35, standard_parallels=(29, 39)),
+    "South Central": ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=32, standard_parallels=(26, 36)),
+    "Southeast US": ccrs.AlbersEqualArea(central_longitude=-82, central_latitude=31, standard_parallels=(25, 35)),
+    "Western US": ccrs.AlbersEqualArea(central_longitude=-115, central_latitude=39, standard_parallels=(32, 45)),
+    "Alaska": ccrs.NorthPolarStereo(central_longitude=-150),
+    "Hawaii": ccrs.PlateCarree(),
+    "North America": ccrs.PlateCarree(),
+    "Northern Hemisphere": ccrs.PlateCarree(),
+    "North Pacific": ccrs.PlateCarree(central_longitude=180),
+    "Northern Africa": ccrs.PlateCarree(),
+    "Europe": ccrs.PlateCarree(),
+    "Asia": ccrs.PlateCarree(),
+    "Middle East": ccrs.PlateCarree(),
+    "East Asia": ccrs.PlateCarree(),
+    "Australia": ccrs.PlateCarree(),
+    "Southeast Canada": ccrs.PlateCarree(),
+    "Western Canada": ccrs.PlateCarree(),
+    "Canada": ccrs.PlateCarree(),
+    "South America": ccrs.PlateCarree(),
+    "World": ccrs.PlateCarree(central_longitude=180),
+    "Indian Ocean": ccrs.PlateCarree(),
+    "North Atlantic": ccrs.PlateCarree(),
+    "Western Atlantic": ccrs.PlateCarree(),
+    "Tropical Atlantic": ccrs.PlateCarree(),
+    "Western Pacific": ccrs.PlateCarree(),
+    "Central Pacific": ccrs.PlateCarree(),
+    "Eastern Pacific": ccrs.PlateCarree(),
+    "Southwest Pacific": ccrs.PlateCarree(),
+    "Southeast Pacific": ccrs.PlateCarree(),
+    "India": ccrs.PlateCarree(),
+    "Southern Africa": ccrs.PlateCarree(),
 }
 
 _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "CONUS": (-125, -66, 24, 50),   # (lon_min, lon_max, lat_min, lat_max)
-    "Indian Ocean": (30, 110, 0, 40),
+    "Northwest US": (-126, -108, 40, 50),
+    "Northern Plains": (-106, -90, 41, 50),
+    "Central Plains": (-103, -89, 33, 46),
+    "Northeast": (-79, -66, 39, 48),
+    "Eastern US": (-90, -66, 25, 47),
+    "Southwest US": (-124, -108, 30, 40),
+    "South Central": (-104, -89, 26, 37),
+    "Southeast US": (-90, -74, 24, 37),
+    "Western US": (-125, -103, 31, 49),
+    "Alaska": (-172, -129, 50, 72),
+    "Hawaii": (-161, -154, 18, 23),
+    "North America": (-170, -30, 10, 80),
+    "Northern Hemisphere": (-180, 180, 0, 90),
+    "North Pacific": (120, -100, 0, 65),
+    "Northern Africa": (-25, 55, 0, 35),
+    "Europe": (-15, 40, 30, 72),
+    "Asia": (55, 155, 5, 65),
+    "Middle East": (25, 75, 5, 42),
+    "East Asia": (95, 155, 10, 55),
+    "Australia": (110, 160, -45, -8),
+    "Southeast Canada": (-100, -40, 40, 68),
+    "Western Canada": (-140, -85, 45, 75),
+    "Canada": (-140, -40, 42, 82),
+    "South America": (-90, -30, -58, 15),
+    "World": (-180, 180, -60, 85),
+    "Indian Ocean": (30, 110, -15, 40),
+    "North Atlantic": (-85, -15, 0, 40),
+    "Western Atlantic": (-100, -45, 0, 40),
+    "Tropical Atlantic": (-65, 0, -5, 30),
+    "Western Pacific": (110, 180, -5, 35),
+    "Central Pacific": (-179, -120, -5, 30),
+    "Eastern Pacific": (-150, -80, -10, 30),
+    "Southwest Pacific": (140, 180, -30, 5),
+    "Southeast Pacific": (-140, -70, -35, 5),
+    "India": (60, 100, 0, 35),
+    "Southern Africa": (10, 45, -35, 5),
 }
 
 # ── Wind speed scale ─────────────────────────────────────────────────────────────
@@ -543,25 +614,21 @@ def describe_color_scale(
                 max_val *= _KT_TO_MS
                 step *= _KT_TO_MS
             unit = display_unit(variable, level, wind_unit=wind_unit)
+            plot_values = (
+                np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
+                if data_array is not None else None
+            )
             if variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-                native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step)
+                native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_values)
                 breakpoints = native_cfg["breakpoints"]
                 interval_colors = native_cfg["colors"]
                 anchor_values = breakpoints[:-1]
                 anchor_hex = [_rgb_to_hex(c) for c in interval_colors]
-                plot_values = (
-                    np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
-                    if data_array is not None else None
-                )
                 scale_kind = "vector-anomaly-magnitude"
             else:
                 breakpoints, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
                 anchor_values = _DIV_ANCHORS
                 anchor_hex = _DIV_HEX
-                plot_values = (
-                    np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
-                    if data_array is not None else None
-                )
                 scale_kind = mode
         mids = _interval_midpoints(breakpoints)
         stats = _scale_data_stats(plot_values, breakpoints) if plot_values is not None else {}
@@ -685,7 +752,7 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             unit_label = display_unit(variable, level, wind_unit=wind_unit)
             plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit)
         if mode == "anomaly" and variable == "wind_speed" and wind_anomaly_style == "vector_mag":
-            native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step)
+            native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
             breakpoints = native_cfg["breakpoints"]
             colors = native_cfg["colors"]
             cmap = mcolors.ListedColormap(colors)
@@ -869,6 +936,20 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     ax.coastlines(resolution='50m', color='black', linewidth=1.2)
     ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='black', alpha=0.4)
     ax.add_feature(cfeature.BORDERS, linewidth=1.2, edgecolor='black')
+    gl = ax.gridlines(
+        crs=ccrs.PlateCarree(),
+        draw_labels=True,
+        linewidth=0.6,
+        color='gray',
+        alpha=0.35,
+        linestyle=':',
+    )
+    gl.top_labels = False
+    gl.right_labels = False
+    gl.xlocator = mticker.MultipleLocator(10)
+    gl.ylocator = mticker.MultipleLocator(10)
+    gl.xlabel_style = {'size': 8, 'color': '#555'}
+    gl.ylabel_style = {'size': 8, 'color': '#555'}
 
     # Phase 3: colorbar + data source — placed after canvas draw so Cartopy's
     # aspect-ratio adjustment is finalised and ax.get_position() is accurate.
