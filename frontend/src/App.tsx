@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid, CircleHelp } from 'lucide-react'
+import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd } from 'lucide-react'
 
 // const API_BASE = 'http://127.0.0.1:8000'
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -20,7 +20,6 @@ const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'preci
 
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
-const SHOW_WIND_OVERLAY_CONTROLS = false
 
 type TimeScale   = '6-hourly' | 'daily' | 'monthly' | 'climatology'
 type SubMode     = 'single' | 'range' | 'list'
@@ -414,23 +413,52 @@ function VariableDisplayControl({
   )
 }
 
+function ToggleButton({
+  active,
+  disabled = false,
+  children,
+  onClick,
+}: {
+  active: boolean
+  disabled?: boolean
+  children: React.ReactNode
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded px-3 py-1.5 text-xs font-semibold transition-colors ${
+        disabled
+          ? 'cursor-not-allowed bg-slate-800 text-slate-600'
+          : active
+            ? 'cursor-pointer bg-sky-700 text-white'
+            : 'cursor-pointer bg-slate-800 text-slate-300 hover:bg-slate-700'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 // ‹ 00z › stepper — cycles through HOURS array
-function HourStepper({ hour, setHour }: { hour: string; setHour: (h: string) => void }) {
+function HourStepper({ hour, setHour, compact = false }: { hour: string; setHour: (h: string) => void; compact?: boolean }) {
   const idx = HOURS.indexOf(hour)
   const prev = () => setHour(HOURS[(idx - 1 + HOURS.length) % HOURS.length])
   const next = () => setHour(HOURS[(idx + 1) % HOURS.length])
   return (
     <div className="flex items-center rounded overflow-hidden border border-slate-600 shrink-0">
       <button type="button" onClick={prev}
-        className="px-1.5 py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors">
-        <ChevronLeft size={13} />
+        className={`${compact ? 'px-1' : 'px-1.5'} py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
+        <ChevronLeft size={compact ? 11 : 13} />
       </button>
-      <span className="px-2.5 py-1 bg-slate-800 text-xs font-mono text-slate-200 select-none min-w-[3rem] text-center">
+      <span className={`${compact ? 'min-w-[2.35rem] px-1.5' : 'min-w-[3rem] px-2.5'} py-1 bg-slate-800 text-xs font-mono text-slate-200 select-none text-center`}>
         {hour}z
       </span>
       <button type="button" onClick={next}
-        className="px-1.5 py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors">
-        <ChevronRight size={13} />
+        className={`${compact ? 'px-1' : 'px-1.5'} py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
+        <ChevronRight size={compact ? 11 : 13} />
       </button>
     </div>
   )
@@ -438,7 +466,7 @@ function HourStepper({ hour, setHour }: { hour: string; setHour: (h: string) => 
 
 function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-slate-900 border border-slate-700/60 rounded-xl p-4 flex flex-col gap-3 ${className}`}>
+    <div className={`bg-slate-900 border border-slate-700/60 rounded-xl px-4 pt-4 pb-5 flex flex-col gap-3 ${className}`}>
       {children}
     </div>
   )
@@ -768,28 +796,27 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     return (
       <>
         {dateSubMode === 'single' && (
-          <div className="flex gap-2 items-center">
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input flex-1" />
-            {isSixHourly && <HourStepper hour={hour} setHour={setHour} />}
+          <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input min-w-0 flex-1" />
+            {isSixHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
           </div>
         )}
         {dateSubMode === 'range' && (
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5 items-center flex-wrap">
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input" />
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input min-w-0" />
               <span className="text-slate-600 text-xs">→</span>
-              <input type="date" value={endDate}   onChange={e => setEndDate(e.target.value)}   className="input" />
-              {isSixHourly && <HourStepper hour={hour} setHour={setHour} />}
+              <input type="date" value={endDate}   onChange={e => setEndDate(e.target.value)}   className="input min-w-0" />
+              {isSixHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
               {startDate && endDate && startDate <= endDate && (
                 <span className="text-slate-500 text-xs">{dateRange(startDate, endDate).length}d</span>
               )}
             </div>
-            {!isSixHourly && startDate && endDate && startDate < endDate && (
-              <p className="text-[10px] text-slate-500 leading-tight">
-                Each date is averaged across 00/06/12/18z — {dateRange(startDate, endDate).length * 4} total fetches.
-                First request cold; subsequent requests use disk cache.
-              </p>
-            )}
+            {/*{!isSixHourly && startDate && endDate && startDate < endDate && (*/}
+            {/*  <p className="text-[10px] text-slate-500 leading-tight">*/}
+            {/*    Composite dates average all 8 3-hour times.*/}
+            {/*  </p>*/}
+            {/*)}*/}
           </div>
         )}
         {dateSubMode === 'list' && (
@@ -1217,7 +1244,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         {/* ── Card panels ─────────────────────────────────────────────────── */}
         <div className={isVertical
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
-          : 'grid grid-cols-2 xl:grid-cols-4 gap-3 items-stretch'}>
+          : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch'}>
 
           {/* 1 · Variable & Level */}
           <Section className="h-full">
@@ -1306,35 +1333,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   </VariableDisplayControl>
                 )}
               </CardRow>
-            )}
-            {/* ── Wind overlay ─────────────────────────────────────────────── */}
-            {SHOW_WIND_OVERLAY_CONTROLS && (
-            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 ${isFlxVariable ? 'opacity-45' : ''}`}>
-              <Label>Wind Overlay</Label>
-              <button type="button" role="switch" aria-checked={windOn}
-                onClick={() => !isFlxVariable && setWindOn(o => !o)}
-                disabled={isFlxVariable}
-                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${isFlxVariable ? 'cursor-not-allowed' : 'cursor-pointer'} ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windOn ? 'translate-x-3' : 'translate-x-0'}`} />
-              </button>
-
-              <div className={`flex items-center gap-1.5 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
-                <Label>Density</Label>
-                <input type="number" min={1} max={20} value={windStep}
-                  onChange={e => setWindStep(e.target.value)}
-                  className="input w-10 text-center px-1" />
-                <div className="flex flex-col gap-0.5">
-                  {(['vectors', 'barbs'] as const).map(t => (
-                    <button key={t} type="button" onClick={() => setWindType(t)}
-                      className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
-                        windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                      }`}>
-                      {t === 'vectors' ? 'Vectors' : 'Barbs'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
             )}
           </Section>
 
@@ -1435,6 +1433,76 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
         </div>
 
+        {/* ── Advanced composition panels ─────────────────────────────────── */}
+        <div className={isVertical
+          ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
+          : 'grid grid-cols-1 lg:grid-cols-2 gap-3'}>
+          <Section>
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal size={15} className="text-sky-400" />
+              <Label>Decorations</Label>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 ${isFlxVariable ? 'opacity-45' : ''}`}>
+              <Label>Wind Overlay</Label>
+              <button type="button" role="switch" aria-checked={windOn}
+                onClick={() => !isFlxVariable && setWindOn(o => !o)}
+                disabled={isFlxVariable}
+                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${isFlxVariable ? 'cursor-not-allowed' : 'cursor-pointer'} ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windOn ? 'translate-x-3' : 'translate-x-0'}`} />
+              </button>
+
+              <div className={`flex items-center gap-6 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
+                <div className="flex flex-col gap-0.5">
+                  {(['vectors', 'barbs'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setWindType(t)}
+                              className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
+                                  windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                              }`}>
+                        {t === 'vectors' ? 'Vectors' : 'Barbs'}
+                      </button>
+                  ))}
+                </div>
+                <Label>Density</Label>
+                <input type="number" min={1} max={20} value={windStep}
+                  onChange={e => setWindStep(e.target.value)}
+                  className="input w-10 text-center px-1" />
+
+              </div>
+            </div>
+              <VariableDisplayControl label="Contours" status="Coming soon">
+                <div className="grid grid-cols-3 gap-1">
+                  <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>
+                  <ToggleButton active={false} disabled onClick={() => {}}>Pressure</ToggleButton>
+                  <ToggleButton active={false} disabled onClick={() => {}}>Temp</ToggleButton>
+                </div>
+              </VariableDisplayControl>
+            </div>
+          </Section>
+
+          <Section>
+            <div className="flex items-center gap-2">
+              <GalleryHorizontalEnd size={15} className="text-sky-400" />
+              <Label>Panels</Label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <VariableDisplayControl label="Add Map" status="Coming soon">
+                <button type="button" disabled
+                  className="w-full rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-600 cursor-not-allowed">
+                  Add Current Map
+                </button>
+              </VariableDisplayControl>
+              <VariableDisplayControl label="Layout" status="Coming soon">
+                <div className="grid grid-cols-3 gap-1">
+                  <ToggleButton active disabled onClick={() => {}}>Single</ToggleButton>
+                  <ToggleButton active={false} disabled onClick={() => {}}>2-Up</ToggleButton>
+                  <ToggleButton active={false} disabled onClick={() => {}}>4-Up</ToggleButton>
+                </div>
+              </VariableDisplayControl>
+            </div>
+          </Section>
+        </div>
+
         {/* ── Map panel ───────────────────────────────────────────────────── */}
         {isVertical ? (
           <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
@@ -1466,7 +1534,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 )}
                 {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
                 {mapSrc && !error && (
-                  <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map" className="max-w-[75%] rounded shadow-xl" />
+                  <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map" className="max-w-full xl:max-w-[75%] rounded shadow-xl" />
                 )}
               </div>
             ) : (
