@@ -249,6 +249,17 @@ def fetch_flx_field(date: str, hour: str, variable: str, level_name: str) -> xr.
     return da
 
 
+def fetch_flx_wind_components(date: str, hour: str) -> tuple[xr.DataArray, xr.DataArray]:
+    """Fetch 10m UGRD and VGRD from the CORe flx stream with one shared index fetch."""
+    records, grib_url = _fetch_flx_index_and_url(date, hour)
+    u = _fetch_record_by_level(grib_url, records, "UGRD", "10 m above ground")
+    v = _fetch_record_by_level(grib_url, records, "VGRD", "10 m above ground")
+    source = "CORe-flx-gcs" if grib_url.startswith(GCS_FLX_BASE) else "CORe-flx-nomads"
+    u.attrs["_pyre_obs_source"] = source
+    v.attrs["_pyre_obs_source"] = source
+    return u, v
+
+
 def fetch_field(date: str, hour: str, variable: str, level: int) -> xr.DataArray:
     """Surgically fetch a single variable/level field."""
     records = fetch_index(date, hour)

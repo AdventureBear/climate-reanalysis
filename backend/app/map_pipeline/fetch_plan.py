@@ -21,6 +21,7 @@ from ..retrieval import (
     fetch_field_composite,
     fetch_field_daily_composite,
     fetch_flx_field,
+    fetch_flx_wind_components,
     fetch_monthly_field_composite,
     fetch_monthly_relative_humidity_composite,
     fetch_monthly_wind_components_composite,
@@ -62,6 +63,23 @@ def _flx_field(req: FetchRequest, date: str, hour: str):
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = [pool.submit(_flx_field, req, date, hour) for date, hour in date_hour_pairs]
+        arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in as_completed(futures)]
+    stacked = xr.concat(arrays, dim="composite_step")
+    mean = stacked.mean(dim="composite_step")
+    mean.attrs = arrays[0].attrs
+    return mean
+
+
+def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]]):
+    u_mean = _mean_flx_component(date_hour_pairs, 0)
+    v_mean = _mean_flx_component(date_hour_pairs, 1)
+    return u_mean, v_mean
+
+
+def _mean_flx_component(date_hour_pairs: list[tuple[str, str]], component_idx: int) -> xr.DataArray:
+    with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
+        futures = [pool.submit(lambda d, h: fetch_flx_wind_components(d, h)[component_idx], date, hour)
+                   for date, hour in date_hour_pairs]
         arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in as_completed(futures)]
     stacked = xr.concat(arrays, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
@@ -126,9 +144,15 @@ WindFetcher = Callable[[FetchRequest, TimeSelection], tuple]
 
 WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
     "monthly": lambda req, sel: fetch_monthly_wind_components_composite(sel.year_months, req.level),
-    "daily": lambda req, sel: fetch_wind_components_daily_composite(sel.date_list, sel.daily_hours, req.level),
-    "composite": lambda req, sel: fetch_wind_components_composite(sel.date_list, req.hour, req.level),
-    "single": lambda req, sel: fetch_wind_components(sel.date_list[0], req.hour, req.level),
+    "daily": lambda req, sel: _mean_flx_wind_components([(d, h) for d in sel.date_list for h in sel.daily_hours])
+    if VARIABLES[req.variable].get("stream") == "flx"
+    else fetch_wind_components_daily_composite(sel.date_list, sel.daily_hours, req.level),
+    "composite": lambda req, sel: _mean_flx_wind_components([(d, req.hour) for d in sel.date_list])
+    if VARIABLES[req.variable].get("stream") == "flx"
+    else fetch_wind_components_composite(sel.date_list, req.hour, req.level),
+    "single": lambda req, sel: fetch_flx_wind_components(sel.date_list[0], req.hour)
+    if VARIABLES[req.variable].get("stream") == "flx"
+    else fetch_wind_components(sel.date_list[0], req.hour, req.level),
 }
 
 

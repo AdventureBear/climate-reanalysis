@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd } from 'lucide-react'
+import { Wind, Settings, X, Plus, Minus, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu } from 'lucide-react'
+import { REGION_THUMBNAILS } from './regionThumbnails'
 
 // const API_BASE = 'http://127.0.0.1:8000'
 const API_BASE = import.meta.env.VITE_API_URL;
@@ -8,17 +9,16 @@ const API_BASE = import.meta.env.VITE_API_URL;
 const VARIABLES = [
   { key: 'wind_speed',   label: 'Wind Speed' },
   { key: 'temp',         label: 'Temperature' },
+  { key: 'pressure',     label: 'Pressure' },
   { key: 'height',       label: 'Geopot. Height' },
   { key: 'rel_humidity', label: 'Humidity' },
-  { key: 'temp_2m', label: '2m Temperature' },
-  { key: 'wind_10m', label: '10m Wind Speed' },
-  { key: 'surface_pressure', label: 'Surface Pressure' },
   { key: 'precipitable_water', label: 'Precipitable Water' },
 ]
 
 const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
 
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
+const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp'])
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
 
 type TimeScale   = '6-hourly' | 'daily' | 'monthly' | 'climatology'
@@ -67,65 +67,124 @@ type ScaleFamily = {
 // ── Region catalogue ──────────────────────────────────────────────────────────
 
 type RegionEntry = { key: string; label: string; available: boolean }
-type RegionGroup = { category: string; regions: RegionEntry[] }
+type RegionSection = {
+  category: string
+  defaultOpen?: boolean
+  rows: RegionEntry[][]
+}
 
-const REGION_GROUPS: RegionGroup[] = [
+const REGION_SECTIONS: RegionSection[] = [
   {
-    category: 'United States',
-    regions: [
-      { key: 'CONUS',          label: 'CONUS',          available: true  },
-      { key: 'Northwest US',   label: 'Northwest US',   available: true  },
-      { key: 'Northern Plains',label: 'Northern Plains',available: true  },
-      { key: 'Central Plains', label: 'Central Plains', available: true  },
-      { key: 'Northeast',      label: 'Northeast',      available: true  },
-      { key: 'Eastern US',     label: 'Eastern US',     available: true  },
-      { key: 'Southwest US',   label: 'Southwest US',   available: true  },
-      { key: 'South Central',  label: 'South Central',  available: true  },
-      { key: 'Southeast US',   label: 'Southeast US',   available: true  },
-      { key: 'Western US',     label: 'Western US',     available: true  },
-      { key: 'Alaska',         label: 'Alaska',         available: true  },
-      { key: 'Hawaii',         label: 'Hawaii',         available: true  },
+    category: 'US',
+    defaultOpen: true,
+    rows: [
+      [
+        { key: 'CONUS',         label: 'CONUS',         available: true },
+        { key: 'North America', label: 'North America', available: true },
+      ],
+    ],
+  },
+  {
+    category: 'US Regions',
+    defaultOpen: true,
+    rows: [
+      [
+        { key: 'Northwest US',    label: 'Pacific Northwest', available: true },
+        { key: 'Northern Plains', label: 'Northern Plains',   available: true },
+        { key: 'Northeast',       label: 'Northeast',         available: true },
+      ],
+      [
+        { key: 'Western US',     label: 'Western US',        available: true },
+        { key: 'Central Plains', label: 'Central Plains',    available: true },
+        { key: 'Eastern US',     label: 'Eastern US',        available: true },
+      ],
+      [
+        { key: 'Southwest US',  label: 'Southwest',       available: true },
+        { key: 'South Central', label: 'Southern Plains', available: true },
+        { key: 'Southeast US',  label: 'Southeast',       available: true },
+      ],
+      [
+        { key: 'Alaska', label: 'Alaska', available: true },
+        { key: 'Hawaii', label: 'Hawaii', available: true },
+      ],
     ],
   },
   {
     category: 'World',
-    regions: [
-      { key: 'North America',       label: 'North America',       available: true  },
-      { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: true  },
-      { key: 'Southern Hemisphere', label: 'Southern Hemisphere', available: true  },
-      { key: 'North Pacific',       label: 'North Pacific',       available: true  },
-      { key: 'Northern Africa',     label: 'Northern Africa',     available: true  },
-      { key: 'Europe',              label: 'Europe',              available: true  },
-      { key: 'Asia',                label: 'Asia',                available: true  },
-      { key: 'Middle East',         label: 'Middle East',         available: true  },
-      { key: 'East Asia',           label: 'East Asia',           available: true  },
-      { key: 'Australia',           label: 'Australia',           available: true  },
-      { key: 'Southeast Canada',    label: 'Southeast Canada',    available: true  },
-      { key: 'Western Canada',      label: 'Western Canada',      available: true  },
-      { key: 'Canada',              label: 'Canada',              available: true  },
-      { key: 'South America',       label: 'South America',       available: true  },
-      { key: 'World',               label: 'World',               available: true  },
+    rows: [
+      [
+        { key: 'World',               label: 'World',               available: true },
+        { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: true },
+        { key: 'Southern Hemisphere', label: 'Southern Hemisphere', available: true },
+      ],
+      [
+        { key: 'North America', label: 'North America', available: true },
+        { key: 'South America', label: 'South America', available: true },
+        { key: 'Europe',        label: 'Europe',        available: true },
+      ],
+      [
+        { key: 'Asia',      label: 'Asia',      available: true },
+        { key: 'East Asia', label: 'East Asia', available: true },
+        { key: 'Australia', label: 'Australia', available: true },
+      ],
+      [
+        { key: 'Northern Africa', label: 'Northern Africa', available: true },
+        { key: 'Middle East',     label: 'Middle East',     available: true },
+        { key: 'Southern Africa', label: 'Southern Africa', available: true },
+      ],
+      [
+        { key: 'Western Canada',   label: 'Western Canada',   available: true },
+        { key: 'Canada',           label: 'Canada',           available: true },
+        { key: 'Southeast Canada', label: 'Southeast Canada', available: true },
+      ],
+      [
+        { key: 'India', label: 'India', available: true },
+      ],
     ],
   },
   {
-    category: 'Tropics — Oceanic & Coastal',
-    regions: [
-      { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true  },
-      { key: 'North Atlantic',    label: 'North Atlantic',    available: true  },
-      { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true  },
-      { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true  },
-      { key: 'Western Pacific',   label: 'Western Pacific',   available: true  },
-      { key: 'Central Pacific',   label: 'Central Pacific',   available: true  },
-      { key: 'Eastern Pacific',   label: 'Eastern Pacific',   available: true  },
-      { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true  },
-      { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true  },
+    category: 'Tropical & Equatorial',
+    rows: [
+      [
+        { key: 'India',           label: 'India',           available: true },
+        { key: 'Southern Africa', label: 'Southern Africa', available: true },
+        { key: 'Northern Africa', label: 'Northern Africa', available: true },
+      ],
+      [
+        { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
+        { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
+        { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
+      ],
+      [
+        { key: 'Western Pacific', label: 'Western Pacific', available: true },
+        { key: 'Central Pacific', label: 'Central Pacific', available: true },
+        { key: 'Eastern Pacific', label: 'Eastern Pacific', available: true },
+      ],
+      [
+        { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true },
+        { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true },
+      ],
     ],
   },
   {
-    category: 'Tropics — Land Based',
-    regions: [
-      { key: 'India',          label: 'India',          available: true  },
-      { key: 'Southern Africa',label: 'Southern Africa',available: true  },
+    category: 'Ocean Basins',
+    rows: [
+      [
+        { key: 'North Pacific',   label: 'North Pacific',   available: true },
+        { key: 'Western Pacific', label: 'Western Pacific', available: true },
+        { key: 'Central Pacific', label: 'Central Pacific', available: true },
+      ],
+      [
+        { key: 'Eastern Pacific',   label: 'Eastern Pacific',   available: true },
+        { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true },
+        { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true },
+      ],
+      [
+        { key: 'North Atlantic',    label: 'North Atlantic',    available: true },
+        { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
+        { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
+        { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
+      ],
     ],
   },
 ]
@@ -291,6 +350,30 @@ function resolveScaleFamily(variable: string, mode: DisplayMode, level: string):
   return families.find(f => f.levels.includes(Number(level))) ?? families[0]
 }
 
+function levelOptionsForVariable(variable: string): { value: string; label: string }[] {
+  if (variable === 'wind_speed') {
+    return [{ value: 'surface_10m', label: 'Surface (10m)' }, ...LEVELS.map(l => ({ value: String(l), label: String(l) }))]
+  }
+  if (variable === 'temp') {
+    return [{ value: 'surface_2m', label: 'Surface (2m)' }, ...LEVELS.map(l => ({ value: String(l), label: String(l) }))]
+  }
+  if (variable === 'pressure') {
+    return [{ value: 'surface_mslp', label: 'Surface (MSLP)' }]
+  }
+  return LEVELS.map(l => ({ value: String(l), label: String(l) }))
+}
+
+function apiVariableForSelection(variable: string, level: string): string {
+  if (variable === 'wind_speed' && level === 'surface_10m') return 'wind_10m'
+  if (variable === 'temp' && level === 'surface_2m') return 'temp_2m'
+  if (variable === 'pressure') return 'surface_pressure'
+  return variable
+}
+
+function apiLevelForSelection(level: string): string {
+  return SURFACE_LEVELS.has(level) ? '1000' : level
+}
+
 function getWindAnomalyRecommendation(region: string, level: string): WindAnomalyRecommendation {
   const mb = Number(level)
   if (US_WIND_REGIONS.has(region) && mb >= 700 && mb <= 1000) {
@@ -335,6 +418,30 @@ function Label({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   )
+}
+
+function RegionThumbnail({ regionKey, selected }: { regionKey: string; selected: boolean }) {
+  const src = REGION_THUMBNAILS[regionKey]
+  if (!src) return null
+
+  return (
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
+      className={`h-[52px] w-[52px] shrink-0 object-cover ${selected ? 'opacity-95' : 'opacity-85'}`}
+    />
+  )
+}
+
+function getRegionLabel(regionKey: string) {
+  for (const section of REGION_SECTIONS) {
+    for (const row of section.rows) {
+      const region = row.find(r => r.key === regionKey)
+      if (region) return region.label
+    }
+  }
+  return regionKey
 }
 
 // Connected horizontal tab strip — pass fullWidth to stretch across the parent
@@ -507,6 +614,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   const [region,      setRegion]      = useState('CONUS')
   const [regionsOpen, setRegionsOpen] = useState(false)
+  const [openRegionSections, setOpenRegionSections] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(REGION_SECTIONS.map(section => [section.category, section.defaultOpen ?? false]))
+  )
 
   const [displayMode, setDisplayMode] = useState<DisplayMode>('raw')
 
@@ -524,6 +634,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [scaleLabOpen, setScaleLabOpen] = useState(false)
   const [windAnomalyHelpOpen, setWindAnomalyHelpOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [climoSource,  setClimoSource]  = useState<ClimoSource>('r2-monthly')
 
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
@@ -540,10 +651,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
 
+  const apiVariable = apiVariableForSelection(variable, level)
+  const apiLevel = apiLevelForSelection(level)
+  const levelOptions = levelOptionsForVariable(variable)
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
   const isSixHourly = timeScale === '6-hourly'
-  const isFlxVariable = FLX_VARIABLES.has(variable)
+  const isFlxVariable = FLX_VARIABLES.has(apiVariable)
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
   const windAnomalyRecommendation = getWindAnomalyRecommendation(region, level)
@@ -553,8 +667,20 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (!isFlxVariable) return
     if (displayMode !== 'raw') setDisplayMode('raw')
     if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('6-hourly')
-    if (windOn) setWindOn(false)
-  }, [displayMode, isFlxVariable, timeScale, windOn])
+  }, [displayMode, isFlxVariable, timeScale])
+
+  useEffect(() => {
+    if (!levelOptions.some(opt => opt.value === level)) {
+      setLevel(levelOptions[0]?.value ?? '850')
+    }
+  }, [level, levelOptions])
+
+  useEffect(() => {
+    if (apiVariable === 'temp_2m' || apiVariable === 'wind_10m' || apiVariable === 'surface_pressure') {
+      setWindOn(true)
+      setWindType('barbs')
+    }
+  }, [apiVariable])
 
   useEffect(() => {
     if (!adminMode) return
@@ -602,11 +728,18 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle, windUnit])
 
   function openScaleLab() {
-    setLabVariable(variable)
-    setLabLevel(level)
+    setLabVariable(apiVariable)
+    setLabLevel(apiLevel)
     setLabMode(isClimo ? 'raw' : displayMode)
-    setLabFamily(resolveScaleFamily(variable, isClimo ? 'raw' : displayMode, level).key)
+    setLabFamily(resolveScaleFamily(apiVariable, isClimo ? 'raw' : displayMode, apiLevel).key)
     setScaleLabOpen(true)
+  }
+
+  function toggleRegionSection(category: string) {
+    setOpenRegionSections(openSections => ({
+      ...openSections,
+      [category]: !openSections[category],
+    }))
   }
 
   // ── Generate label ───────────────────────────────────────────────────────────
@@ -638,7 +771,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     e.preventDefault()
     setError(null)
 
-    const params: Record<string, string> = { variable, level, region }
+    const params: Record<string, string> = { variable: apiVariable, level: apiLevel, region }
 
     if (displayMode !== 'raw') params.mode = displayMode
 
@@ -684,10 +817,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
     if (windOn && windStep) { params.wind_step = windStep; params.wind_type = windType }
     if (colorStep && colorStep !== '1') params.color_step = colorStep
-    if (variable === 'wind_speed' && displayMode === 'anomaly') {
+    if (apiVariable === 'wind_speed' && displayMode === 'anomaly') {
       params.wind_anomaly_style = windAnomalyStyle
     }
-    if (variable === 'wind_speed' || variable === 'wind_10m') {
+    if (apiVariable === 'wind_speed' || apiVariable === 'wind_10m') {
       params.wind_unit = windUnit
       if (scaleMin.trim()) params.scale_min = scaleMin.trim()
       if (scaleMax.trim()) params.scale_max = scaleMax.trim()
@@ -743,6 +876,22 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       return <TabStrip options={subModeOpts} value={monthSubMode} onChange={v => setMonthSubMode(v as SubMode)} fullWidth />
     }
     return <TabStrip options={subModeOpts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
+  }
+
+  function renderTimeScaleControls() {
+    return (
+      <TabStrip
+        options={[
+          { value: '6-hourly',    label: '6-Hourly' },
+          { value: 'daily',       label: 'Daily' },
+          { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
+          { value: 'climatology', label: 'Climatology', disabled: isFlxVariable },
+        ]}
+        value={timeScale}
+        onChange={v => setTimeScale(v as TimeScale)}
+        fullWidth
+      />
+    )
   }
 
   function renderTemporalInputs() {
@@ -1180,14 +1329,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     <div className={`bg-slate-950 text-slate-100 flex flex-col ${isVertical ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="bg-slate-900 border-b border-slate-700 px-5 py-2 flex items-center gap-3">
+      <header className="relative bg-slate-900 border-b border-slate-700 px-5 py-2 flex items-center gap-3">
         <Wind className="text-sky-400 shrink-0" size={20} />
         <span className="font-bold tracking-tight text-sm">PyRe</span>
-        <span className="text-slate-400 text-sm font-light">Climate Reanalysis</span>
-        <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded">CORe / NCEP</span>
+        <span className="hidden sm:inline text-slate-400 text-sm font-light">Climate Reanalysis</span>
+        <span className="hidden sm:inline text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded">CORe / NCEP</span>
 
         {/* Time scale — far right of header */}
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto hidden md:flex items-center gap-3">
           <Link
             to="/faq"
             className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
@@ -1196,16 +1345,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <CircleHelp size={14} />
             FAQ
           </Link>
-          <TabStrip
-            options={[
-              { value: '6-hourly',    label: '6-Hourly' },
-              { value: 'daily',       label: 'Daily' },
-              { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
-              { value: 'climatology', label: 'Climatology', disabled: isFlxVariable },
-            ]}
-            value={timeScale}
-            onChange={v => setTimeScale(v as TimeScale)}
-          />
+          {renderTimeScaleControls()}
 	          {adminMode ? (
 	            <button
 	              type="button"
@@ -1236,6 +1376,60 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <Settings size={17} />
           </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(open => !open)}
+          className="ml-auto rounded p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white md:hidden"
+          aria-label="Open menu"
+          aria-expanded={mobileMenuOpen}
+        >
+          {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+        {mobileMenuOpen && (
+          <div className="absolute right-3 top-11 z-40 w-48 rounded-lg border border-slate-700 bg-slate-950 p-2 shadow-xl md:hidden">
+            <Link
+              to="/faq"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2 rounded px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+            >
+              <CircleHelp size={14} />
+              FAQ
+            </Link>
+            {adminMode ? (
+              <button
+                type="button"
+                onClick={() => { setMobileMenuOpen(false); openScaleLab() }}
+                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
+              >
+                Scale Lab
+              </button>
+            ) : (
+              <Link
+                to="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2 rounded px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
+              >
+                Scale Lab
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => { setMobileMenuOpen(false); setLayoutMode(m => m === 'horizontal' ? 'vertical' : 'horizontal') }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
+            >
+              {isVertical ? <LayoutGrid size={14} /> : <PanelLeft size={14} />}
+              {isVertical ? 'Grid Layout' : 'Side-by-Side'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMobileMenuOpen(false); setSettingsOpen(o => !o) }}
+              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
+            >
+              <Settings size={14} />
+              Settings
+            </button>
+          </div>
+        )}
       </header>
 
       <form onSubmit={handleGenerate}
@@ -1246,6 +1440,15 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
           : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch'}>
 
+          {/* Mobile · Time Scale */}
+          <Section className="h-full md:hidden">
+            <CardRow>
+              <VariableDisplayControl label="Time Scale">
+                {renderTimeScaleControls()}
+              </VariableDisplayControl>
+            </CardRow>
+          </Section>
+
           {/* 1 · Variable & Level */}
           <Section className="h-full">
             <CardRow>
@@ -1254,7 +1457,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 <Label>Variable</Label>
                 <select
                   value={variable === 'humidity' ? 'rel_humidity' : variable}
-                  onChange={e => setVariable(e.target.value)}
+                  onChange={e => {
+                    const nextVariable = e.target.value
+                    setVariable(nextVariable)
+                    const nextLevel = levelOptionsForVariable(nextVariable)[0]?.value ?? '850'
+                    setLevel(nextLevel)
+                  }}
                   className="input w-full"
                 >
                   {VARIABLES.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
@@ -1263,22 +1471,19 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <div className="flex flex-col gap-1 shrink-0">
                 <Label>Level (mb)</Label>
                 <select
-                  value={isFlxVariable ? 'surface' : level}
+                  value={level}
                   onChange={e => setLevel(e.target.value)}
                   className="input"
-                  disabled={isFlxVariable}
                 >
-                  {isFlxVariable
-                    ? <option value="surface">Surface</option>
-                    : LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  {levelOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </div>
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'wind_10m' || variable === 'temp' || variable === 'temp_2m' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
+            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
               <CardRow>
-                {(variable === 'wind_speed' || variable === 'wind_10m') && (
+                {variable === 'wind_speed' && (
                   <VariableDisplayControl label="Wind Units">
                     <TabStrip
                       options={[
@@ -1291,7 +1496,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
-                {(variable === 'temp' || variable === 'temp_2m') && (
+                {variable === 'temp' && (
                   <VariableDisplayControl label="Temperature Units" status="Coming soon">
                     <TabStrip
                       options={[
@@ -1302,6 +1507,16 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                       onChange={v => setTemperatureUnit(v as TemperatureUnit)}
                       fullWidth
                       disabled
+                    />
+                  </VariableDisplayControl>
+                )}
+                {variable === 'pressure' && (
+                  <VariableDisplayControl label="Pressure Type">
+                    <TabStrip
+                      options={[{ value: 'surface_mslp', label: 'Surface (MSLP)' }]}
+                      value="surface_mslp"
+                      onChange={() => {}}
+                      fullWidth
                     />
                   </VariableDisplayControl>
                 )}
@@ -1354,25 +1569,17 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           <Section className="h-full">
             <CardRow>
             <VariableDisplayControl label="Region">
-              <button type="button" onClick={() => setRegion('CONUS')}
-                className={`w-full px-3 py-1.5 rounded text-xs font-semibold text-center cursor-pointer transition-colors ${
-                  region === 'CONUS'
-                    ? 'bg-sky-700 text-white'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}>
-                CONUS
+              <button type="button" onClick={() => setRegionsOpen(true)}
+                className="min-h-8 w-full rounded bg-sky-700 px-3 py-1.5 text-center text-xs font-semibold text-white cursor-pointer transition-colors hover:bg-sky-600">
+                {getRegionLabel(region)}
               </button>
             </VariableDisplayControl>
             </CardRow>
             <CardRow>
             <VariableDisplayControl label="Region List">
               <button type="button" onClick={() => setRegionsOpen(true)}
-                className={`w-full px-3 py-1.5 rounded text-xs font-semibold text-center cursor-pointer transition-colors ${
-                  region !== 'CONUS'
-                    ? 'bg-sky-700 text-white'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}>
-                {region !== 'CONUS' ? region : 'All Regions'}
+                className="w-full rounded bg-slate-800 px-3 py-1.5 text-center text-xs font-semibold text-slate-300 cursor-pointer transition-colors hover:bg-slate-700">
+                All Regions
               </button>
             </VariableDisplayControl>
             </CardRow>
@@ -1443,12 +1650,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Label>Decorations</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 ${isFlxVariable ? 'opacity-45' : ''}`}>
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
               <Label>Wind Overlay</Label>
               <button type="button" role="switch" aria-checked={windOn}
-                onClick={() => !isFlxVariable && setWindOn(o => !o)}
-                disabled={isFlxVariable}
-                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${isFlxVariable ? 'cursor-not-allowed' : 'cursor-pointer'} ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
+                onClick={() => setWindOn(o => !o)}
+                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors cursor-pointer ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windOn ? 'translate-x-3' : 'translate-x-0'}`} />
               </button>
 
@@ -1552,7 +1758,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         <>
           <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setRegionsOpen(false)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-[80vw] shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-[min(96vw,72rem)] h-[min(84vh,48rem)] shadow-2xl flex flex-col">
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
                 <span className="font-semibold text-base">Select Region</span>
                 <button type="button" onClick={() => setRegionsOpen(false)}
@@ -1560,34 +1766,64 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   <X size={16} />
                 </button>
               </div>
-              <div className="overflow-y-auto px-6 py-5 flex flex-col gap-6">
-                {REGION_GROUPS.map(group => (
-                  <div key={group.category}>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-                      {group.category}
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {group.regions.map(r => (
-                        <button
-                          key={r.key}
-                          type="button"
-                          disabled={!r.available}
-                          onClick={() => { setRegion(r.key); setRegionsOpen(false) }}
-                          className={`min-h-[56px] px-4 py-3 rounded-lg text-sm font-medium text-left transition-colors ${
-                            r.available
-                              ? region === r.key
-                                ? 'bg-sky-700 text-white cursor-pointer'
-                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white cursor-pointer'
-                              : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
-                          }`}
-                        >
-                          {r.label}
-                          {!r.available && (
-                            <span className="block text-xs text-slate-600 mt-0.5">coming soon</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+              <div className="overflow-y-auto px-6 py-5">
+                {REGION_SECTIONS.map(section => (
+                  <div
+                    key={section.category}
+                    className={`${openRegionSections[section.category] ? 'bg-slate-700/55' : ''} first:rounded-t-lg last:rounded-b-lg overflow-hidden`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleRegionSection(section.category)}
+                      className={`flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors ${
+                        openRegionSections[section.category] ? 'bg-transparent' : 'bg-slate-800/35 hover:bg-slate-800/55'
+                      }`}
+                      aria-expanded={openRegionSections[section.category] ?? false}
+                    >
+                      <span className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-widest">
+                        {openRegionSections[section.category] ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                        <span>{section.category}</span>
+                      </span>
+                      <span className="text-slate-500">
+                        {openRegionSections[section.category] ? <Minus size={15} /> : <Plus size={15} />}
+                      </span>
+                    </button>
+                    {openRegionSections[section.category] && (
+                      <div className="px-3 pb-3 pt-1 flex flex-col gap-2">
+                        {section.rows.map((row, rowIndex) => (
+                          <div key={`${section.category}-${rowIndex}`} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {row.map(r => {
+                              const hasThumbnail = r.key in REGION_THUMBNAILS
+                              return (
+                                <button
+                                  key={r.key}
+                                  type="button"
+                                  disabled={!r.available}
+                                  onClick={() => { setRegion(r.key); setRegionsOpen(false) }}
+                                  className={`min-h-[52px] rounded-lg text-sm font-medium text-left transition-colors ${
+                                    hasThumbnail ? 'flex items-center gap-3 overflow-hidden py-0 pl-0 pr-4' : 'px-4 py-3'
+                                  } ${
+                                    r.available
+                                      ? region === r.key
+                                        ? 'bg-sky-700 text-white cursor-pointer'
+                                        : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white cursor-pointer'
+                                      : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'
+                                  }`}
+                                >
+                                  <RegionThumbnail regionKey={r.key} selected={region === r.key} />
+                                  <span>
+                                    {r.label}
+                                    {!r.available && (
+                                      <span className="block text-xs text-slate-600 mt-0.5">coming soon</span>
+                                    )}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
