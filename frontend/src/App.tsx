@@ -85,6 +85,7 @@ const REGION_GROUPS: RegionGroup[] = [
     regions: [
       { key: 'North America',       label: 'North America',       available: true  },
       { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: true  },
+      { key: 'Southern Hemisphere', label: 'Southern Hemisphere', available: true  },
       { key: 'North Pacific',       label: 'North Pacific',       available: true  },
       { key: 'Northern Africa',     label: 'Northern Africa',     available: true  },
       { key: 'Europe',              label: 'Europe',              available: true  },

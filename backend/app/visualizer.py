@@ -5,6 +5,7 @@ import cartopy.feature as cfeature
 import matplotlib.cm as mcm
 import matplotlib.colorbar as mcolorbar
 import matplotlib.colors as mcolors
+from matplotlib.path import Path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -31,7 +32,8 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "Alaska": ccrs.NorthPolarStereo(central_longitude=-150),
     "Hawaii": ccrs.PlateCarree(),
     "North America": ccrs.PlateCarree(),
-    "Northern Hemisphere": ccrs.PlateCarree(),
+    "Northern Hemisphere": ccrs.NorthPolarStereo(central_longitude=-100),
+    "Southern Hemisphere": ccrs.SouthPolarStereo(central_longitude=135),
     "North Pacific": ccrs.PlateCarree(central_longitude=180),
     "Northern Africa": ccrs.PlateCarree(),
     "Europe": ccrs.PlateCarree(),
@@ -58,44 +60,56 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
 }
 
 _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
-    "CONUS": (-125, -66, 24, 50),   # (lon_min, lon_max, lat_min, lat_max)
-    "Northwest US": (-126, -108, 40, 50),
-    "Northern Plains": (-106, -90, 41, 50),
-    "Central Plains": (-103, -89, 33, 46),
-    "Northeast": (-79, -66, 39, 48),
-    "Eastern US": (-90, -66, 25, 47),
-    "Southwest US": (-124, -108, 30, 40),
-    "South Central": (-104, -89, 26, 37),
-    "Southeast US": (-90, -74, 24, 37),
-    "Western US": (-125, -103, 31, 49),
-    "Alaska": (-172, -129, 50, 72),
-    "Hawaii": (-161, -154, 18, 23),
-    "North America": (-170, -30, 10, 80),
-    "Northern Hemisphere": (-180, 180, 0, 90),
-    "North Pacific": (120, -100, 0, 65),
-    "Northern Africa": (-25, 55, 0, 35),
-    "Europe": (-15, 40, 30, 72),
-    "Asia": (55, 155, 5, 65),
-    "Middle East": (25, 75, 5, 42),
-    "East Asia": (95, 155, 10, 55),
-    "Australia": (110, 160, -45, -8),
-    "Southeast Canada": (-100, -40, 40, 68),
-    "Western Canada": (-140, -85, 45, 75),
-    "Canada": (-140, -40, 42, 82),
-    "South America": (-90, -30, -58, 15),
-    "World": (-180, 180, -60, 85),
-    "Indian Ocean": (30, 110, -15, 40),
-    "North Atlantic": (-85, -15, 0, 40),
-    "Western Atlantic": (-100, -45, 0, 40),
-    "Tropical Atlantic": (-65, 0, -5, 30),
-    "Western Pacific": (110, 180, -5, 35),
-    "Central Pacific": (-179, -120, -5, 30),
-    "Eastern Pacific": (-150, -80, -10, 30),
-    "Southwest Pacific": (140, 180, -30, 5),
-    "Southeast Pacific": (-140, -70, -35, 5),
-    "India": (60, 100, 0, 35),
-    "Southern Africa": (10, 45, -35, 5),
+    "CONUS": (-127.5, -63.5, 21.5, 52.5),   # (lon_min, lon_max, lat_min, lat_max)
+    "Northwest US": (-128.5, -105.5, 37.5, 52.5),
+    "Northern Plains": (-108.5, -87.5, 38.5, 52.5),
+    "Central Plains": (-105.5, -86.5, 30.5, 48.5),
+    "Northeast": (-81.5, -63.5, 36.5, 50.5),
+    "Eastern US": (-92.5, -63.5, 22.5, 49.5),
+    "Southwest US": (-126.5, -105.5, 27.5, 42.5),
+    "South Central": (-106.5, -86.5, 23.5, 39.5),
+    "Southeast US": (-92.5, -71.5, 21.5, 39.5),
+    "Western US": (-127.5, -100.5, 28.5, 51.5),
+    "Alaska": (-174.5, -126.5, 47.5, 74.5),
+    "Hawaii": (-163.5, -151.5, 15.5, 25.5),
+    "North America": (-172.5, -27.5, 7.5, 82.5),
+    "Northern Hemisphere": (-180, 180, -2.5, 90),
+    "Southern Hemisphere": (-180, 180, -90, -17.5),
+    "North Pacific": (117.5, -97.5, -2.5, 67.5),
+    "Northern Africa": (-27.5, 57.5, -2.5, 37.5),
+    "Europe": (-17.5, 42.5, 27.5, 74.5),
+    "Asia": (52.5, 157.5, 2.5, 67.5),
+    "Middle East": (22.5, 77.5, 2.5, 44.5),
+    "East Asia": (92.5, 157.5, 7.5, 57.5),
+    "Australia": (107.5, 162.5, -47.5, -5.5),
+    "Southeast Canada": (-102.5, -37.5, 37.5, 70.5),
+    "Western Canada": (-142.5, -82.5, 42.5, 77.5),
+    "Canada": (-142.5, -37.5, 39.5, 84.5),
+    "South America": (-92.5, -27.5, -60.5, 17.5),
+    "World": (-180, 180, -62.5, 87.5),
+    "Indian Ocean": (27.5, 112.5, -17.5, 42.5),
+    "North Atlantic": (-87.5, -12.5, -2.5, 42.5),
+    "Western Atlantic": (-102.5, -42.5, -2.5, 42.5),
+    "Tropical Atlantic": (-67.5, 2.5, -7.5, 32.5),
+    "Western Pacific": (107.5, 182.5, -7.5, 37.5),
+    "Central Pacific": (-180, -117.5, -7.5, 32.5),
+    "Eastern Pacific": (-152.5, -77.5, -12.5, 32.5),
+    "Southwest Pacific": (137.5, 182.5, -32.5, 7.5),
+    "Southeast Pacific": (-142.5, -67.5, -37.5, 7.5),
+    "India": (57.5, 102.5, -2.5, 37.5),
+    "Southern Africa": (7.5, 47.5, -37.5, 7.5),
 }
+
+_POLAR_HEMISPHERE_REGIONS = {"Northern Hemisphere", "Southern Hemisphere"}
+
+
+def _apply_polar_boundary(ax) -> None:
+    theta = np.linspace(0, 2 * np.pi, 120)
+    center = np.array([0.5, 0.5])
+    radius = 0.5
+    verts = np.vstack([np.sin(theta), np.cos(theta)]).T
+    circle = Path(center + radius * verts)
+    ax.set_boundary(circle, transform=ax.transAxes)
 
 # ── Wind speed scale ─────────────────────────────────────────────────────────────
 # Source: Pivotal Weather. Same color sequence for all levels; only the m/s
@@ -923,7 +937,7 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             )
 
     ax.set_title(
-        f"PyReWeather | {var_name}\n{date_str}",
+        f"PyReWeather.org | {var_name}\n{date_str}",
         loc='left', fontsize=11, fontweight='bold',
     )
 
@@ -933,6 +947,8 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
          region_bounds["lat"][0], region_bounds["lat"][1]),
     )
     ax.set_extent([lon0, lon1, lat0, lat1], crs=ccrs.PlateCarree())
+    if region in _POLAR_HEMISPHERE_REGIONS:
+        _apply_polar_boundary(ax)
     ax.coastlines(resolution='50m', color='black', linewidth=1.2)
     ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='black', alpha=0.4)
     ax.add_feature(cfeature.BORDERS, linewidth=1.2, edgecolor='black')

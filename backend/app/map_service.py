@@ -232,7 +232,12 @@ def create_map_buffer(req: MapRequest):
     log.info("")
     log.info("STEP %d  Render map", step)
     log.info("  variable : %s  %dmb", VAR_NAMES.get(req.variable, req.variable), req.level)
-    log.info("  region   : %s  (projection: %s)", req.region, "Albers Equal-Area" if req.region == "CONUS" else "PlateCarree")
+    projection_label = {
+        "CONUS": "Albers Equal-Area",
+        "Northern Hemisphere": "North Polar Stereographic",
+        "Southern Hemisphere": "South Polar Stereographic",
+    }.get(req.region, "PlateCarree")
+    log.info("  region   : %s  (projection: %s)", req.region, projection_label)
     buf = render_map_product(
         req,
         data_array=subset,

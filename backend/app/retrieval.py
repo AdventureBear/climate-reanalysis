@@ -322,7 +322,7 @@ def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int) -
 
 
 # ---------------------------------------------------------------------------
-# Monthly obs — pgb pressure-level mean files (CORe, 1950–2025)
+# Monthly obs — pgb pressure-level mean files (CORe, probed dynamically)
 # ---------------------------------------------------------------------------
 
 CLIMO_PGB_BASE    = "https://ftp.cpc.ncep.noaa.gov/CORe/CDAS_clone_temporary/month/pgb"
@@ -411,6 +411,59 @@ def _fetch_monthly_index(year: int, month: int) -> list[IndexRecord]:
     return parse_index_text(r.text)
 
 
+def _fetch_monthly_index_if_present(year: int, month: int) -> list[IndexRecord] | None:
+    """
+    Optimistically probe the CORe monthly pgb archive.
+
+    Newer months may not have precomputed monthly means yet. Treat a missing or
+    empty index as "try the next tier" so those requests can still be composed
+    from the 3-hourly archive without hardcoding an archive end date.
+    """
+    if (year, month) in _pgb_known_missing:
+        return None
+
+    try:
+        records = _fetch_monthly_index(year, month)
+    except requests.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            log.info("OBS      CORe-pgb: %s %d not in archive → next tier", _cal.month_abbr[month], year)
+            _pgb_known_missing.add((year, month))
+            return None
+        raise
+
+    if not records:
+        log.info("OBS      CORe-pgb: %s %d index empty/unreadable → next tier", _cal.month_abbr[month], year)
+        _pgb_known_missing.add((year, month))
+        return None
+
+    return records
+
+
+def _fetch_monthly_pgb_record(
+    year: int,
+    month: int,
+    records: list[IndexRecord],
+    grib_name: str,
+    level: int,
+) -> xr.DataArray | None:
+    """
+    Fetch a field from an already-probed monthly pgb index.
+
+    Some monthly pgb files can exist without every derived field we support.
+    Missing records are a normal fallback case; other ValueErrors still bubble up.
+    """
+    try:
+        return _fetch_record(_pgb_monthly_url(year, month), records, grib_name, level)
+    except ValueError as exc:
+        if "not found in index" in str(exc):
+            log.info(
+                "OBS      CORe-pgb: %s@%dhPa missing for %s %d → next tier",
+                grib_name, level, _cal.month_abbr[month], year,
+            )
+            return None
+        raise
+
+
 def _compute_monthly_from_6hourly(
     year: int, month: int, fetch_6h_fn, *args
 ) -> xr.DataArray:
@@ -459,21 +512,15 @@ def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr
         if r2m_cached is not None:
             return r2m_cached
 
-    # Tier 1: CORe pgb — try optimistically; catch 404 to fall through
-    if (year, month) not in _pgb_known_missing:
-        try:
-            log.info("OBS      %s %d  %s@%dhPa  → CORe-pgb", _cal.month_abbr[month], year, grib_name, level)
-            records = _fetch_monthly_index(year, month)
-            da = _fetch_record(_pgb_monthly_url(year, month), records, grib_name, level)
+    # Tier 1: CORe pgb — try optimistically; fall through when not published yet.
+    records = _fetch_monthly_index_if_present(year, month)
+    if records is not None:
+        log.info("OBS      %s %d  %s@%dhPa  → CORe-pgb", _cal.month_abbr[month], year, grib_name, level)
+        da = _fetch_monthly_pgb_record(year, month, records, grib_name, level)
+        if da is not None:
             da.attrs["_pyre_obs_source"] = "CORe-pgb"
             _save_obs_monthly(da, path)
             return da
-        except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 404:
-                log.info("OBS      CORe-pgb: %s %d not in archive → next tier", _cal.month_abbr[month], year)
-                _pgb_known_missing.add((year, month))
-            else:
-                raise
 
     # Tier 2: R2 monthly OPeNDAP
     if R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END and grib_name in _GRIB_TO_R2M:
@@ -516,20 +563,14 @@ def fetch_monthly_relative_humidity(year: int, month: int, level: int) -> xr.Dat
         if r2m_cached is not None:
             return r2m_cached
 
-    if (year, month) not in _pgb_known_missing:
-        try:
-            log.info("OBS      %s %d  RH@%dhPa  → CORe-pgb", _cal.month_abbr[month], year, level)
-            records = _fetch_monthly_index(year, month)
-            rh = _fetch_record(_pgb_monthly_url(year, month), records, "RH", level)
+    records = _fetch_monthly_index_if_present(year, month)
+    if records is not None:
+        log.info("OBS      %s %d  RH@%dhPa  → CORe-pgb", _cal.month_abbr[month], year, level)
+        rh = _fetch_monthly_pgb_record(year, month, records, "RH", level)
+        if rh is not None:
             rh.attrs.update({"units": "%", "long_name": "Relative Humidity", "_pyre_obs_source": "CORe-pgb"})
             _save_obs_monthly(rh, path)
             return rh
-        except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 404:
-                log.info("OBS      CORe-pgb: %s %d not in archive → next tier", _cal.month_abbr[month], year)
-                _pgb_known_missing.add((year, month))
-            else:
-                raise
 
     if R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
         log.info("OBS      %s %d  RH@%dhPa  → R2-monthly", _cal.month_abbr[month], year, level)
@@ -615,25 +656,20 @@ def fetch_monthly_wind_components(year: int, month: int, level: int) -> tuple[xr
     if u is not None and v is not None:
         return u, v
 
-    if (year, month) not in _pgb_known_missing:
-        try:
-            records = _fetch_monthly_index(year, month)
-            url = _pgb_monthly_url(year, month)
-            if u is None:
-                u = _fetch_record(url, records, "UGRD", level)
+    records = _fetch_monthly_index_if_present(year, month)
+    if records is not None:
+        if u is None:
+            u = _fetch_monthly_pgb_record(year, month, records, "UGRD", level)
+            if u is not None:
                 u.attrs["_pyre_obs_source"] = "CORe-pgb"
                 _save_obs_monthly(u, u_path)
-            if v is None:
-                v = _fetch_record(url, records, "VGRD", level)
+        if v is None:
+            v = _fetch_monthly_pgb_record(year, month, records, "VGRD", level)
+            if v is not None:
                 v.attrs["_pyre_obs_source"] = "CORe-pgb"
                 _save_obs_monthly(v, v_path)
+        if u is not None and v is not None:
             return u, v
-        except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 404:
-                log.info("OBS      CORe-pgb: %s %d not in archive → next tier", _cal.month_abbr[month], year)
-                _pgb_known_missing.add((year, month))
-            else:
-                raise
 
     if in_r2m_range:
         log.info("OBS      %s %d  UGRD+VGRD@%dhPa  → R2-monthly", _cal.month_abbr[month], year, level)

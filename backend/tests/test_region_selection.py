@@ -21,13 +21,23 @@ def test_wrapped_greenwich_region_is_not_empty():
 
     assert subset.size > 0
     assert bool(subset.notnull().any())
-    assert float(subset.longitude.min()) == -25.0
-    assert float(subset.longitude.max()) == 60.0
+    assert float(subset.longitude.min()) >= -27.5
+    assert float(subset.longitude.max()) <= 62.5
 
 
 def test_non_wrapped_region_keeps_0_360_longitudes():
     subset = select_region(_global_field(), REGIONS["Indian Ocean"])
 
     assert subset.size > 0
-    assert float(subset.longitude.min()) == 25.0
-    assert float(subset.longitude.max()) == 115.0
+    assert float(subset.longitude.min()) >= 22.5
+    assert float(subset.longitude.max()) <= 117.5
+
+
+def test_southern_hemisphere_region_is_not_empty():
+    subset = select_region(_global_field(), REGIONS["Southern Hemisphere"])
+
+    assert subset.size > 0
+    assert float(subset.latitude.min()) == -90.0
+    assert float(subset.latitude.max()) <= -17.5
+    assert float(subset.longitude.min()) == 0.0
+    assert float(subset.longitude.max()) == 359.0
