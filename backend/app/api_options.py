@@ -9,6 +9,10 @@ VAR_NAMES = {
     "height": "Geopotential Height",
     "rel_humidity": "Relative Humidity  (derived: SPFH + TMP → Bolton formula)",
     "humidity": "Specific Humidity",
+    "temp_2m": "2m Temperature",
+    "wind_10m": "10m Wind Speed",
+    "surface_pressure": "Surface Pressure",
+    "precipitable_water": "Precipitable Water",
 }
 
 MODE_NAMES = {
@@ -48,7 +52,7 @@ def scale_overrides_from_query(
     scale_max: float | None,
     wind_unit: str = "kt",
 ) -> dict[str, float] | None:
-    if variable != "wind_speed":
+    if variable not in {"wind_speed", "wind_10m"}:
         return None
     if scale_min is None and scale_max is None:
         return None

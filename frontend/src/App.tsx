@@ -10,7 +10,13 @@ const VARIABLES = [
   { key: 'temp',         label: 'Temperature' },
   { key: 'height',       label: 'Geopot. Height' },
   { key: 'rel_humidity', label: 'Humidity' },
+  { key: 'temp_2m', label: '2m Temperature' },
+  { key: 'wind_10m', label: '10m Wind Speed' },
+  { key: 'surface_pressure', label: 'Surface Pressure' },
+  { key: 'precipitable_water', label: 'Precipitable Water' },
 ]
+
+const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
 
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
@@ -333,7 +339,7 @@ function Label({ children }: { children: React.ReactNode }) {
 
 // Connected horizontal tab strip — pass fullWidth to stretch across the parent
 function TabStrip({ options, value, onChange, fullWidth = false, disabled = false }: {
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; disabled?: boolean }[]
   value: string
   onChange: (v: string) => void
   fullWidth?: boolean
@@ -341,18 +347,21 @@ function TabStrip({ options, value, onChange, fullWidth = false, disabled = fals
 }) {
   return (
     <div className={`flex rounded overflow-hidden border border-slate-600 text-xs font-medium ${fullWidth ? 'w-full' : 'w-fit'}`}>
-      {options.map(opt => (
-        <button key={opt.value} type="button" onClick={() => onChange(opt.value)} disabled={disabled}
+      {options.map(opt => {
+        const optionDisabled = disabled || Boolean(opt.disabled)
+        return (
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)} disabled={optionDisabled}
           className={`${fullWidth ? 'flex-1 text-center' : ''} px-2.5 py-1 transition-colors ${
-            disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'
+            optionDisabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'
           } ${
             value === opt.value
               ? 'bg-sky-700 text-white'
-              : `bg-slate-800 text-slate-400 ${disabled ? '' : 'hover:bg-slate-700'}`
+              : `bg-slate-800 text-slate-400 ${optionDisabled ? '' : 'hover:bg-slate-700'}`
           }`}>
           {opt.label}
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -497,10 +506,18 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
   const isSixHourly = timeScale === '6-hourly'
+  const isFlxVariable = FLX_VARIABLES.has(variable)
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
   const windAnomalyRecommendation = getWindAnomalyRecommendation(region, level)
   const labWindAnomalyRecommendation = getWindAnomalyRecommendation(region, labLevel)
+
+  useEffect(() => {
+    if (!isFlxVariable) return
+    if (displayMode !== 'raw') setDisplayMode('raw')
+    if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('6-hourly')
+    if (windOn) setWindOn(false)
+  }, [displayMode, isFlxVariable, timeScale, windOn])
 
   useEffect(() => {
     if (!adminMode) return
@@ -633,7 +650,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (variable === 'wind_speed' && displayMode === 'anomaly') {
       params.wind_anomaly_style = windAnomalyStyle
     }
-    if (variable === 'wind_speed') {
+    if (variable === 'wind_speed' || variable === 'wind_10m') {
       params.wind_unit = windUnit
       if (scaleMin.trim()) params.scale_min = scaleMin.trim()
       if (scaleMax.trim()) params.scale_max = scaleMax.trim()
@@ -1132,8 +1149,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             options={[
               { value: '6-hourly',    label: '6-Hourly' },
               { value: 'daily',       label: 'Daily' },
-              { value: 'monthly',     label: 'Monthly' },
-              { value: 'climatology', label: 'Climatology' },
+              { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
+              { value: 'climatology', label: 'Climatology', disabled: isFlxVariable },
             ]}
             value={timeScale}
             onChange={v => setTimeScale(v as TimeScale)}
@@ -1193,15 +1210,22 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </div>
               <div className="flex flex-col gap-1 shrink-0">
                 <Label>Level (mb)</Label>
-                <select value={level} onChange={e => setLevel(e.target.value)} className="input">
-                  {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                <select
+                  value={isFlxVariable ? 'surface' : level}
+                  onChange={e => setLevel(e.target.value)}
+                  className="input"
+                  disabled={isFlxVariable}
+                >
+                  {isFlxVariable
+                    ? <option value="surface">Surface</option>
+                    : LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
                 </select>
               </div>
 
             </div>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
+            {(variable === 'wind_speed' || variable === 'wind_10m' || variable === 'temp' || variable === 'temp_2m' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity') && (
               <div className="pt-2 border-t border-slate-700/40">
-                {variable === 'wind_speed' && (
+                {(variable === 'wind_speed' || variable === 'wind_10m') && (
                   <VariableDisplayControl label="Wind Units">
                     <TabStrip
                       options={[
@@ -1214,7 +1238,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
-                {variable === 'temp' && (
+                {(variable === 'temp' || variable === 'temp_2m') && (
                   <VariableDisplayControl label="Temperature Units" status="Coming soon">
                     <TabStrip
                       options={[
@@ -1258,11 +1282,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               </div>
             )}
             {/* ── Wind overlay ─────────────────────────────────────────────── */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
+            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 ${isFlxVariable ? 'opacity-45' : ''}`}>
               <Label>Wind Overlay</Label>
               <button type="button" role="switch" aria-checked={windOn}
-                onClick={() => setWindOn(o => !o)}
-                className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
+                onClick={() => !isFlxVariable && setWindOn(o => !o)}
+                disabled={isFlxVariable}
+                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${isFlxVariable ? 'cursor-not-allowed' : 'cursor-pointer'} ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windOn ? 'translate-x-3' : 'translate-x-0'}`} />
               </button>
 
@@ -1327,8 +1352,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <TabStrip
                 options={[
                   { value: 'raw',        label: 'Raw Data'   },
-                  { value: 'anomaly',    label: 'Anomaly'    },
-                  { value: 'normalized', label: 'Normalized' },
+                  { value: 'anomaly',    label: 'Anomaly', disabled: isFlxVariable },
+                  { value: 'normalized', label: 'Normalized', disabled: isFlxVariable },
                 ]}
                 value={displayMode}
                 onChange={v => setDisplayMode(v as DisplayMode)}

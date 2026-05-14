@@ -103,6 +103,8 @@ def map_date_label(
 
 def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
     units = display_unit(req.variable, req.level, wind_unit=req.wind_unit)
+    if VARIABLES[req.variable].get("stream") == "flx":
+        return f"{VARIABLES[req.variable]['name']} ({units})"
     if use_vector_wind_anomaly:
         return f"Wind Vector Anomaly Magnitude ({units})  {req.level}mb"
     if req.variable == "wind_speed" and req.mode == "anomaly":

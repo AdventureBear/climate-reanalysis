@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import calendar as cal
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Protocol
+
+import xarray as xr
 
 from ..climo_r2 import (
     get_r2_daily_climo_field,
@@ -17,6 +20,7 @@ from ..retrieval import (
     fetch_field,
     fetch_field_composite,
     fetch_field_daily_composite,
+    fetch_flx_field,
     fetch_monthly_field_composite,
     fetch_monthly_relative_humidity_composite,
     fetch_monthly_wind_components_composite,
@@ -34,6 +38,7 @@ from ..retrieval import (
     get_climatology_relative_humidity,
     get_climatology_wind_speed,
 )
+from ..config import VARIABLES
 from .time_selection import TimeSelection
 
 
@@ -44,7 +49,24 @@ class FetchRequest(Protocol):
 
 
 def _variable_fetch_key(variable: str) -> str:
+    if VARIABLES[variable].get("stream") == "flx":
+        return "flx"
     return variable if variable in {"wind_speed", "rel_humidity"} else "field"
+
+
+def _flx_field(req: FetchRequest, date: str, hour: str):
+    cfg = VARIABLES[req.variable]
+    return fetch_flx_field(date, hour, cfg["grib_name"], cfg["flx_level"])
+
+
+def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
+    with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
+        futures = [pool.submit(_flx_field, req, date, hour) for date, hour in date_hour_pairs]
+        arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in as_completed(futures)]
+    stacked = xr.concat(arrays, dim="composite_step")
+    mean = stacked.mean(dim="composite_step")
+    mean.attrs = arrays[0].attrs
+    return mean
 
 
 ClimoFetcher = Callable[[int, int, int, str], tuple]
@@ -88,12 +110,15 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level),
+    ("daily", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, h) for d in sel.date_list for h in sel.daily_hours]),
     ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level),
     ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level),
     ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level),
+    ("composite", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, req.hour) for d in sel.date_list]),
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity(sel.date_list[0], req.hour, req.level),
     ("single", "field"): lambda req, sel, grib: fetch_field(sel.date_list[0], req.hour, grib, req.level),
+    ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),
 }
 
 

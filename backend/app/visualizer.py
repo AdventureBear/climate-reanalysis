@@ -321,15 +321,21 @@ def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple]
     return breakpoints_k, colors, to_k
 
 
+def _render_level(variable: str, level: int) -> int:
+    if variable in {"temp_2m", "wind_10m"}:
+        return 1000
+    return level
+
+
 def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
     """
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
     """
-    if variable == "wind_speed":
+    if variable in {"wind_speed", "wind_10m"}:
         return _wind_unit_label(wind_unit)
-    if variable == "temp":
-        cfg = _TEMP_SCALES.get(level)
+    if variable in {"temp", "temp_2m"}:
+        cfg = _TEMP_SCALES.get(_render_level(variable, level))
         return f"°{cfg['unit']}" if cfg else "K"
     if variable == "rel_humidity":
         return "%"
@@ -337,6 +343,10 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
         return "dam"
     if variable == "humidity":
         return "kg/kg"
+    if variable == "surface_pressure":
+        return "Pa"
+    if variable == "precipitable_water":
+        return "kg/m²"
     return ""
 
 
@@ -368,6 +378,8 @@ def _make_rh_scale(step: int = 1) -> tuple[list[int], list[tuple]]:
 # ── Placeholder scales for other variables ────────────────────────────────────────
 _VAR_CMAPS = {
     "humidity": "YlGnBu",
+    "surface_pressure": "viridis",
+    "precipitable_water": "YlGnBu",
 }
 
 
@@ -503,10 +515,10 @@ def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.nda
 
 def _anomaly_to_display_with_unit(values: np.ndarray, variable: str, level: int, wind_unit: str = "kt") -> np.ndarray:
     """Convert anomaly array from native units to the requested display units."""
-    if variable == "wind_speed":
+    if variable in {"wind_speed", "wind_10m"}:
         return values * _wind_unit_factor(wind_unit)
-    if variable == "temp":
-        cfg = _TEMP_SCALES.get(level)
+    if variable in {"temp", "temp_2m"}:
+        cfg = _TEMP_SCALES.get(_render_level(variable, level))
         if cfg and cfg["unit"] == "F":
             return values * 9 / 5          # ΔK = Δ°C → Δ°F
         return values                       # ΔK = Δ°C — no offset needed for differences
@@ -658,12 +670,13 @@ def describe_color_scale(
             **stats,
         }
 
-    if variable == "wind_speed":
-        group, scale_cfg = _resolved_wind_scale_config(level, scale_overrides)
+    if variable in {"wind_speed", "wind_10m"}:
+        scale_level = _render_level(variable, level)
+        group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides)
         min_kt = scale_cfg["domain_min"]
         max_kt = scale_cfg["domain_max"]
         anchor_kt = _resolve_anchor_values(scale_cfg)
-        boundaries_ms, interval_colors, _, _ = _make_wind_scale(level, step_kt=color_step, scale_overrides=scale_overrides)
+        boundaries_ms, interval_colors, _, _ = _make_wind_scale(scale_level, step_kt=color_step, scale_overrides=scale_overrides)
         boundaries = [_wind_display_value(b, wind_unit) for b in boundaries_ms]
         data_vals = np.asarray(data_array.values, dtype=float) * _wind_unit_factor(wind_unit) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -694,8 +707,8 @@ def describe_color_scale(
             **stats,
         }
 
-    if variable == "temp" and level in _TEMP_SCALES:
-        cfg = _TEMP_SCALES[level]
+    if variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
+        cfg = _TEMP_SCALES[_render_level(variable, level)]
         boundaries_k, interval_colors, _ = _make_temp_scale(cfg, step=color_step)
         from_k = (lambda k: (k - 273.15) * 9.0 / 5.0 + 32.0) if cfg["unit"] == "F" else (lambda k: k - 273.15)
         boundaries = [from_k(v) for v in boundaries_k]
@@ -814,9 +827,10 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
                 'colors': colors, 'boundaries': breakpoints,
             }
 
-    elif variable == "wind_speed":
+    elif variable in {"wind_speed", "wind_10m"}:
+        scale_level = _render_level(variable, level)
         breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
-            level,
+            scale_level,
             step_kt=color_step,
             scale_overrides=scale_overrides,
         )
@@ -843,8 +857,8 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             'colors': interval_colors, 'boundaries': breakpoints_ms,
         }
 
-    elif variable == "temp" and level in _TEMP_SCALES:
-        cfg = _TEMP_SCALES[level]
+    elif variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
+        cfg = _TEMP_SCALES[_render_level(variable, level)]
         breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step)
         cmap = mcolors.ListedColormap(interval_colors)
         cmap.set_under(interval_colors[0])
@@ -857,10 +871,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         )
         tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
         tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
+        temp_label = "2m Temperature" if variable == "temp_2m" else f"Temperature  ·  {level} mb"
         cbar_cfg = {
             'ticks':      [to_k(t) for t in tick_vals],
             'ticklabels': [str(t) for t in tick_vals],
-            'ylabel':     f'Temperature  ·  {level} mb',
+            'ylabel':     temp_label,
             'extend':     'both',
             'colors': interval_colors, 'boundaries': breakpoints_k,
         }
@@ -905,7 +920,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             levels=15, cmap=cmap,
             transform=ccrs.PlateCarree(), extend='both',
         )
-        units = {"humidity": "kg/kg"}.get(variable, "")
+        units = {
+            "humidity": "kg/kg",
+            "surface_pressure": "Pa",
+            "precipitable_water": "kg/m²",
+        }.get(variable, "")
         cbar_cfg = {
             'ticks':      None,
             'ticklabels': None,

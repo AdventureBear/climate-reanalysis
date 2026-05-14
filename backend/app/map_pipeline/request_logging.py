@@ -4,6 +4,7 @@ import logging
 from typing import Protocol
 
 from ..api_options import MODE_NAMES, VAR_NAMES
+from ..config import VARIABLES
 from .time_selection import TimeSelection, period_description
 
 log = logging.getLogger("pyre.api")
@@ -24,7 +25,10 @@ def log_request_banner(req: RequestLogContext, selection: TimeSelection, climo_s
     log.info("══════════════════════════════════════════════════════════════")
     log.info("REQUEST")
     log.info("  variable    : %s", VAR_NAMES.get(req.variable, req.variable))
-    log.info("  level       : %d mb", req.level)
+    if VARIABLES[req.variable].get("stream") == "flx":
+        log.info("  stream      : CORe flx")
+    else:
+        log.info("  level       : %d mb", req.level)
     log.info("  date/period : %s", period_description(selection, req.hour))
     log.info("  region      : %s", req.region)
     log.info("  map type    : %s", MODE_NAMES.get(req.mode, req.mode))

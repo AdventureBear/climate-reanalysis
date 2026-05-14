@@ -72,6 +72,12 @@ def _validate_common(
         if not ok:
             raise HTTPException(status_code=422, detail=detail)
 
+    if VARIABLES[variable].get("stream") == "flx" and mode != "raw":
+        raise HTTPException(
+            status_code=422,
+            detail="CORe flx starter fields currently support raw maps only; climatology/anomaly support is not wired yet.",
+        )
+
 
 @app.get("/")
 def root():
@@ -137,6 +143,11 @@ async def get_map(
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
         raise HTTPException(status_code=422, detail=f"climo_source must be one of {list(VALID_CLIMO_SOURCES)}")
+    if VARIABLES[variable].get("stream") == "flx" and months:
+        raise HTTPException(
+            status_code=422,
+            detail="CORe flx starter fields currently support 6-hourly and daily raw maps only.",
+        )
 
     try:
         buf = create_map_buffer(

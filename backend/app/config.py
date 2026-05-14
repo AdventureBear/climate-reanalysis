@@ -218,6 +218,38 @@ VARIABLES = {
         "grib_names": ["SPFH", "TMP"],
         "normalized_mask_threshold": None,
     },
+    "temp_2m": {
+        "name": "2m Temperature",
+        "units": "K",
+        "stream": "flx",
+        "grib_name": "TMP",
+        "flx_level": "2 m above ground",
+        "normalized_mask_threshold": None,
+    },
+    "wind_10m": {
+        "name": "10m Wind Speed",
+        "units": "m/s",
+        "stream": "flx",
+        "grib_name": "WIND",
+        "flx_level": "10 m above ground",
+        "normalized_mask_threshold": None,
+    },
+    "surface_pressure": {
+        "name": "Surface Pressure",
+        "units": "Pa",
+        "stream": "flx",
+        "grib_name": "PRES",
+        "flx_level": "surface",
+        "normalized_mask_threshold": None,
+    },
+    "precipitable_water": {
+        "name": "Precipitable Water",
+        "units": "kg/m²",
+        "stream": "flx",
+        "grib_name": "PWAT",
+        "flx_level": "atmos col",
+        "normalized_mask_threshold": None,
+    },
 }
 
 PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]

@@ -231,7 +231,10 @@ def create_map_buffer(req: MapRequest):
     step += 1
     log.info("")
     log.info("STEP %d  Render map", step)
-    log.info("  variable : %s  %dmb", VAR_NAMES.get(req.variable, req.variable), req.level)
+    if VARIABLES[req.variable].get("stream") == "flx":
+        log.info("  variable : %s  (CORe flx)", VAR_NAMES.get(req.variable, req.variable))
+    else:
+        log.info("  variable : %s  %dmb", VAR_NAMES.get(req.variable, req.variable), req.level)
     projection_label = {
         "CONUS": "Albers Equal-Area",
         "Northern Hemisphere": "North Polar Stereographic",

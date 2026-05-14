@@ -27,8 +27,11 @@ import app.retrieval as retrieval
 from app.retrieval import (
     VALID_HOURS,
     IndexRecord,
+    _gcs_flx_index_url,
+    _gcs_flx_url,
     _gcs_index_url,
     _gcs_url,
+    _nomads_flx_url,
     _nomads_url,
     fetch_field,
     fetch_index,
@@ -63,6 +66,14 @@ NOMADS_INDEX_SAMPLE = """\
 22:1625816:d=2026050500:UGRD:850 mb:anl:ens mean
 23:1715188:d=2026050500:VGRD:850 mb:anl:ens mean
 81:7145878:d=2026050500:HGT:10 mb:anl:ens mean"""
+
+FLX_INDEX_SAMPLE = """\
+1:0:d=2026051303:DLWRF:surface:anl:ens mean
+5:523571:d=2026051303:UGRD:10 m above ground:anl:ens mean
+7:871095:d=2026051303:WIND:10 m above ground:anl:ens mean
+8:1065263:d=2026051303:PRES:surface:anl:ens mean
+10:1381001:d=2026051303:PWAT:atmos col:anl:ens mean
+21:3125677:d=2026051303:TMP:2 m above ground:anl:ens mean"""
 
 
 # ── Unit: URL construction ───────────────────────────────────────────────────────
@@ -99,6 +110,16 @@ class TestGcsIndexUrl:
         assert idx_url.replace(".idx", "") == grb_url.replace(".grb", "")
 
 
+class TestGcsFlxUrl:
+    def test_historical_flx_url_uses_simplified_cloud_names(self):
+        url = _gcs_flx_url("19500101", "00")
+        assert "grib/3hour/flx/1950/01/flx.1950010100.grb" in url
+
+    def test_historical_flx_index_url(self):
+        url = _gcs_flx_index_url("19500101", "00")
+        assert url.endswith("grib/3hour/flx/1950/01/flx.1950010100.idx")
+
+
 class TestNomadsUrl:
     @pytest.mark.parametrize("hour,expected_batch", [
         ("03", "00"), ("06", "00"),
@@ -120,6 +141,18 @@ class TestNomadsUrl:
         # Rollback must cross month boundary correctly
         url = _nomads_url("20260601", "00")
         assert "core.20260531/18" in url
+
+
+class TestNomadsFlxUrl:
+    def test_flx_url_uses_flx_post_directory(self):
+        url = _nomads_flx_url("20260513", "03")
+        assert "/core.20260513/00/post/flx/" in url
+        assert url.endswith("core.t03z.flx.ensmean.grib2")
+
+    def test_flx_00z_rolls_back_to_previous_day(self):
+        url = _nomads_flx_url("20260601", "00")
+        assert "core.20260531/18" in url
+        assert "core.t00z.flx" in url
 
 
 class TestValidHours:
@@ -149,6 +182,14 @@ class TestParseIndexText:
         records = parse_index_text(NOMADS_INDEX_SAMPLE)
         variables = {r.variable for r in records}
         assert {"TMP", "UGRD", "VGRD", "HGT"}.issubset(variables)
+
+    def test_flx_format_parses_starter_fields(self):
+        records = parse_index_text(FLX_INDEX_SAMPLE)
+        fields = {(r.variable, r.level) for r in records}
+        assert ("TMP", "2 m above ground") in fields
+        assert ("WIND", "10 m above ground") in fields
+        assert ("PRES", "surface") in fields
+        assert ("PWAT", "atmos col") in fields
 
     def test_850mb_level_string(self):
         records = parse_index_text(NOMADS_INDEX_SAMPLE)

@@ -52,6 +52,7 @@ def _save_obs_monthly(da: xr.DataArray, path: str) -> None:
 # GCS is the primary archive: 1950 → near real-time, 3-hourly, simpler URL.
 # NOMADS keeps only the last 7 days and uses a more complex batch-dir structure.
 GCS_BASE = "https://storage.googleapis.com/noaa-nws-ncep-core/grib/3hour/pgb"
+GCS_FLX_BASE = "https://storage.googleapis.com/noaa-nws-ncep-core/grib/3hour/flx"
 NOMADS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod"
 
 # CORe valid hours (3-hourly)
@@ -81,6 +82,18 @@ def _gcs_index_url(valid_date: str, valid_hour: str) -> str:
     return f"{GCS_BASE}/{yyyy}/{mm}/pgb.{valid_date}{valid_hour}.idx"
 
 
+def _gcs_flx_url(valid_date: str, valid_hour: str) -> str:
+    yyyy = valid_date[:4]
+    mm = valid_date[4:6]
+    return f"{GCS_FLX_BASE}/{yyyy}/{mm}/flx.{valid_date}{valid_hour}.grb"
+
+
+def _gcs_flx_index_url(valid_date: str, valid_hour: str) -> str:
+    yyyy = valid_date[:4]
+    mm = valid_date[4:6]
+    return f"{GCS_FLX_BASE}/{yyyy}/{mm}/flx.{valid_date}{valid_hour}.idx"
+
+
 def _nomads_url(valid_date: str, valid_hour: str) -> str:
     """NOMADS URL — last 7 days only. Requires batch-dir calculation."""
     batch_hour = _VALID_HOUR_TO_BATCH[valid_hour]
@@ -89,6 +102,20 @@ def _nomads_url(valid_date: str, valid_hour: str) -> str:
     else:
         batch_date = valid_date
     return f"{NOMADS_BASE}/core.{batch_date}/{batch_hour}/post/spost/core.t{valid_hour}z.spgb.ensmean.anl.grib2"
+
+
+def _nomads_flx_url(valid_date: str, valid_hour: str) -> str:
+    """NOMADS URL for CORe flx ensemble-mean fields."""
+    batch_hour = _VALID_HOUR_TO_BATCH[valid_hour]
+    if valid_hour == "00":
+        batch_date = (datetime.strptime(valid_date, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
+    else:
+        batch_date = valid_date
+    return f"{NOMADS_BASE}/core.{batch_date}/{batch_hour}/post/flx/core.t{valid_hour}z.flx.ensmean.grib2"
+
+
+def _nomads_flx_index_url(valid_date: str, valid_hour: str) -> str:
+    return _nomads_flx_url(valid_date, valid_hour) + ".idx"
 
 
 def _grib_url(valid_date: str, valid_hour: str) -> str:
@@ -138,19 +165,45 @@ def fetch_index(date: str, hour: str) -> list[IndexRecord]:
     return records
 
 
-def _fetch_record(grib_url: str, records: list[IndexRecord], variable: str, level: int) -> xr.DataArray:
+def fetch_flx_index(date: str, hour: str) -> list[IndexRecord]:
+    """Fetch and parse the CORe flx .idx file from GCS, with NOMADS fallback for latest data."""
+    records, _ = _fetch_flx_index_and_url(date, hour)
+    return records
+
+
+def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], str]:
+    gcs_idx_url = _gcs_flx_index_url(date, hour)
+    log.info("FLX_IDX  GET %s", gcs_idx_url)
+    t0 = time.perf_counter()
+    try:
+        r = requests.get(gcs_idx_url, timeout=15)
+        r.raise_for_status()
+        grib_url = _gcs_flx_url(date, hour)
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 404:
+            raise
+        nomads_idx_url = _nomads_flx_index_url(date, hour)
+        log.info("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
+        r = requests.get(nomads_idx_url, timeout=15)
+        r.raise_for_status()
+        grib_url = _nomads_flx_url(date, hour)
+    records = parse_index_text(r.text)
+    log.info("FLX_IDX  parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
+    return records, grib_url
+
+
+def _fetch_record_by_level(grib_url: str, records: list[IndexRecord], variable: str, level_name: str) -> xr.DataArray:
     """
     Issue an HTTP Range request for one GRIB2 record and return it as a
     loaded DataArray. Uses a temp file because cfgrib requires a file path;
     the file is deleted before returning.
     """
-    target = f"{level} mb"
     match_idx = next(
-        (i for i, r in enumerate(records) if r.variable == variable and r.level == target),
+        (i for i, r in enumerate(records) if r.variable == variable and r.level == level_name),
         None
     )
     if match_idx is None:
-        raise ValueError(f"{variable} at {level} mb not found in index")
+        raise ValueError(f"{variable} at {level_name} not found in index")
 
     rec = records[match_idx]
     if match_idx + 1 < len(records):
@@ -161,8 +214,8 @@ def _fetch_record(grib_url: str, records: list[IndexRecord], variable: str, leve
         range_header = f"bytes={rec.byte_start}-"
         nbytes = -1
 
-    log.info("GRIB     GET %s  %s@%dmb  %s  (~%s)",
-             grib_url, variable, level, range_header,
+    log.info("GRIB     GET %s  %s@%s  %s  (~%s)",
+             grib_url, variable, level_name, range_header,
              f"{nbytes//1024}KB" if nbytes > 0 else "?KB")
     t0 = time.perf_counter()
     r = requests.get(grib_url, headers={"Range": range_header}, timeout=30)
@@ -181,6 +234,18 @@ def _fetch_record(grib_url: str, records: list[IndexRecord], variable: str, leve
     finally:
         os.unlink(tmp_path)
 
+    return da
+
+
+def _fetch_record(grib_url: str, records: list[IndexRecord], variable: str, level: int) -> xr.DataArray:
+    return _fetch_record_by_level(grib_url, records, variable, f"{level} mb")
+
+
+def fetch_flx_field(date: str, hour: str, variable: str, level_name: str) -> xr.DataArray:
+    """Surgically fetch a single CORe flx field by GRIB variable and level string."""
+    records, grib_url = _fetch_flx_index_and_url(date, hour)
+    da = _fetch_record_by_level(grib_url, records, variable, level_name)
+    da.attrs["_pyre_obs_source"] = "CORe-flx-gcs" if grib_url.startswith(GCS_FLX_BASE) else "CORe-flx-nomads"
     return da
 
 
