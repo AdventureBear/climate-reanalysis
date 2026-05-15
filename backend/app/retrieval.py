@@ -266,6 +266,12 @@ def fetch_field(date: str, hour: str, variable: str, level: int) -> xr.DataArray
     return _fetch_record(_grib_url(date, hour), records, variable, level)
 
 
+def fetch_field_by_level_name(date: str, hour: str, variable: str, level_name: str) -> xr.DataArray:
+    """Surgically fetch a single pgb field by exact GRIB index level string."""
+    records = fetch_index(date, hour)
+    return _fetch_record_by_level(_grib_url(date, hour), records, variable, level_name)
+
+
 def fetch_wind_components(date: str, hour: str, level: int) -> tuple[xr.DataArray, xr.DataArray]:
     """Fetch UGRD and VGRD with one shared index fetch. Returns (u, v) in m/s."""
     records = fetch_index(date, hour)
@@ -363,6 +369,11 @@ def fetch_field_daily_composite(dates: list[str], hours: list[str], variable: st
     return _mean_of_pairs(fetch_field, [(d, h) for d in dates for h in hours], variable, level)
 
 
+def fetch_named_level_field_daily_composite(dates: list[str], hours: list[str], variable: str, level_name: str) -> xr.DataArray:
+    """Fetch a named-level field across all (date × hour) combinations — daily composite."""
+    return _mean_of_pairs(fetch_field_by_level_name, [(d, h) for d in dates for h in hours], variable, level_name)
+
+
 def fetch_wind_speed_daily_composite(dates: list[str], hours: list[str], level: int) -> xr.DataArray:
     return _mean_of_pairs(fetch_wind_speed, [(d, h) for d in dates for h in hours], level)
 
@@ -380,6 +391,10 @@ def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], 
 
 def fetch_field_composite(dates: list[str], hour: str, variable: str, level: int) -> xr.DataArray:
     return _mean_of(fetch_field, dates, hour, variable, level)
+
+
+def fetch_named_level_field_composite(dates: list[str], hour: str, variable: str, level_name: str) -> xr.DataArray:
+    return _mean_of(fetch_field_by_level_name, dates, hour, variable, level_name)
 
 
 def fetch_wind_speed_composite(dates: list[str], hour: str, level: int) -> xr.DataArray:

@@ -344,7 +344,7 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
     if variable == "humidity":
         return "kg/kg"
     if variable == "surface_pressure":
-        return "Pa"
+        return "hPa"
     if variable == "precipitable_water":
         return "kg/m²"
     return ""
@@ -893,6 +893,20 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         )
         ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
         # height uses contour lines only — no colorbar
+
+    elif variable == "surface_pressure":
+        hpa = data_array / 100.0
+        interval = 4
+        v0 = float(np.floor(hpa.values.min() / interval) * interval)
+        v1 = float(np.ceil( hpa.values.max() / interval) * interval)
+        levels = np.arange(v0, v1 + interval / 2, interval)
+        cs = ax.contour(
+            data_array.longitude, data_array.latitude, hpa.values,
+            levels=levels, colors='black', linewidths=0.8,
+            transform=ccrs.PlateCarree(),
+        )
+        ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
+        # MSLP uses standard 4 hPa / mb isobars only — no colorbar
 
     elif variable == "rel_humidity":
         steps, interval_colors = _make_rh_scale(step=color_step)

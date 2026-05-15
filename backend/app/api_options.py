@@ -11,7 +11,7 @@ VAR_NAMES = {
     "humidity": "Specific Humidity",
     "temp_2m": "2m Temperature",
     "wind_10m": "10m Wind Speed",
-    "surface_pressure": "Surface Pressure",
+    "surface_pressure": "Mean Sea Level Pressure",
     "precipitable_water": "Precipitable Water",
 }
 

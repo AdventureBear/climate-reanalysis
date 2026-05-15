@@ -235,11 +235,11 @@ VARIABLES = {
         "normalized_mask_threshold": None,
     },
     "surface_pressure": {
-        "name": "Surface Pressure",
+        "name": "Mean Sea Level Pressure",
         "units": "Pa",
-        "stream": "flx",
+        "stream": "pgb_named_level",
         "grib_name": "PRES",
-        "flx_level": "surface",
+        "level_name": "mean sea level",
         "normalized_mask_threshold": None,
     },
     "precipitable_water": {

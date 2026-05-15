@@ -48,6 +48,14 @@ type ScaleMeta = {
   domain_min?: number
   domain_max?: number
 }
+type ScaleTransition = 'smooth' | 'discrete' | 'sampled'
+type ScaleAnchor = { id: string; value: number; color: string }
+type ScalePalettePreset = {
+  id: string
+  label: string
+  family: 'PyRe' | 'Sequential' | 'Diverging' | 'Perceptual'
+  colors: string[]
+}
 
 const SCALE_LAB_VARIABLES = [
   { key: 'wind_speed', label: 'Wind' },
@@ -63,6 +71,19 @@ type ScaleFamily = {
   levels: number[]
   description: string
 }
+
+const SCALE_PALETTE_PRESETS: ScalePalettePreset[] = [
+  { id: 'backend', label: 'Backend Default', family: 'PyRe', colors: [] },
+  { id: 'ylgnbu', label: 'YlGnBu', family: 'Sequential', colors: ['#ffffd9', '#edf8b1', '#c7e9b4', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#0c2c84'] },
+  { id: 'ylorrd', label: 'YlOrRd', family: 'Sequential', colors: ['#ffffcc', '#ffeda0', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#800026'] },
+  { id: 'pubugn', label: 'PuBuGn', family: 'Sequential', colors: ['#fff7fb', '#ece2f0', '#d0d1e6', '#a6bddb', '#67a9cf', '#3690c0', '#02818a', '#016450'] },
+  { id: 'rdbu', label: 'RdBu', family: 'Diverging', colors: ['#67001f', '#b2182b', '#d6604d', '#f4a582', '#f7f7f7', '#92c5de', '#4393c3', '#2166ac', '#053061'] },
+  { id: 'brbg', label: 'BrBG', family: 'Diverging', colors: ['#543005', '#8c510a', '#bf812d', '#dfc27d', '#f5f5f5', '#80cdc1', '#35978f', '#01665e', '#003c30'] },
+  { id: 'piyg', label: 'PiYG', family: 'Diverging', colors: ['#8e0152', '#c51b7d', '#de77ae', '#f1b6da', '#f7f7f7', '#b8e186', '#7fbc41', '#4d9221', '#276419'] },
+  { id: 'viridis', label: 'Viridis', family: 'Perceptual', colors: ['#440154', '#46327e', '#365c8d', '#277f8e', '#1fa187', '#4ac16d', '#a0da39', '#fde725'] },
+  { id: 'magma', label: 'Magma', family: 'Perceptual', colors: ['#000004', '#1c1044', '#4f127b', '#812581', '#b5367a', '#e55964', '#fb8761', '#fec287', '#fcfdbf'] },
+  { id: 'cividis', label: 'Cividis', family: 'Perceptual', colors: ['#00204c', '#173b6d', '#3b496c', '#5c586e', '#7d6970', '#a17c6f', '#c89266', '#fdea45'] },
+]
 
 // ── Region catalogue ──────────────────────────────────────────────────────────
 
@@ -293,6 +314,58 @@ function dateRange(startISO: string, endISO: string): string[] {
 function formatScaleValue(value: number): string {
   if (Math.abs(value - Math.round(value)) < 1e-9) return String(Math.round(value))
   return value.toFixed(1).replace(/\.0$/, '')
+}
+
+function scaleAnchorId(idx: number) {
+  return `anchor-${idx}`
+}
+
+function anchorsFromValues(values: number[], colors: string[]): ScaleAnchor[] {
+  return values.map((value, idx) => ({
+    id: scaleAnchorId(idx),
+    value,
+    color: colors[idx] ?? colors[colors.length - 1] ?? '#ffffff',
+  }))
+}
+
+function anchorsFromScaleMeta(meta: ScaleMeta | null): ScaleAnchor[] {
+  const values = meta?.anchor_values ?? []
+  const colors = meta?.anchor_hex ?? []
+  if (!values.length || !colors.length) return []
+  return anchorsFromValues(values, colors)
+}
+
+function anchorsFromPreset(preset: ScalePalettePreset, min: number, max: number): ScaleAnchor[] {
+  if (preset.id === 'backend') return []
+  if (preset.colors.length === 1) return anchorsFromValues([min], preset.colors)
+  return anchorsFromValues(
+    preset.colors.map((_, idx) => min + (idx / (preset.colors.length - 1)) * (max - min)),
+    preset.colors,
+  )
+}
+
+function sortedAnchors(anchors: ScaleAnchor[]) {
+  return [...anchors].sort((a, b) => a.value - b.value)
+}
+
+function previewGradient(anchors: ScaleAnchor[], transition: ScaleTransition): string {
+  const ordered = sortedAnchors(anchors)
+  if (!ordered.length) return 'linear-gradient(90deg, #1e293b, #1e293b)'
+  if (ordered.length === 1) return ordered[0].color
+  if (transition === 'sampled') {
+    return `linear-gradient(90deg, ${ordered.map(anchor => anchor.color).join(', ')})`
+  }
+  const min = ordered[0].value
+  const max = ordered[ordered.length - 1].value
+  const pct = (value: number) => max > min ? ((value - min) / (max - min)) * 100 : 0
+  if (transition === 'discrete') {
+    return `linear-gradient(90deg, ${ordered.map((anchor, idx) => {
+      const left = idx === 0 ? 0 : (pct(ordered[idx - 1].value) + pct(anchor.value)) / 2
+      const right = idx === ordered.length - 1 ? 100 : (pct(anchor.value) + pct(ordered[idx + 1].value)) / 2
+      return `${anchor.color} ${left}%, ${anchor.color} ${right}%`
+    }).join(', ')})`
+  }
+  return `linear-gradient(90deg, ${ordered.map(anchor => `${anchor.color} ${pct(anchor.value)}%`).join(', ')})`
 }
 
 function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFamily[] {
@@ -647,6 +720,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [scaleMeta, setScaleMeta] = useState<ScaleMeta | null>(null)
   const [scaleMetaError, setScaleMetaError] = useState<string | null>(null)
   const [scaleMetaLoading, setScaleMetaLoading] = useState(false)
+  const [scalePreset, setScalePreset] = useState('backend')
+  const [scaleTransition, setScaleTransition] = useState<ScaleTransition>('smooth')
+  const [scaleAnchors, setScaleAnchors] = useState<ScaleAnchor[]>([])
 
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
@@ -726,6 +802,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
     return () => controller.abort()
   }, [adminMode, colorStep, labLevel, labMode, labVariable, scaleMax, scaleMin, windAnomalyStyle, windUnit])
+
+  useEffect(() => {
+    const backendAnchors = anchorsFromScaleMeta(scaleMeta)
+    if (backendAnchors.length) {
+      setScaleAnchors(backendAnchors)
+      setScalePreset('backend')
+    }
+  }, [scaleMeta])
 
   function openScaleLab() {
     setLabVariable(apiVariable)
@@ -1012,6 +1096,42 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           .filter(v => v >= min && v <= max)
           .map(v => ({ value: v, left: ((v - min) / (max - min)) * 100 }))
       : []
+    const designerAnchors = sortedAnchors(scaleAnchors)
+    const designerGradient = previewGradient(designerAnchors, scaleTransition)
+    const presetFamilies = Array.from(new Set(SCALE_PALETTE_PRESETS.map(preset => preset.family)))
+    const hasDesignerDomain = min !== undefined && max !== undefined && max > min
+
+    function applyScalePreset(preset: ScalePalettePreset) {
+      setScalePreset(preset.id)
+      if (preset.id === 'backend') {
+        const backendAnchors = anchorsFromScaleMeta(scaleMeta)
+        if (backendAnchors.length) setScaleAnchors(backendAnchors)
+        return
+      }
+      if (hasDesignerDomain) {
+        setScaleAnchors(anchorsFromPreset(preset, min, max))
+      }
+    }
+
+    function updateScaleAnchor(id: string, patch: Partial<ScaleAnchor>) {
+      setScalePreset('custom')
+      setScaleAnchors(prev => prev.map(anchor => anchor.id === id ? { ...anchor, ...patch } : anchor))
+    }
+
+    function addScaleAnchor() {
+      if (!hasDesignerDomain) return
+      const ordered = sortedAnchors(scaleAnchors)
+      const value = ordered.length
+        ? (ordered[Math.floor((ordered.length - 1) / 2)].value + ordered[Math.ceil((ordered.length - 1) / 2)].value) / 2
+        : (min + max) / 2
+      setScalePreset('custom')
+      setScaleAnchors(prev => [...prev, { id: `anchor-${Date.now()}`, value, color: '#ffffff' }])
+    }
+
+    function removeScaleAnchor(id: string) {
+      setScalePreset('custom')
+      setScaleAnchors(prev => prev.filter(anchor => anchor.id !== id))
+    }
 
     return (
       <div className="flex flex-col gap-4">
@@ -1278,6 +1398,117 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               )}
             </div>
 
+            <div className="rounded-xl border border-slate-700/70 bg-slate-950/50 p-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-widest text-slate-500">Scale Designer</p>
+                  <p className="mt-1 text-sm text-slate-200">Experiment with palette presets, anchor colors, and transition behavior.</p>
+                </div>
+                <span className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-400">
+                  preview only
+                </span>
+              </div>
+
+              <div className="mb-4 h-10 w-full overflow-hidden rounded-md border border-slate-700" style={{ background: designerGradient }} />
+
+              <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="rounded-lg bg-slate-900/70 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase tracking-widest text-slate-500">Palette Presets</p>
+                    {scalePreset === 'custom' && <span className="text-[11px] text-sky-300">Custom</span>}
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {presetFamilies.map(family => (
+                      <div key={family}>
+                        <p className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-600">{family}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {SCALE_PALETTE_PRESETS.filter(preset => preset.family === family).map(preset => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => applyScalePreset(preset)}
+                              disabled={!hasDesignerDomain && preset.id !== 'backend'}
+                              className={`rounded px-2.5 py-1.5 text-xs transition-colors ${
+                                scalePreset === preset.id
+                                  ? 'bg-sky-700 text-white'
+                                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              } ${!hasDesignerDomain && preset.id !== 'backend' ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-slate-900/70 p-3">
+                  <p className="mb-2 text-[11px] uppercase tracking-widest text-slate-500">Transition</p>
+                  <TabStrip
+                    options={[
+                      { value: 'smooth', label: 'Smooth' },
+                      { value: 'discrete', label: 'Stepped' },
+                      { value: 'sampled', label: 'Sampled' },
+                    ]}
+                    value={scaleTransition}
+                    onChange={v => setScaleTransition(v as ScaleTransition)}
+                    fullWidth
+                  />
+                  <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                    Smooth interpolates between anchors. Stepped creates hard color bands. Sampled preserves preset color order.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-lg bg-slate-900/70 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-widest text-slate-500">Anchor Editor</p>
+                  <button
+                    type="button"
+                    onClick={addScaleAnchor}
+                    disabled={!hasDesignerDomain}
+                    className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus size={12} />
+                    Anchor
+                  </button>
+                </div>
+                <div className="grid gap-2">
+                  {designerAnchors.map((anchor, idx) => (
+                    <div key={anchor.id} className="grid grid-cols-[2.5rem_1fr_7rem_2rem] items-center gap-2">
+                      <span className="text-[11px] text-slate-500 font-mono">{idx + 1}</span>
+                      <input
+                        type="number"
+                        value={Number.isFinite(anchor.value) ? anchor.value : 0}
+                        onChange={e => updateScaleAnchor(anchor.id, { value: Number(e.target.value) })}
+                        className="input w-full"
+                      />
+                      <label className="flex h-8 items-center overflow-hidden rounded border border-slate-700 bg-slate-800">
+                        <span className="h-full w-8 shrink-0" style={{ backgroundColor: anchor.color }} />
+                        <input
+                          type="color"
+                          value={anchor.color}
+                          onChange={e => updateScaleAnchor(anchor.id, { color: e.target.value })}
+                          className="h-8 w-full cursor-pointer border-0 bg-transparent p-0"
+                          aria-label={`Anchor ${idx + 1} color`}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeScaleAnchor(anchor.id)}
+                        disabled={designerAnchors.length <= 2}
+                        className="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-800 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label={`Remove anchor ${idx + 1}`}
+                      >
+                        <Minus size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-xl border border-slate-700/70 bg-slate-950/40 p-3">
                 <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">Anchors</p>
@@ -1511,10 +1742,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   </VariableDisplayControl>
                 )}
                 {variable === 'pressure' && (
-                  <VariableDisplayControl label="Pressure Type">
+                  <VariableDisplayControl label="Pressure Display">
                     <TabStrip
-                      options={[{ value: 'surface_mslp', label: 'Surface (MSLP)' }]}
-                      value="surface_mslp"
+                      options={[
+                        { value: 'contoured', label: 'Contoured' },
+                        { value: 'shaded', label: 'Shaded', disabled: true },
+                      ]}
+                      value="contoured"
                       onChange={() => {}}
                       fullWidth
                     />

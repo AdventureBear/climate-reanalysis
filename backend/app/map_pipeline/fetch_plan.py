@@ -18,6 +18,7 @@ from ..climo_r2 import (
 )
 from ..retrieval import (
     fetch_field,
+    fetch_field_by_level_name,
     fetch_field_composite,
     fetch_field_daily_composite,
     fetch_flx_field,
@@ -26,6 +27,8 @@ from ..retrieval import (
     fetch_monthly_relative_humidity_composite,
     fetch_monthly_wind_components_composite,
     fetch_monthly_wind_speed_composite,
+    fetch_named_level_field_composite,
+    fetch_named_level_field_daily_composite,
     fetch_relative_humidity,
     fetch_relative_humidity_composite,
     fetch_relative_humidity_daily_composite,
@@ -52,12 +55,23 @@ class FetchRequest(Protocol):
 def _variable_fetch_key(variable: str) -> str:
     if VARIABLES[variable].get("stream") == "flx":
         return "flx"
+    if VARIABLES[variable].get("stream") == "pgb_named_level":
+        return "pgb_named_level"
     return variable if variable in {"wind_speed", "rel_humidity"} else "field"
+
+
+def _uses_10m_wind_overlay(variable: str) -> bool:
+    return VARIABLES[variable].get("stream") == "flx" or variable == "surface_pressure"
 
 
 def _flx_field(req: FetchRequest, date: str, hour: str):
     cfg = VARIABLES[req.variable]
     return fetch_flx_field(date, hour, cfg["grib_name"], cfg["flx_level"])
+
+
+def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):
+    cfg = VARIABLES[req.variable]
+    return fetch_field_by_level_name(date, hour, cfg["grib_name"], cfg["level_name"])
 
 
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
@@ -128,14 +142,27 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level),
+    ("daily", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_daily_composite(
+        sel.date_list,
+        sel.daily_hours,
+        VARIABLES[req.variable]["grib_name"],
+        VARIABLES[req.variable]["level_name"],
+    ),
     ("daily", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, h) for d in sel.date_list for h in sel.daily_hours]),
     ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level),
     ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level),
     ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level),
+    ("composite", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_composite(
+        sel.date_list,
+        req.hour,
+        VARIABLES[req.variable]["grib_name"],
+        VARIABLES[req.variable]["level_name"],
+    ),
     ("composite", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, req.hour) for d in sel.date_list]),
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity(sel.date_list[0], req.hour, req.level),
     ("single", "field"): lambda req, sel, grib: fetch_field(sel.date_list[0], req.hour, grib, req.level),
+    ("single", "pgb_named_level"): lambda req, sel, _grib: _pgb_named_level_field(req, sel.date_list[0], req.hour),
     ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),
 }
 
@@ -145,13 +172,13 @@ WindFetcher = Callable[[FetchRequest, TimeSelection], tuple]
 WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
     "monthly": lambda req, sel: fetch_monthly_wind_components_composite(sel.year_months, req.level),
     "daily": lambda req, sel: _mean_flx_wind_components([(d, h) for d in sel.date_list for h in sel.daily_hours])
-    if VARIABLES[req.variable].get("stream") == "flx"
+    if _uses_10m_wind_overlay(req.variable)
     else fetch_wind_components_daily_composite(sel.date_list, sel.daily_hours, req.level),
     "composite": lambda req, sel: _mean_flx_wind_components([(d, req.hour) for d in sel.date_list])
-    if VARIABLES[req.variable].get("stream") == "flx"
+    if _uses_10m_wind_overlay(req.variable)
     else fetch_wind_components_composite(sel.date_list, req.hour, req.level),
     "single": lambda req, sel: fetch_flx_wind_components(sel.date_list[0], req.hour)
-    if VARIABLES[req.variable].get("stream") == "flx"
+    if _uses_10m_wind_overlay(req.variable)
     else fetch_wind_components(sel.date_list[0], req.hour, req.level),
 }
 
