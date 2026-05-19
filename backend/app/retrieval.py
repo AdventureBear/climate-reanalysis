@@ -230,6 +230,8 @@ def _fetch_record_by_level(grib_url: str, records: list[IndexRecord], variable: 
     try:
         ds = xr.open_dataset(tmp_path, engine="cfgrib", backend_kwargs={"indexpath": ""})
         da = ds[list(ds.data_vars)[0]].load()
+        da.attrs["_pyre_grib_variable"] = variable
+        da.attrs["_pyre_grib_level"] = rec.level
         ds.close()
     finally:
         os.unlink(tmp_path)

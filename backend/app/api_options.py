@@ -1,7 +1,7 @@
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
-VALID_WIND_ANOMALY_STYLES = ("speed_diff", "vector_mag")
 VALID_WIND_UNITS = ("kt", "m/s")
+VALID_PWAT_UNITS = ("mm", "in")
 
 VAR_NAMES = {
     "wind_speed": "Wind Speed",

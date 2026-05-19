@@ -9,11 +9,11 @@ from fastapi.responses import StreamingResponse
 from .api_options import (
     VALID_CLIMO_SOURCES,
     VALID_MODES,
-    VALID_WIND_ANOMALY_STYLES,
+    VALID_PWAT_UNITS,
     VALID_WIND_UNITS,
     scale_overrides_from_query,
 )
-from .config import PRESSURE_LEVELS, REGIONS, VARIABLES
+from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import VALID_HOURS
@@ -49,8 +49,8 @@ def _validate_common(
     variable: str,
     level: int,
     mode: str,
-    wind_anomaly_style: str,
     wind_unit: str,
+    pwat_unit: str,
     scale_min: float | None,
     scale_max: float | None,
 ) -> None:
@@ -58,11 +58,8 @@ def _validate_common(
         (variable in VARIABLES, f"variable must be one of {list(VARIABLES.keys())}"),
         (level in PRESSURE_LEVELS, f"level must be one of {PRESSURE_LEVELS}"),
         (mode in VALID_MODES, f"mode must be one of {list(VALID_MODES)}"),
-        (
-            wind_anomaly_style in VALID_WIND_ANOMALY_STYLES,
-            f"wind_anomaly_style must be one of {list(VALID_WIND_ANOMALY_STYLES)}",
-        ),
         (wind_unit in VALID_WIND_UNITS, f"wind_unit must be one of {list(VALID_WIND_UNITS)}"),
+        (pwat_unit in VALID_PWAT_UNITS, f"pwat_unit must be one of {list(VALID_PWAT_UNITS)}"),
         (
             scale_min is None or scale_max is None or scale_min < scale_max,
             "scale_min must be less than scale_max",
@@ -72,10 +69,13 @@ def _validate_common(
         if not ok:
             raise HTTPException(status_code=422, detail=detail)
 
-    if VARIABLES[variable].get("stream") == "flx" and mode != "raw":
+    if is_surface_or_named_level(variable) and mode != "raw":
         raise HTTPException(
             status_code=422,
-            detail="CORe flx starter fields currently support raw maps only; climatology/anomaly support is not wired yet.",
+            detail=(
+                "CORe surface/named-level starter fields currently support raw maps only; "
+                "climatology/anomaly support is not wired yet."
+            ),
         )
 
 
@@ -98,10 +98,10 @@ def get_scale_meta(
     mode: str = "raw",
     scale_min: float | None = None,
     scale_max: float | None = None,
-    wind_anomaly_style: str = "speed_diff",
     wind_unit: str = "kt",
+    pwat_unit: str = "mm",
 ):
-    _validate_common(variable, level, mode, wind_anomaly_style, wind_unit, scale_min, scale_max)
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max)
     if color_step < 1:
         raise HTTPException(status_code=422, detail="color_step must be at least 1")
 
@@ -111,8 +111,8 @@ def get_scale_meta(
         color_step=color_step,
         mode=mode,
         scale_overrides=scale_overrides_from_query(variable, scale_min, scale_max, wind_unit=wind_unit),
-        wind_anomaly_style=wind_anomaly_style,
         wind_unit=wind_unit,
+        pwat_unit=pwat_unit,
     )
 
 
@@ -120,6 +120,7 @@ def get_scale_meta(
 async def get_map(
     date: str = "",
     dates: str = "",
+    date_mode: str = "",
     months: str = "",
     hour: str = "00",
     hours: str = "",
@@ -128,25 +129,30 @@ async def get_map(
     region: str = "CONUS",
     wind_step: int = 0,
     wind_type: str = "vectors",
+    wind_overlay_mode: str = "actual",
     color_step: int = 1,
     scale_min: float | None = None,
     scale_max: float | None = None,
     mode: str = "raw",
     climo_source: str = "monthly-pgb",
-    wind_anomaly_style: str = "speed_diff",
     wind_unit: str = "kt",
+    pwat_unit: str = "mm",
 ):
-    _validate_common(variable, level, mode, wind_anomaly_style, wind_unit, scale_min, scale_max)
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max)
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
     if region not in REGIONS:
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
         raise HTTPException(status_code=422, detail=f"climo_source must be one of {list(VALID_CLIMO_SOURCES)}")
-    if VARIABLES[variable].get("stream") == "flx" and months:
+    if wind_overlay_mode not in {"actual", "anomaly"}:
+        raise HTTPException(status_code=422, detail="wind_overlay_mode must be 'actual' or 'anomaly'")
+    if wind_overlay_mode == "anomaly" and not (variable == "wind_speed" and mode == "anomaly"):
+        raise HTTPException(status_code=422, detail="wind_overlay_mode='anomaly' is only supported for wind anomaly maps")
+    if is_surface_or_named_level(variable) and months:
         raise HTTPException(
             status_code=422,
-            detail="CORe flx starter fields currently support 6-hourly and daily raw maps only.",
+            detail="CORe surface/named-level starter fields currently support 6-hourly and daily raw maps only.",
         )
 
     try:
@@ -154,6 +160,7 @@ async def get_map(
             MapRequest(
                 date=date,
                 dates=dates,
+                date_mode=date_mode,
                 months=months,
                 hour=hour,
                 hours=hours,
@@ -162,13 +169,14 @@ async def get_map(
                 region=region,
                 wind_step=wind_step,
                 wind_type=wind_type,
+                wind_overlay_mode=wind_overlay_mode,
                 color_step=color_step,
                 scale_min=scale_min,
                 scale_max=scale_max,
                 mode=mode,
                 climo_source=climo_source,
-                wind_anomaly_style=wind_anomaly_style,
                 wind_unit=wind_unit,
+                pwat_unit=pwat_unit,
             )
         )
         return StreamingResponse(buf, media_type="image/png")

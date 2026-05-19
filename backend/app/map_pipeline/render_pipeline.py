@@ -15,8 +15,8 @@ class RenderRequest(Protocol):
     region: str
     color_step: int
     mode: str
-    wind_anomaly_style: str
     wind_unit: str
+    pwat_unit: str
     wind_step: int
     wind_type: str
 
@@ -45,8 +45,8 @@ def render_map_product(
         mode=req.mode,
         data_array=data_array,
         scale_overrides=scale_overrides,
-        wind_anomaly_style=req.wind_anomaly_style,
         wind_unit=req.wind_unit,
+        pwat_unit=req.pwat_unit,
     )
     log_scale_diag(scale_diag)
 
@@ -65,6 +65,6 @@ def render_map_product(
         color_step=req.color_step,
         mode=req.mode,
         scale_overrides=scale_overrides,
-        wind_anomaly_style=req.wind_anomaly_style,
         wind_unit=req.wind_unit,
+        pwat_unit=req.pwat_unit,
     )

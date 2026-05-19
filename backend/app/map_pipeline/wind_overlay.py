@@ -13,6 +13,7 @@ log = logging.getLogger("pyre.api")
 
 class WindOverlayRequest(Protocol):
     wind_step: int
+    wind_overlay_mode: str
     mode: str
     level: int
 
@@ -34,7 +35,12 @@ def prepare_wind_overlay(
 
     step += 1
     log.info("")
-    if use_vector_wind_anomaly and anomaly_u_subset is not None and anomaly_v_subset is not None:
+    if (
+        req.wind_overlay_mode == "anomaly"
+        and use_vector_wind_anomaly
+        and anomaly_u_subset is not None
+        and anomaly_v_subset is not None
+    ):
         log.info("STEP %d  Wind overlay  (reusing computed anomaly U+V)", step)
         log.info("  Meaning : vectors/barbs show U' and V' departures from climatology")
         log.info("STEP %d ✓  wind overlay ready  (anomaly vectors cached)", step)

@@ -83,23 +83,7 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 ## 8. How are wind anomalies defined?
 
-PyRe distinguishes between two valid but different wind-anomaly diagnostics:
-
-### Wind Speed Anomaly
-
-This treats wind as a scalar magnitude field:
-
-- Compute wind speed at each grid point as `|V| = sqrt(U² + V²)`
-- Compute the climatological mean wind speed for the same calendar period
-- Form the anomaly as `|V|_obs − |V|_climo`
-
-This is a **signed scalar** anomaly. Positive values indicate stronger-than-normal wind speed; negative values indicate weaker-than-normal wind speed. It answers the question: how much faster or slower was the flow than climatology at this location?
-
-Use this when the main question is intensity: low-level jet strength, trade-wind acceleration or weakening, upper-level jet streak strength, or general wind impacts.
-
-### Vector Wind Anomaly
-
-This treats wind as a vector field and preserves directional departures:
+PyRe treats wind anomalies as vector departures from climatology:
 
 - Compute component anomalies `U' = U_obs − U_climo` and `V' = V_obs − V_climo`
 - Compute the magnitude of the anomaly vector as `|V'| = sqrt(U'² + V'²)`
@@ -108,11 +92,7 @@ The shaded field is **positive-definite**. It does not indicate stronger vs weak
 
 Use this when the main question is circulation: monsoon onset, cross-equatorial flow, directional shifts, displaced jets, anomalous inflow, or broad pattern changes.
 
-These two products are not interchangeable. A circulation can have a small scalar speed anomaly but a large vector anomaly if the flow direction changes substantially.
-
-For example, if the climatological 850 mb wind is weak easterly and the observed wind is strong southwesterly, the Vector Wind Anomaly will emphasize the anomalous southwesterly flow. A Wind Speed Anomaly will only say that the wind was faster than normal; it will not preserve the direction of the departure.
-
-PyRe suggests a wind-anomaly type from the selected region and pressure level, but the user still chooses the diagnostic. Low-level tropical and monsoon regions usually default scientifically toward Vector Wind Anomaly. Upper-level jet diagnostics often start with Wind Speed Anomaly, while displaced or unusually directed jet flow may still be better diagnosed with Vector Wind Anomaly.
+For example, if the climatological 850 mb wind is weak easterly and the observed wind is strong southwesterly, the wind anomaly emphasizes the anomalous southwesterly flow rather than only asking whether the wind speed was faster or slower than normal.
 
 ---
 
@@ -222,7 +202,7 @@ The wind overlay draws vectors or barbs on top of any scalar field. It requires 
 
 **On Vector Wind Anomaly maps**: the overlay shows anomaly vectors/barbs, `(U_obs − U_climo, V_obs − V_climo)`. The arrows can point opposite the actual wind if the observed flow is weaker than the climatological flow.
 
-**On Wind Speed Anomaly, Raw, and Normalized maps**: the overlay shows the actual observed/composite wind components unless a future mode explicitly says otherwise.
+**On Raw and Normalized maps**: the overlay shows the actual observed/composite wind components unless a future mode explicitly says otherwise.
 
 ---
 

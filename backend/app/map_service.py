@@ -10,6 +10,8 @@ from .map_pipeline.climo_policy import resolve_climo_source
 from .map_pipeline.fetch_plan import (
     fetch_climo,
     fetch_climo_weighted,
+    fetch_daily_climo_for_selection,
+    fetch_daily_wind_climo_components_for_selection,
     fetch_obs,
     fetch_weighted_wind_climo_components,
     fetch_wind,
@@ -55,10 +57,14 @@ def create_map_buffer(req: MapRequest):
     if req.mode != "raw":
         step += 1
         multi_month_climo = selection.monthly_mode and len(set(m for _, m in selection.year_months)) > 1
+        multi_day_climo = (not selection.monthly_mode) and len(selection.date_list) > 1
         climo_what = (
             f"30-year mean + σ of {VAR_NAMES.get(req.variable, req.variable)}"
             f"  for {', '.join(cal.month_abbr[m] for m in sorted(set(mn for _, mn in selection.year_months)))}"
             if multi_month_climo
+            else f"30-year mean + σ of {VAR_NAMES.get(req.variable, req.variable)}"
+            f"  for {len(selection.date_list)} matching calendar days"
+            if multi_day_climo
             else f"30-year mean + σ of {VAR_NAMES.get(req.variable, req.variable)}"
             f"  for {cal.month_abbr[selection.obs_month]}"
             + ("" if selection.monthly_mode else f" {selection.obs_day:02d}")
@@ -69,17 +75,23 @@ def create_map_buffer(req: MapRequest):
         log.info("  Source  : %s", CLIMO_DESC.get(climo_source, climo_source))
         if multi_month_climo:
             log.info("  Note    : multiple calendar months → day-weighted mean of per-month climos")
+        if multi_day_climo:
+            log.info("  Note    : multiple dates → mean of matching calendar-day climos")
 
         t0 = time.perf_counter()
         if use_vector_wind_anomaly:
             if multi_month_climo:
                 climo_u_mean, climo_v_mean = fetch_weighted_wind_climo_components(req, climo_source, selection)
+            elif multi_day_climo:
+                climo_u_mean, climo_v_mean = fetch_daily_wind_climo_components_for_selection(req, climo_source, selection)
             else:
                 climo_u_mean, climo_v_mean = fetch_wind_climo_components(
                     req, climo_source, selection.obs_month, selection.obs_day
                 )
         elif multi_month_climo:
             climo_mean, climo_std = fetch_climo_weighted(req, climo_source, selection, grib_name)
+        elif multi_day_climo:
+            climo_mean, climo_std = fetch_daily_climo_for_selection(req, climo_source, selection, grib_name)
         else:
             climo_mean, climo_std = fetch_climo(req, climo_source, selection.obs_month, selection.obs_day, grib_name)
         climo_elapsed = time.perf_counter() - t0
@@ -214,7 +226,6 @@ def create_map_buffer(req: MapRequest):
             subset = obs_subset
 
     date_str = map_date_label(req, selection, climo_source, use_vector_wind_anomaly, obs_source, obs)
-    var_label = variable_label(req, use_vector_wind_anomaly)
 
     u_subset, v_subset, step = prepare_wind_overlay(
         req,
@@ -227,6 +238,11 @@ def create_map_buffer(req: MapRequest):
         cached_u=cached_u,
         cached_v=cached_v,
     )
+    var_label = variable_label(req, use_vector_wind_anomaly)
+    if u_subset is not None and v_subset is not None:
+        overlay_label = "Wind Anomaly" if req.wind_overlay_mode == "anomaly" else "Wind"
+        overlay_glyph = "Barbs" if req.wind_type == "barbs" else "Vectors"
+        var_label = f"{var_label}, {overlay_label} {overlay_glyph} ({req.wind_unit})"
 
     step += 1
     log.info("")

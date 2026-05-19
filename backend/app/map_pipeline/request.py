@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class MapRequest:
     date: str = ""
     dates: str = ""
+    date_mode: str = ""
     months: str = ""
     hour: str = "00"
     hours: str = ""
@@ -15,10 +16,11 @@ class MapRequest:
     region: str = "CONUS"
     wind_step: int = 0
     wind_type: str = "vectors"
+    wind_overlay_mode: str = "actual"
     color_step: int = 1
     scale_min: float | None = None
     scale_max: float | None = None
     mode: str = "raw"
     climo_source: str = "monthly-pgb"
-    wind_anomaly_style: str = "speed_diff"
     wind_unit: str = "kt"
+    pwat_unit: str = "mm"

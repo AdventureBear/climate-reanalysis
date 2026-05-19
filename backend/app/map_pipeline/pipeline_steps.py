@@ -9,11 +9,10 @@ class AnalysisRequest(Protocol):
     variable: str
     level: int
     mode: str
-    wind_anomaly_style: str
 
 
 def is_vector_wind_anomaly(req: AnalysisRequest) -> bool:
-    return req.variable == "wind_speed" and req.mode == "anomaly" and req.wind_anomaly_style == "vector_mag"
+    return req.variable == "wind_speed" and req.mode == "anomaly"
 
 
 def select_region(da, bounds: dict):
@@ -32,6 +31,7 @@ def wind_speed_from_components(u, v):
     speed = (u ** 2 + v ** 2) ** 0.5
     speed.attrs.update({"units": "m/s", "long_name": "Wind Speed"})
     speed.attrs["_pyre_obs_source"] = u.attrs.get("_pyre_obs_source", "CORe-pgb")
+    speed.attrs["_pyre_grib_level"] = u.attrs.get("_pyre_grib_level", "")
     return speed
 
 

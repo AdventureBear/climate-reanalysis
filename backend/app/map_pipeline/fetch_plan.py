@@ -200,6 +200,28 @@ def fetch_climo_weighted(req: FetchRequest, climo_source: str, selection: TimeSe
     return mean, std
 
 
+def _calendar_day_counts(dates: list[str]) -> list[tuple[tuple[int, int], int]]:
+    counts: dict[tuple[int, int], int] = {}
+    for date in dates:
+        key = (int(date[4:6]), int(date[6:8]))
+        if key == (2, 29):
+            key = (2, 28)
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items())
+
+
+def fetch_daily_climo_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection, grib_name: str):
+    days = _calendar_day_counts(selection.date_list)
+    if len(days) == 1:
+        (month, day), _ = days[0]
+        return fetch_climo(req, climo_source, month, day, grib_name)
+    total = sum(weight for _, weight in days)
+    climo_data = [(weight, fetch_climo(req, climo_source, month, day, grib_name)) for (month, day), weight in days]
+    mean = sum(weight * cm for weight, (cm, _) in climo_data) / total
+    std = sum(weight * cs for weight, (_, cs) in climo_data) / total
+    return mean, std
+
+
 def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int, day: int):
     return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, day, req.level)
 
@@ -213,6 +235,18 @@ def fetch_weighted_wind_climo_components(req: FetchRequest, climo_source: str, s
     comps = [fetch_wind_climo_components(req, climo_source, m, 15) for m in unique_months]
     mean_u = sum(w * cu for w, (cu, _) in zip(day_weights, comps)) / total_days
     mean_v = sum(w * cv for w, (_, cv) in zip(day_weights, comps)) / total_days
+    return mean_u, mean_v
+
+
+def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection):
+    days = _calendar_day_counts(selection.date_list)
+    if len(days) == 1:
+        (month, day), _ = days[0]
+        return fetch_wind_climo_components(req, climo_source, month, day)
+    total = sum(weight for _, weight in days)
+    comps = [(weight, fetch_wind_climo_components(req, climo_source, month, day)) for (month, day), weight in days]
+    mean_u = sum(weight * cu for weight, (cu, _) in comps) / total
+    mean_v = sum(weight * cv for weight, (_, cv) in comps) / total
     return mean_u, mean_v
 
 

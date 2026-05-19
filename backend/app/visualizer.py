@@ -177,6 +177,16 @@ def _wind_scale_display_value(value_kt: float, wind_unit: str) -> float:
     return value_kt * _KT_TO_MS if wind_unit == "m/s" else value_kt
 
 
+def _pwat_to_display(values, pwat_unit: str):
+    if pwat_unit == "in":
+        return values * 0.03937007874
+    return values
+
+
+def _pwat_unit_label(pwat_unit: str) -> str:
+    return "in" if pwat_unit == "in" else "mm"
+
+
 def _interval_midpoints(boundaries: list[float]) -> list[float]:
     """Return the center value of each color interval defined by boundaries."""
     return [
@@ -327,7 +337,7 @@ def _render_level(variable: str, level: int) -> int:
     return level
 
 
-def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
+def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm") -> str:
     """
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
@@ -344,15 +354,15 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt") -> str:
     if variable == "humidity":
         return "kg/kg"
     if variable == "surface_pressure":
-        return "hPa"
+        return "mb"
     if variable == "precipitable_water":
-        return "kg/m²"
+        return _pwat_unit_label(pwat_unit)
     return ""
 
 
 # ── Relative humidity scale ───────────────────────────────────────────────────────
 # 1 % steps, 0–100 %. Breakpoints are plain percentages (data is already in %).
-_RH_ANCHORS_PCT = [  0,   9,  39,  40,  89,  90, 100]
+_RH_ANCHORS_PCT = [  0,   9,  49,  50,  89,  90, 100]
 _RH_ANCHOR_HEX  = ['#c87800', '#2d0d04', '#f0e8d0', '#c8f0c0', '#0f4c0f', '#0a3d0a', '#0a1860']
 _RH_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
@@ -375,12 +385,100 @@ def _make_rh_scale(step: int = 1) -> tuple[list[int], list[tuple]]:
     return steps, colors
 
 
-# ── Placeholder scales for other variables ────────────────────────────────────────
-_VAR_CMAPS = {
-    "humidity": "YlGnBu",
-    "surface_pressure": "viridis",
-    "precipitable_water": "YlGnBu",
+# ── Fixed scales for scalar variables not covered above ───────────────────────────
+_HEIGHT_CONTOUR_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0,
+    "domain_max": 600,
+    "anchor_values": [0, 120, 240, 360, 480, 600],
+    "anchor_colors": ["#f7f7f7", "#d9d9d9", "#bdbdbd", "#969696", "#636363", "#252525"],
+    "key_breakpoints": [],
+    "step": 4,
 }
+
+_MSLP_CONTOUR_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 940,
+    "domain_max": 1048,
+    "anchor_values": [940, 960, 980, 1000, 1020, 1040, 1048],
+    "anchor_colors": ["#08306b", "#2171b5", "#6baed6", "#f7f7f7", "#fdae6b", "#e6550d", "#7f2704"],
+    "key_breakpoints": [1000, 1020],
+    "step": 4,
+}
+
+_PWAT_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0,
+    "domain_max": 80,
+    "anchor_values": [0, 10, 20, 30, 40, 50, 60, 70, 80],
+    "anchor_colors": [
+        "#f7fbff", "#deebf7", "#9ecae1", "#41ab5d", "#fdd049",
+        "#fd8d3c", "#e31a1c", "#800026", "#4d004b",
+    ],
+    "key_breakpoints": [25, 50],
+}
+
+_SPECIFIC_HUMIDITY_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 0.024,
+    "anchor_values": [0.0, 0.002, 0.006, 0.010, 0.014, 0.018, 0.024],
+    "anchor_colors": ["#f7fcf0", "#e0f3db", "#a8ddb5", "#7bccc4", "#43a2ca", "#0868ac", "#084081"],
+    "key_breakpoints": [0.010, 0.018],
+}
+
+
+def _pwat_display_scale_config(pwat_unit: str) -> dict:
+    if pwat_unit != "in":
+        return _PWAT_SCALE_CONFIG
+    return {
+        **_PWAT_SCALE_CONFIG,
+        "domain_min": _PWAT_SCALE_CONFIG["domain_min"] * 0.03937007874,
+        "domain_max": _PWAT_SCALE_CONFIG["domain_max"] * 0.03937007874,
+        "anchor_values": [round(v * 0.03937007874, 3) for v in _PWAT_SCALE_CONFIG["anchor_values"]],
+        "key_breakpoints": [round(v * 0.03937007874, 3) for v in _PWAT_SCALE_CONFIG["key_breakpoints"]],
+    }
+
+
+def _make_pwat_scale(step_mm: int = 1, pwat_unit: str = "mm") -> tuple[list[float], list[tuple], dict]:
+    """PWAT breakpoints and colors in the selected display unit."""
+    step_mm = max(int(step_mm), 1)
+    native_steps = list(range(_PWAT_SCALE_CONFIG["domain_min"], _PWAT_SCALE_CONFIG["domain_max"], step_mm))
+    native_steps.append(_PWAT_SCALE_CONFIG["domain_max"])
+    steps = [round(_pwat_to_display(v, pwat_unit), 4) for v in native_steps]
+    cfg = _pwat_display_scale_config(pwat_unit)
+    colors = _interpolate_interval_colors(steps, _resolve_anchor_values(cfg), cfg["anchor_colors"])
+    return steps, colors, cfg
+
+
+def _make_specific_humidity_scale(step_multiplier: int = 1) -> tuple[list[float], list[tuple], dict]:
+    """Specific humidity breakpoints in kg/kg."""
+    step = max(int(step_multiplier), 1) * 0.001
+    max_value = _SPECIFIC_HUMIDITY_SCALE_CONFIG["domain_max"]
+    steps = [round(v, 6) for v in np.arange(0.0, max_value, step).tolist()]
+    if not steps or steps[0] != 0.0:
+        steps.insert(0, 0.0)
+    if abs(steps[-1] - max_value) > 1e-9:
+        steps.append(max_value)
+    colors = _interpolate_interval_colors(
+        steps,
+        _resolve_anchor_values(_SPECIFIC_HUMIDITY_SCALE_CONFIG),
+        _SPECIFIC_HUMIDITY_SCALE_CONFIG["anchor_colors"],
+    )
+    return steps, colors, _SPECIFIC_HUMIDITY_SCALE_CONFIG
+
+
+def _make_fixed_display_scale(cfg: dict, step: float | None = None) -> tuple[list[float], list[tuple], dict]:
+    scale_step = float(step if step is not None else cfg["step"])
+    domain_min = float(cfg["domain_min"])
+    domain_max = float(cfg["domain_max"])
+    steps = [round(v, 6) for v in np.arange(domain_min, domain_max, scale_step).tolist()]
+    if not steps or abs(steps[0] - domain_min) > 1e-9:
+        steps.insert(0, domain_min)
+    if abs(steps[-1] - domain_max) > 1e-9:
+        steps.append(domain_max)
+    colors = _interpolate_interval_colors(steps, _resolve_anchor_values(cfg), cfg["anchor_colors"])
+    return steps, colors, cfg
 
 
 # ── Diverging anomaly scale ───────────────────────────────────────────────────────
@@ -616,8 +714,8 @@ def describe_color_scale(
     mode: str,
     data_array=None,
     scale_overrides: dict[str, float] | None = None,
-    wind_anomaly_style: str = "speed_diff",
     wind_unit: str = "kt",
+    pwat_unit: str = "mm",
 ) -> dict[str, object]:
     """
     Return render-time scale diagnostics in display units so backend logs can
@@ -639,12 +737,12 @@ def describe_color_scale(
             if variable == "wind_speed" and wind_unit == "m/s":
                 max_val *= _KT_TO_MS
                 step *= _KT_TO_MS
-            unit = display_unit(variable, level, wind_unit=wind_unit)
+            unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
             plot_values = (
                 np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
                 if data_array is not None else None
             )
-            if variable == "wind_speed" and wind_anomaly_style == "vector_mag":
+            if variable == "wind_speed":
                 native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_values)
                 breakpoints = native_cfg["breakpoints"]
                 interval_colors = native_cfg["colors"]
@@ -744,16 +842,103 @@ def describe_color_scale(
             **stats,
         }
 
+    if variable == "height":
+        step = max(color_step, 1) * _HEIGHT_CONTOUR_SCALE_CONFIG["step"]
+        boundaries, interval_colors, cfg = _make_fixed_display_scale(_HEIGHT_CONTOUR_SCALE_CONFIG, step=step)
+        data_vals = (
+            np.asarray((data_array.values / 10.0), dtype=float)
+            if data_array is not None else None
+        )
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-height-contours",
+            "unit": "dam",
+            "step": step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
+            "anchor_values": cfg["anchor_values"],
+            "anchor_hex": cfg["anchor_colors"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            "domain_min": cfg["domain_min"],
+            "domain_max": cfg["domain_max"],
+            **stats,
+        }
+
+    if variable == "surface_pressure":
+        step = max(color_step, 1) * _MSLP_CONTOUR_SCALE_CONFIG["step"]
+        boundaries, interval_colors, cfg = _make_fixed_display_scale(_MSLP_CONTOUR_SCALE_CONFIG, step=step)
+        data_vals = (
+            np.asarray((data_array.values / 100.0), dtype=float)
+            if data_array is not None else None
+        )
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-mslp-contours",
+            "unit": "mb",
+            "step": step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
+            "anchor_values": cfg["anchor_values"],
+            "anchor_hex": cfg["anchor_colors"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            "domain_min": cfg["domain_min"],
+            "domain_max": cfg["domain_max"],
+            **stats,
+        }
+
+    if variable == "precipitable_water":
+        boundaries, interval_colors, cfg = _make_pwat_scale(step_mm=color_step, pwat_unit=pwat_unit)
+        data_vals = (
+            np.asarray(_pwat_to_display(data_array.values, pwat_unit), dtype=float)
+            if data_array is not None else None
+        )
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-pwat",
+            "unit": _pwat_unit_label(pwat_unit),
+            "step": color_step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
+            "anchor_values": cfg["anchor_values"],
+            "anchor_hex": cfg["anchor_colors"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            "domain_min": cfg["domain_min"],
+            "domain_max": cfg["domain_max"],
+            **stats,
+        }
+
+    if variable == "humidity":
+        boundaries, interval_colors, cfg = _make_specific_humidity_scale(step_multiplier=color_step)
+        data_vals = np.asarray(data_array.values, dtype=float) if data_array is not None else None
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": "fixed-specific-humidity",
+            "unit": "kg/kg",
+            "step": color_step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
+            "anchor_values": cfg["anchor_values"],
+            "anchor_hex": cfg["anchor_colors"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            "domain_min": cfg["domain_min"],
+            "domain_max": cfg["domain_max"],
+            **stats,
+        }
+
     return {
-        "scale_kind": "auto-or-uninstrumented",
-        "unit": display_unit(variable, level, wind_unit=wind_unit),
+        "scale_kind": "fixed-scale-missing",
+        "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
         "step": color_step,
     }
 
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_anomaly_style: str = "speed_diff", wind_unit: str = "kt"):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
     plt.close('all')
     fig = plt.figure(figsize=(14, 9))
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
@@ -776,9 +961,9 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             if variable == "wind_speed" and wind_unit == "m/s":
                 max_val *= _KT_TO_MS
                 step *= _KT_TO_MS
-            unit_label = display_unit(variable, level, wind_unit=wind_unit)
+            unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
             plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit)
-        if mode == "anomaly" and variable == "wind_speed" and wind_anomaly_style == "vector_mag":
+        if mode == "anomaly" and variable == "wind_speed":
             native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
             breakpoints = native_cfg["breakpoints"]
             colors = native_cfg["colors"]
@@ -927,26 +1112,50 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             'colors': interval_colors, 'boundaries': steps,
         }
 
-    else:
-        cmap = _VAR_CMAPS.get(variable, "viridis")
+    elif variable == "precipitable_water":
+        plot_values = _pwat_to_display(data_array.values, pwat_unit)
+        steps, interval_colors, _ = _make_pwat_scale(step_mm=color_step, pwat_unit=pwat_unit)
+        cmap = mcolors.ListedColormap(interval_colors)
+        cmap.set_under(interval_colors[0])
+        cmap.set_over(interval_colors[-1])
+        norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
         plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, data_array.values,
-            levels=15, cmap=cmap,
+            data_array.longitude, data_array.latitude, plot_values,
+            levels=steps, cmap=cmap, norm=norm,
             transform=ccrs.PlateCarree(), extend='both',
         )
-        units = {
-            "humidity": "kg/kg",
-            "surface_pressure": "Pa",
-            "precipitable_water": "kg/m²",
-        }.get(variable, "")
+        tick_step = 10 if pwat_unit != "in" else 0.5
+        ticks = np.arange(steps[0], steps[-1] + tick_step / 2, tick_step)
         cbar_cfg = {
-            'ticks':      None,
-            'ticklabels': None,
-            'ylabel':     f'{units}  (auto-scaled placeholder)',
+            'ticks':      ticks.tolist(),
+            'ticklabels': [f"{v:g}" for v in ticks],
+            'ylabel':     f'Precipitable Water ({_pwat_unit_label(pwat_unit)})',
             'extend':     'both',
-            'colors': None, 'boundaries': None,
-            'cmap': cmap,
+            'colors': interval_colors, 'boundaries': steps,
         }
+
+    elif variable == "humidity":
+        steps, interval_colors, _ = _make_specific_humidity_scale(step_multiplier=color_step)
+        cmap = mcolors.ListedColormap(interval_colors)
+        cmap.set_under(interval_colors[0])
+        cmap.set_over(interval_colors[-1])
+        norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
+        plot_obj = ax.contourf(
+            data_array.longitude, data_array.latitude, data_array.values,
+            levels=steps, cmap=cmap, norm=norm,
+            transform=ccrs.PlateCarree(), extend='both',
+        )
+        ticks = np.arange(0.0, steps[-1] + 0.004 / 2, 0.004)
+        cbar_cfg = {
+            'ticks':      ticks.tolist(),
+            'ticklabels': [f"{v:.3f}".rstrip("0").rstrip(".") for v in ticks],
+            'ylabel':     'Specific Humidity (kg/kg)',
+            'extend':     'both',
+            'colors': interval_colors, 'boundaries': steps,
+        }
+
+    else:
+        raise ValueError(f"No fixed rendering scale configured for variable: {variable}")
 
     # Phase 2: wind overlay, title, extent, map features
     if wind_step > 0 and u_array is not None and v_array is not None:
@@ -968,11 +1177,6 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
                 transform=ccrs.PlateCarree(),
                 scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
             )
-
-    ax.set_title(
-        f"PyReWeather.org | {var_name}\n{date_str}",
-        loc='left', fontsize=11, fontweight='bold',
-    )
 
     lon0, lon1, lat0, lat1 = _REGION_EXTENTS.get(
         region,
@@ -1004,6 +1208,31 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     # aspect-ratio adjustment is finalised and ax.get_position() is accurate.
     fig.canvas.draw()
     pos = ax.get_position()
+
+    title_lines = [line for line in str(date_str).splitlines() if line.strip()]
+    fig.text(
+        pos.x0, pos.y1 + 0.045,
+        var_name,
+        fontsize=11, color='black', fontweight='bold',
+        ha='left', va='bottom',
+        transform=fig.transFigure,
+    )
+    if title_lines:
+        fig.text(
+            pos.x0, pos.y1 + 0.026,
+            title_lines[0],
+            fontsize=9, color='black', fontweight='semibold',
+            ha='left', va='bottom',
+            transform=fig.transFigure,
+        )
+    if len(title_lines) > 1:
+        fig.text(
+            pos.x0, pos.y1 + 0.010,
+            "  ".join(title_lines[1:]),
+            fontsize=8, color='#555',
+            ha='left', va='bottom',
+            transform=fig.transFigure,
+        )
 
     if plot_obj is not None and cbar_cfg is not None:
         # cax touches the map right edge exactly — no gap
@@ -1059,6 +1288,13 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         'Data: CORe Reanalysis  ·  NCEP/CPC',
         fontsize=7, color='#888',
         ha='left', va='top',
+        transform=fig.transFigure,
+    )
+    fig.text(
+        pos.x1, pos.y0 - 0.018,
+        'PyReWeather.org',
+        fontsize=11, color='#555', fontweight='bold',
+        ha='right', va='top',
         transform=fig.transFigure,
     )
 

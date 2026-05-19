@@ -224,6 +224,7 @@ VARIABLES = {
         "stream": "flx",
         "grib_name": "TMP",
         "flx_level": "2 m above ground",
+        "display_level": "2 m above ground",
         "normalized_mask_threshold": None,
     },
     "wind_10m": {
@@ -232,6 +233,7 @@ VARIABLES = {
         "stream": "flx",
         "grib_name": "WIND",
         "flx_level": "10 m above ground",
+        "display_level": "10 m above ground",
         "normalized_mask_threshold": None,
     },
     "surface_pressure": {
@@ -240,6 +242,7 @@ VARIABLES = {
         "stream": "pgb_named_level",
         "grib_name": "PRES",
         "level_name": "mean sea level",
+        "display_level": "mean sea level",
         "normalized_mask_threshold": None,
     },
     "precipitable_water": {
@@ -248,8 +251,19 @@ VARIABLES = {
         "stream": "flx",
         "grib_name": "PWAT",
         "flx_level": "atmos col",
+        "display_level": "total column",
         "normalized_mask_threshold": None,
     },
 }
 
 PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
+
+
+def is_surface_or_named_level(variable: str) -> bool:
+    """Return True for fields that are not selected by pressure level."""
+    return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level"}
+
+
+def variable_level_label(variable: str, level: int) -> str:
+    """Human-readable vertical coordinate for logs and map titles."""
+    return VARIABLES[variable].get("display_level", f"{level} mb")
