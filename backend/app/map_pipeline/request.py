@@ -20,6 +20,7 @@ class MapRequest:
     color_step: int = 1
     scale_min: float | None = None
     scale_max: float | None = None
+    scale_spec: str = ""
     mode: str = "raw"
     climo_source: str = "monthly-pgb"
     wind_unit: str = "kt"

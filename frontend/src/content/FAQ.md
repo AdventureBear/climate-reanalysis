@@ -11,8 +11,8 @@ Add new Q&A pairs at the appropriate level as they come up.
 PyRe is a community-built replacement for the NOAA/PSL interactive reanalysis composite pages that stopped updating in March 2026 when the underlying NCEP Reanalysis dataset was discontinued. PSL has no plans to rebuild the interface for the successor dataset. PyRe replicates the three PSL interfaces:
 
 - **Monthly/Seasonal Composites** — composite means over one or more calendar months
-- **Daily Mean Composites** — average of one or more calendar days across all synoptic times
-- **6-Hourly Composites** — a single synoptic time (00/06/12/18z) or averaged across a date list
+- **Daily Mean Composites** — average of one or more calendar days across 00z/06z/12z/18z
+- **3-Hourly Composites** — a single analysis time (00/03/06/09/12/15/18/21z) or averaged across a date list
 
 ---
 
@@ -47,7 +47,7 @@ CORe is the designated successor to R1/R2 for NCEP operational reanalysis produc
 
 R2 is used as the **climatology baseline** — the reference against which we measure anomalies.
 
-- **For daily/6-hourly modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
+- **For daily and 3-hourly modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
 - **For monthly modes**: PyRe uses R2 **monthly** climatologies — the mean and standard deviation of each calendar month across the same 30 years. A single strided OPeNDAP request fetches all 30 years of a given month in one round-trip.
 
 **Why R2 for climatology instead of CORe?** CORe is still relatively new and does not yet have a long enough archive (30 years of continuous data) to compute a statistically robust climatology. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available source for a 1991–2020 baseline.
@@ -182,7 +182,7 @@ For a given calendar day (e.g., April 27), the R2 daily climatology is computed 
 3. The mean and sample standard deviation (ddof=1) are computed at each grid point across those 150 samples.
 4. Results are cached to disk after the first computation.
 
-The R2 daily climatology is the correct baseline for 6-hourly and daily mode anomaly/normalized maps. Using a monthly mean as the baseline for a daily map inflates sigma artificially because it doesn't account for intra-month variability.
+The R2 daily climatology is the correct baseline for 3-hourly and daily mode anomaly/normalized maps. Daily composites currently average the four primary synoptic times, 00z/06z/12z/18z, to preserve the traditional daily-mean workflow without doubling request volume. Using a monthly mean as the baseline for a daily map inflates sigma artificially because it doesn't account for intra-month variability.
 
 ---
 
@@ -226,7 +226,7 @@ Climatology data (R2 daily and monthly means/sigmas) is cached to disk on the se
 - The first computation takes 2–10 seconds (30 concurrent OPeNDAP requests); subsequent requests are instant.
 - Offloading to Redis or S3 would add network latency with no benefit at single-server scale for a scientific tool with modest concurrent users.
 
-Observation data (CORe fields) is **not** disk-cached — it changes every 6 hours and is already fast due to byte-range extraction.
+Observation data (CORe fields) is **not** disk-cached — it updates on a 3-hourly cycle and is already fast due to byte-range extraction.
 
 ---
 

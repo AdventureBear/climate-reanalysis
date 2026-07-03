@@ -1,4 +1,5 @@
 import io
+import json
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -701,6 +702,57 @@ def _uniform_tick_positions(boundaries: list[float], ticks: list[float]) -> list
     return np.interp(ticks, boundaries, idx).tolist()
 
 
+def _custom_scale_from_spec(
+    scale_spec: str | None,
+    *,
+    variable: str,
+    level: int,
+    mode: str,
+    wind_unit: str,
+    pwat_unit: str,
+) -> dict[str, object] | None:
+    if not scale_spec:
+        return None
+    try:
+        spec = json.loads(scale_spec)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if spec.get("variable") != variable or spec.get("mode") != mode:
+        return None
+    if int(spec.get("level", level)) != int(level):
+        return None
+
+    boundaries = [float(v) for v in spec.get("boundaries", [])]
+    colors = [str(v) for v in spec.get("interval_hex", [])]
+    if len(boundaries) < 2 or len(colors) != len(boundaries) - 1:
+        return None
+
+    def to_native(value: float) -> float:
+        if variable in {"wind_speed", "wind_10m"}:
+            return value * _KT_TO_MS if wind_unit == "kt" else value
+        if variable in {"temp", "temp_2m"}:
+            cfg = _TEMP_SCALES.get(_render_level(variable, level))
+            if cfg and cfg["unit"] == "F":
+                return (value - 32.0) * 5.0 / 9.0 + 273.15
+            return value + 273.15
+        return value
+
+    def label_value(value: float) -> str:
+        return _format_scale_value(value)
+
+    native_boundaries = [to_native(v) for v in boundaries]
+    tick_count = min(9, len(boundaries))
+    tick_idx = np.linspace(0, len(boundaries) - 1, tick_count).round().astype(int).tolist()
+    tick_idx = sorted(set(tick_idx))
+    return {
+        "boundaries": native_boundaries,
+        "colors": [mcolors.to_rgb(color) for color in colors],
+        "ticks": [native_boundaries[idx] for idx in tick_idx],
+        "ticklabels": [label_value(boundaries[idx]) for idx in tick_idx],
+        "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+    }
+
+
 def _format_scale_value(value: float) -> str:
     if abs(value - round(value)) < 1e-9:
         return str(int(round(value)))
@@ -938,7 +990,7 @@ def describe_color_scale(
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
     plt.close('all')
     fig = plt.figure(figsize=(14, 9))
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
@@ -949,6 +1001,39 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     # Cartopy-adjusted axes position and place cax to exactly match it.
     plot_obj   = None
     cbar_cfg   = None   # {ticks, ticklabels, ylabel} — None means no colorbar
+    custom_scale = _custom_scale_from_spec(
+        scale_spec,
+        variable=variable,
+        level=level,
+        mode=mode,
+        wind_unit=wind_unit,
+        pwat_unit=pwat_unit,
+    )
+
+    def draw_custom_filled(plot_values, *, ylabel: str, extend: str = "both"):
+        nonlocal plot_obj, cbar_cfg
+        if not custom_scale:
+            return False
+        boundaries = custom_scale["boundaries"]
+        colors = custom_scale["colors"]
+        cmap = mcolors.ListedColormap(colors)
+        cmap.set_under(colors[0])
+        cmap.set_over(colors[-1])
+        norm = mcolors.BoundaryNorm(boundaries, ncolors=len(colors))
+        plot_obj = ax.contourf(
+            data_array.longitude, data_array.latitude, plot_values,
+            levels=boundaries, cmap=cmap, norm=norm,
+            transform=ccrs.PlateCarree(), extend=extend,
+        )
+        cbar_cfg = {
+            'ticks': custom_scale["ticks"],
+            'ticklabels': custom_scale["ticklabels"],
+            'ylabel': ylabel,
+            'extend': extend,
+            'colors': colors,
+            'boundaries': boundaries,
+        }
+        return True
 
     if mode in ("anomaly", "normalized"):
         if mode == "normalized":
@@ -1014,56 +1099,58 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
 
     elif variable in {"wind_speed", "wind_10m"}:
         scale_level = _render_level(variable, level)
-        breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
-            scale_level,
-            step_kt=color_step,
-            scale_overrides=scale_overrides,
-        )
-        cmap = mcolors.ListedColormap(interval_colors)
-        cmap.set_over(mcolors.to_rgb(_WIND_COLORS[-1]))
-        norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, data_array.values,
-            levels=breakpoints_ms, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='max',
-        )
-        tick_step = max(color_step, 5)
-        tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
-        if abs(tick_kt[-1] - max_kt) > 1e-9:
-            tick_kt.append(float(max_kt))
-        tick_display = [_wind_scale_display_value(kt, wind_unit) for kt in tick_kt]
-        min_display = _wind_scale_display_value(min_kt, wind_unit)
-        max_display = _wind_scale_display_value(max_kt, wind_unit)
-        cbar_cfg = {
-            'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
-            'ticklabels': [_format_scale_value(v) for v in tick_display],
-            'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
-            'extend':     'max',
-            'colors': interval_colors, 'boundaries': breakpoints_ms,
-        }
+        if not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='both'):
+            breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
+                scale_level,
+                step_kt=color_step,
+                scale_overrides=scale_overrides,
+            )
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_over(mcolors.to_rgb(_WIND_COLORS[-1]))
+            norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, data_array.values,
+                levels=breakpoints_ms, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='max',
+            )
+            tick_step = max(color_step, 5)
+            tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
+            if abs(tick_kt[-1] - max_kt) > 1e-9:
+                tick_kt.append(float(max_kt))
+            tick_display = [_wind_scale_display_value(kt, wind_unit) for kt in tick_kt]
+            min_display = _wind_scale_display_value(min_kt, wind_unit)
+            max_display = _wind_scale_display_value(max_kt, wind_unit)
+            cbar_cfg = {
+                'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
+                'ticklabels': [_format_scale_value(v) for v in tick_display],
+                'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
+                'extend':     'max',
+                'colors': interval_colors, 'boundaries': breakpoints_ms,
+            }
 
     elif variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
         cfg = _TEMP_SCALES[_render_level(variable, level)]
-        breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step)
-        cmap = mcolors.ListedColormap(interval_colors)
-        cmap.set_under(interval_colors[0])
-        cmap.set_over(mcolors.to_rgb(cfg["anchor_hex"][-1]))
-        norm = mcolors.BoundaryNorm(breakpoints_k, ncolors=len(interval_colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, data_array.values,
-            levels=breakpoints_k, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='both',
-        )
-        tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
-        tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
-        temp_label = "2m Temperature" if variable == "temp_2m" else f"Temperature  ·  {level} mb"
-        cbar_cfg = {
-            'ticks':      [to_k(t) for t in tick_vals],
-            'ticklabels': [str(t) for t in tick_vals],
-            'ylabel':     temp_label,
-            'extend':     'both',
-            'colors': interval_colors, 'boundaries': breakpoints_k,
-        }
+        temp_label = "2m Temperature" if variable == "temp_2m" else f"Temperature ({cfg['unit']})"
+        if not draw_custom_filled(data_array.values, ylabel=temp_label, extend='both'):
+            breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step)
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_under(interval_colors[0])
+            cmap.set_over(mcolors.to_rgb(cfg["anchor_hex"][-1]))
+            norm = mcolors.BoundaryNorm(breakpoints_k, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, data_array.values,
+                levels=breakpoints_k, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='both',
+            )
+            tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
+            tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
+            cbar_cfg = {
+                'ticks':      [to_k(t) for t in tick_vals],
+                'ticklabels': [str(t) for t in tick_vals],
+                'ylabel':     temp_label,
+                'extend':     'both',
+                'colors': interval_colors, 'boundaries': breakpoints_k,
+            }
 
     elif variable == "height":
         dam = data_array / 10.0
@@ -1094,65 +1181,68 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         # MSLP uses standard 4 hPa / mb isobars only — no colorbar
 
     elif variable == "rel_humidity":
-        steps, interval_colors = _make_rh_scale(step=color_step)
-        cmap = mcolors.ListedColormap(interval_colors)
-        cmap.set_under(interval_colors[0])
-        cmap.set_over(mcolors.to_rgb(_RH_ANCHOR_HEX[-1]))
-        norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, data_array.values,
-            levels=steps, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='both',
-        )
-        cbar_cfg = {
-            'ticks':      list(range(0, 101, 10)),
-            'ticklabels': [str(v) for v in range(0, 101, 10)],
-            'ylabel':     'Relative Humidity',
-            'extend':     'both',
-            'colors': interval_colors, 'boundaries': steps,
-        }
+        if not draw_custom_filled(data_array.values, ylabel='Relative Humidity (%)', extend='both'):
+            steps, interval_colors = _make_rh_scale(step=color_step)
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_under(interval_colors[0])
+            cmap.set_over(mcolors.to_rgb(_RH_ANCHOR_HEX[-1]))
+            norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, data_array.values,
+                levels=steps, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='both',
+            )
+            cbar_cfg = {
+                'ticks':      list(range(0, 101, 10)),
+                'ticklabels': [str(v) for v in range(0, 101, 10)],
+                'ylabel':     'Relative Humidity',
+                'extend':     'both',
+                'colors': interval_colors, 'boundaries': steps,
+            }
 
     elif variable == "precipitable_water":
         plot_values = _pwat_to_display(data_array.values, pwat_unit)
-        steps, interval_colors, _ = _make_pwat_scale(step_mm=color_step, pwat_unit=pwat_unit)
-        cmap = mcolors.ListedColormap(interval_colors)
-        cmap.set_under(interval_colors[0])
-        cmap.set_over(interval_colors[-1])
-        norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, plot_values,
-            levels=steps, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='both',
-        )
-        tick_step = 10 if pwat_unit != "in" else 0.5
-        ticks = np.arange(steps[0], steps[-1] + tick_step / 2, tick_step)
-        cbar_cfg = {
-            'ticks':      ticks.tolist(),
-            'ticklabels': [f"{v:g}" for v in ticks],
-            'ylabel':     f'Precipitable Water ({_pwat_unit_label(pwat_unit)})',
-            'extend':     'both',
-            'colors': interval_colors, 'boundaries': steps,
-        }
+        if not draw_custom_filled(plot_values, ylabel=f'Precipitable Water ({_pwat_unit_label(pwat_unit)})', extend='both'):
+            steps, interval_colors, _ = _make_pwat_scale(step_mm=color_step, pwat_unit=pwat_unit)
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_under(interval_colors[0])
+            cmap.set_over(interval_colors[-1])
+            norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, plot_values,
+                levels=steps, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='both',
+            )
+            tick_step = 10 if pwat_unit != "in" else 0.5
+            ticks = np.arange(steps[0], steps[-1] + tick_step / 2, tick_step)
+            cbar_cfg = {
+                'ticks':      ticks.tolist(),
+                'ticklabels': [f"{v:g}" for v in ticks],
+                'ylabel':     f'Precipitable Water ({_pwat_unit_label(pwat_unit)})',
+                'extend':     'both',
+                'colors': interval_colors, 'boundaries': steps,
+            }
 
     elif variable == "humidity":
-        steps, interval_colors, _ = _make_specific_humidity_scale(step_multiplier=color_step)
-        cmap = mcolors.ListedColormap(interval_colors)
-        cmap.set_under(interval_colors[0])
-        cmap.set_over(interval_colors[-1])
-        norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
-        plot_obj = ax.contourf(
-            data_array.longitude, data_array.latitude, data_array.values,
-            levels=steps, cmap=cmap, norm=norm,
-            transform=ccrs.PlateCarree(), extend='both',
-        )
-        ticks = np.arange(0.0, steps[-1] + 0.004 / 2, 0.004)
-        cbar_cfg = {
-            'ticks':      ticks.tolist(),
-            'ticklabels': [f"{v:.3f}".rstrip("0").rstrip(".") for v in ticks],
-            'ylabel':     'Specific Humidity (kg/kg)',
-            'extend':     'both',
-            'colors': interval_colors, 'boundaries': steps,
-        }
+        if not draw_custom_filled(data_array.values, ylabel='Specific Humidity (kg/kg)', extend='both'):
+            steps, interval_colors, _ = _make_specific_humidity_scale(step_multiplier=color_step)
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_under(interval_colors[0])
+            cmap.set_over(interval_colors[-1])
+            norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, data_array.values,
+                levels=steps, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend='both',
+            )
+            ticks = np.arange(0.0, steps[-1] + 0.004 / 2, 0.004)
+            cbar_cfg = {
+                'ticks':      ticks.tolist(),
+                'ticklabels': [f"{v:.3f}".rstrip("0").rstrip(".") for v in ticks],
+                'ylabel':     'Specific Humidity (kg/kg)',
+                'extend':     'both',
+                'colors': interval_colors, 'boundaries': steps,
+            }
 
     else:
         raise ValueError(f"No fixed rendering scale configured for variable: {variable}")

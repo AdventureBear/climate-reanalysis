@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu } from 'lucide-react'
+import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2 } from 'lucide-react'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 
 // const API_BASE = 'http://127.0.0.1:8000'
@@ -36,7 +36,7 @@ const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70,
 const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp', 'total_column'])
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
 
-type TimeScale   = '6-hourly' | 'daily' | 'monthly' | 'climatology'
+type TimeScale   = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 type SubMode     = 'single' | 'range' | 'list'
 type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
@@ -238,7 +238,7 @@ const CLIMO_SOURCES: {
     value: 'r2-daily',
     label: 'NCEP/DOE R2 daily',
     period: '1991–2020',
-    description: 'R2 day-of-year climatology via PSL OPeNDAP. Correct baseline for 6-hourly and daily anomalies.',
+    description: 'R2 day-of-year climatology via PSL OPeNDAP. Correct baseline for 3-hourly and daily anomalies.',
     available: true,
   },
   {
@@ -400,6 +400,89 @@ function colorsForSegment(segment: ScaleSegment, from: ScaleAnchor, to: ScaleAnc
     return [from.color, ...sampled.slice(1, -1), to.color]
   }
   return [from.color, to.color]
+}
+
+function hexToRgb(hex: string) {
+  const clean = hex.replace('#', '')
+  const value = Number.parseInt(clean, 16)
+  if (!Number.isFinite(value) || clean.length !== 6) return [255, 255, 255] as const
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255] as const
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  return `#${[r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`
+}
+
+function mixHex(left: string, right: string, t: number) {
+  const a = hexToRgb(left)
+  const b = hexToRgb(right)
+  return rgbToHex(
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  )
+}
+
+function colorAtScaleValue(value: number, anchors: ScaleAnchor[], segments: ScaleSegment[]) {
+  const ordered = sortedAnchors(anchors)
+  if (!ordered.length) return '#ffffff'
+  if (value <= ordered[0].value) return ordered[0].color
+  if (value >= ordered[ordered.length - 1].value) return ordered[ordered.length - 1].color
+  const anchorsById = new Map(ordered.map(anchor => [anchor.id, anchor]))
+
+  for (let idx = 0; idx < ordered.length - 1; idx += 1) {
+    const from = ordered[idx]
+    const to = ordered[idx + 1]
+    if (value < from.value || value > to.value) continue
+    const t = to.value > from.value ? (value - from.value) / (to.value - from.value) : 0
+    const segment = segments.find(candidate => candidate.id === segmentId(from.id, to.id))
+    if (!segment || segment.mode === 'linear_rgb') return mixHex(from.color, to.color, t)
+    if (segment.mode === 'bucket') return from.color
+    if (segment.mode === 'discrete') return t < 0.5 ? from.color : to.color
+    const colors = colorsForSegment(segment, anchorsById.get(segment.fromId) ?? from, anchorsById.get(segment.toId) ?? to)
+    if (colors.length <= 1) return colors[0] ?? from.color
+    const scaled = t * (colors.length - 1)
+    const leftIdx = Math.min(colors.length - 2, Math.max(0, Math.floor(scaled)))
+    return mixHex(colors[leftIdx], colors[leftIdx + 1], scaled - leftIdx)
+  }
+
+  return ordered[ordered.length - 1].color
+}
+
+function renderedScaleFromDesigner(anchors: ScaleAnchor[], segments: ScaleSegment[], step: number) {
+  const ordered = activeAnchors(anchors)
+  if (ordered.length < 2) return { boundaries: [] as number[], colors: [] as string[] }
+  const min = ordered[0].value
+  const max = ordered[ordered.length - 1].value
+  const safeStep = Math.max(step, 0.000001)
+  const boundaries: number[] = [min]
+  let next = min + safeStep
+  let guard = 0
+  while (next < max && guard < 2000) {
+    boundaries.push(Number(next.toFixed(6)))
+    next += safeStep
+    guard += 1
+  }
+  boundaries.push(max)
+  const colors = boundaries.slice(0, -1).map((left, idx) => {
+    const right = boundaries[idx + 1]
+    return colorAtScaleValue((left + right) / 2, ordered, segments)
+  })
+  return { boundaries, colors }
+}
+
+function renderedScaleGradient(boundaries: number[], colors: string[]) {
+  if (!boundaries.length || !colors.length) return 'linear-gradient(90deg, #1e293b, #1e293b)'
+  const min = boundaries[0]
+  const max = boundaries[boundaries.length - 1]
+  if (max <= min) return colors[0] ?? '#1e293b'
+  const stops: string[] = []
+  colors.forEach((color, idx) => {
+    const left = ((boundaries[idx] - min) / (max - min)) * 100
+    const right = ((boundaries[idx + 1] - min) / (max - min)) * 100
+    stops.push(`${color} ${left}%`, `${color} ${right}%`)
+  })
+  return `linear-gradient(90deg, ${stops.join(', ')})`
 }
 
 function previewGradient(anchors: ScaleAnchor[], segments: ScaleSegment[]): string {
@@ -699,7 +782,7 @@ function HourStepper({ hour, setHour, compact = false }: { hour: string; setHour
 
 function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-slate-900 border border-slate-700/60 rounded-xl px-4 pt-4 pb-5 flex flex-col gap-3 ${className}`}>
+    <div className={`self-start bg-slate-900 border border-slate-700/60 rounded-xl px-4 pt-4 pb-5 flex flex-col gap-3 ${className}`}>
       {children}
     </div>
   )
@@ -718,7 +801,7 @@ function CardRow({ children = null, className = '' }: { children?: React.ReactNo
 export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [, setSearchParams] = useSearchParams()
 
-  const [timeScale,    setTimeScale]    = useState<TimeScale>('6-hourly')
+  const [timeScale,    setTimeScale]    = useState<TimeScale>('3-hourly')
   const [dateSubMode,  setDateSubMode]  = useState<SubMode>('single')
   const [monthSubMode, setMonthSubMode] = useState<SubMode>('single')
 
@@ -777,6 +860,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [scaleExportCopied, setScaleExportCopied] = useState(false)
   const [editingAnchorId, setEditingAnchorId] = useState<string | null>(null)
   const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null)
+  const [anchorValueDrafts, setAnchorValueDrafts] = useState<Record<string, string>>({})
+  const [anchorColorDrafts, setAnchorColorDrafts] = useState<Record<string, string>>({})
+  const [showOriginalScale, setShowOriginalScale] = useState(false)
+  const [scaleInfoOpen, setScaleInfoOpen] = useState(false)
   const scalePreviewRef = useRef<HTMLDivElement | null>(null)
 
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
@@ -787,7 +874,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const levelOptions = levelOptionsForVariable(variable)
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
-  const isSixHourly = timeScale === '6-hourly'
+  const isThreeHourly = timeScale === '3-hourly'
   const isFlxVariable = FLX_VARIABLES.has(apiVariable)
   const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
@@ -796,7 +883,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   useEffect(() => {
     if (!isFlxVariable) return
     if (displayMode !== 'raw') setDisplayMode('raw')
-    if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('6-hourly')
+    if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('3-hourly')
   }, [displayMode, isFlxVariable, timeScale])
 
   useEffect(() => {
@@ -860,6 +947,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       setScaleAnchors(backendAnchors)
       setScaleSegments(segmentsFromAnchors(backendAnchors, [], defaultMode))
       setScalePreset('backend')
+      setAnchorValueDrafts({})
+      setAnchorColorDrafts({})
+      setShowOriginalScale(false)
     }
   }, [scaleMeta])
 
@@ -937,10 +1027,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         params.months = mList.join(',')
       }
     } else {
-      if (isSixHourly) {
+      if (isThreeHourly) {
         params.hour = hour
       } else {
-        // Daily composite: average 00z, 06z, 12z, 18z synoptic times per day.
+        // Daily composite: average the four primary synoptic times per day.
         params.hours = '00,06,12,18'
       }
       if (dateSubMode === 'single') {
@@ -979,6 +1069,41 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     }
     if (apiVariable === 'precipitable_water') {
       params.pwat_unit = pwatUnit
+    }
+    const labRenderMode = isClimo ? 'raw' : displayMode
+    const labScaleApplies =
+      adminMode &&
+      labVariable === apiVariable &&
+      labMode === labRenderMode &&
+      String(labLevel) === String(apiLevel) &&
+      activeAnchors(scaleAnchors).length > 1
+    if (labScaleApplies) {
+      const labAnchors = activeAnchors(scaleAnchors)
+      const labSegments = segmentsFromAnchors(labAnchors, scaleSegments)
+      const renderedScale = renderedScaleFromDesigner(labAnchors, labSegments, safeColorStep)
+      if (renderedScale.boundaries.length > 1 && renderedScale.colors.length === renderedScale.boundaries.length - 1) {
+        params.scale_min = String(renderedScale.boundaries[0])
+        params.scale_max = String(renderedScale.boundaries[renderedScale.boundaries.length - 1])
+        params.scale_spec = JSON.stringify({
+          variable: labVariable,
+          mode: labMode,
+          level: Number(labLevel),
+          unit: scaleMeta?.unit ?? null,
+          color_step: safeColorStep,
+          domain: [renderedScale.boundaries[0], renderedScale.boundaries[renderedScale.boundaries.length - 1]],
+          boundaries: renderedScale.boundaries,
+          interval_hex: renderedScale.colors,
+          anchors: labAnchors.map(anchor => ({ value: anchor.value, color: anchor.color })),
+          segments: labSegments.map(segment => ({
+            from: labAnchors.find(anchor => anchor.id === segment.fromId)?.value,
+            to: labAnchors.find(anchor => anchor.id === segment.toId)?.value,
+            mode: segment.mode,
+            palette: segment.mode === 'palette' ? segment.paletteId : null,
+            reverse: segment.mode === 'palette' ? segment.reverse : null,
+            samples: segment.mode === 'palette' ? segment.samples : null,
+          })),
+        })
+      }
     }
 
     setSearchParams(params)
@@ -1037,7 +1162,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     return (
       <TabStrip
         options={[
-          { value: '6-hourly',    label: '6-Hourly' },
+          { value: '3-hourly',    label: '3-Hourly' },
           { value: 'daily',       label: 'Daily' },
           { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
           { value: 'climatology', label: 'Climatology', disabled: isFlxVariable },
@@ -1096,13 +1221,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       )
     }
 
-    // 6-hourly or daily
+    // 3-hourly or daily
     return (
       <>
         {dateSubMode === 'single' && (
           <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input min-w-0 flex-1" />
-            {isSixHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
+            {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
           </div>
         )}
         {dateSubMode === 'range' && (
@@ -1111,12 +1236,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input min-w-0" />
               <span className="text-slate-600 text-xs">→</span>
               <input type="date" value={endDate}   onChange={e => setEndDate(e.target.value)}   className="input min-w-0" />
-              {isSixHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
+              {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
               {startDate && endDate && startDate <= endDate && (
                 <span className="text-slate-500 text-xs">{dateRange(startDate, endDate).length}d</span>
               )}
             </div>
-            {/*{!isSixHourly && startDate && endDate && startDate < endDate && (*/}
+            {/*{!isThreeHourly && startDate && endDate && startDate < endDate && (*/}
             {/*  <p className="text-[10px] text-slate-500 leading-tight">*/}
             {/*    Composite dates average all 8 3-hour times.*/}
             {/*  </p>*/}
@@ -1144,7 +1269,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             </button>
           </div>
         )}
-        {!isSixHourly && (
+        {!isThreeHourly && (
           <p className="text-[10px] text-slate-500 leading-relaxed mt-0.5">
             Daily composites average 00z, 06z, 12z, and 18z synoptic times.
           </p>
@@ -1157,10 +1282,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (!adminMode) return null
 
     const boundaries = scaleMeta?.boundaries ?? []
-    const intervalHex = scaleMeta?.interval_hex ?? []
     const keyBreaks = scaleMeta?.key_breakpoints ?? []
     const designerAnchors = sortedAnchors(scaleAnchors)
     const activeDesignerAnchors = activeAnchors(scaleAnchors)
+    const activeColorStep = normalizeColorStep(colorStep)
     const min = activeDesignerAnchors[0]?.value ?? boundaries[0]
     const max = activeDesignerAnchors[activeDesignerAnchors.length - 1]?.value ?? boundaries[boundaries.length - 1]
     const keyBreakOffsets = (min !== undefined && max !== undefined && max > min)
@@ -1170,7 +1295,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       : []
     const anchorsById = new Map(activeDesignerAnchors.map(anchor => [anchor.id, anchor]))
     const designerSegments = segmentsFromAnchors(activeDesignerAnchors, scaleSegments)
-    const designerGradient = previewGradient(activeDesignerAnchors, designerSegments)
+    const renderedDesignerScale = renderedScaleFromDesigner(activeDesignerAnchors, designerSegments, activeColorStep)
+    const originalAnchors = activeAnchors(anchorsFromScaleMeta(scaleMeta))
+    const originalGradient = previewGradient(originalAnchors, segmentsFromAnchors(originalAnchors))
+    const displayGradient = showOriginalScale ? originalGradient : renderedScaleGradient(renderedDesignerScale.boundaries, renderedDesignerScale.colors)
     const selectedSegment = designerSegments.find(candidate => candidate.id === editingSegmentId) ?? designerSegments[0] ?? null
     const selectedSegmentFrom = selectedSegment ? anchorsById.get(selectedSegment.fromId) : null
     const selectedSegmentTo = selectedSegment ? anchorsById.get(selectedSegment.toId) : null
@@ -1182,6 +1310,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       : 'linear-gradient(90deg, #1e293b, #1e293b)'
     const hasDesignerDomain = min !== undefined && max !== undefined && max > min
     const anchorRailWidth = Math.max(760, designerAnchors.length * 32)
+    const numberInputClass = '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
     const anchorPositions = hasDesignerDomain
       ? anchorRailPositions(designerAnchors, min, max, anchorRailWidth)
       : new Map<string, number>()
@@ -1191,7 +1320,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       level: Number(labLevel),
       unit: scaleMeta?.unit ?? null,
       domain: hasDesignerDomain ? [min, max] : null,
-      color_step: normalizeColorStep(colorStep),
+      color_step: activeColorStep,
+      boundaries: renderedDesignerScale.boundaries,
+      interval_hex: renderedDesignerScale.colors,
       anchors: activeDesignerAnchors.map(anchor => ({ value: anchor.value, color: anchor.color })),
       segments: designerSegments.map(segment => ({
         from: anchorsById.get(segment.fromId)?.value,
@@ -1228,6 +1359,33 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     function updateScaleAnchor(id: string, patch: Partial<ScaleAnchor>) {
       setScalePreset('custom')
       setScaleAnchors(prev => prev.map(anchor => anchor.id === id ? { ...anchor, ...patch } : anchor))
+    }
+
+    function commitScaleAnchorValue(id: string, raw: string) {
+      const next = Number(raw)
+      setAnchorValueDrafts(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+      if (!Number.isFinite(next)) return
+      updateScaleAnchor(id, { value: next })
+    }
+
+    function cancelScaleAnchorValueDraft(id: string) {
+      setAnchorValueDrafts(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+
+    function commitScaleAnchorColor(id: string, raw: string) {
+      const next = raw.trim()
+      setAnchorColorDrafts(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+      if (!/^#[0-9a-fA-F]{6}$/.test(next)) return
+      updateScaleAnchor(id, { color: next.toLowerCase() })
     }
 
     function updateDomainEndpoint(side: 'min' | 'max', value: number) {
@@ -1278,18 +1436,39 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       })
     }
 
+    function deleteScaleAnchor(id: string) {
+      setScalePreset('custom')
+      setScaleAnchors(prev => {
+        if (prev.length <= 2) return prev
+        const next = prev.filter(anchor => anchor.id !== id)
+        if (next.filter(anchor => anchor.active).length < 2) return prev
+        return next
+      })
+      setAnchorValueDrafts(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+      setAnchorColorDrafts(prev => {
+        const { [id]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+
     function resetScaleDesigner() {
       const backendAnchors = anchorsFromScaleMeta(scaleMeta)
       if (backendAnchors.length) {
         setScaleAnchors(backendAnchors)
         setScaleSegments(segmentsFromAnchors(backendAnchors))
         setScalePreset('backend')
+        setAnchorValueDrafts({})
+        setAnchorColorDrafts({})
+        setShowOriginalScale(false)
       }
     }
 
     return (
       <div className="flex min-h-0 flex-col gap-3">
-        <div className="grid gap-2 lg:grid-cols-[1.3fr_1fr_0.8fr]">
+        <div className="grid gap-2 lg:grid-cols-[1.35fr_1.05fr_0.8fr]">
           <div className="rounded-lg border border-slate-700/70 bg-slate-950/40 p-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <SelectField
@@ -1346,7 +1525,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               fullWidth
             />
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <label className="text-[11px] text-slate-300">Bin size</label>
+              <label className="text-[11px] text-slate-300">Interval</label>
               <input
                 type="number"
                 min={1}
@@ -1357,7 +1536,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   setColorStep(next === '' ? '' : String(normalizeColorStep(next)))
                 }}
                 onBlur={() => setColorStep(String(normalizeColorStep(colorStep)))}
-                className="input h-8 w-20"
+                className="input h-8 w-16 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
 	              {(labVariable === 'wind_speed' || labVariable === 'wind_10m') && (
 	                <TabStrip
@@ -1376,36 +1555,71 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 	            </div>
 	          </div>
 
-          <div className="rounded-lg border border-slate-700/70 bg-slate-950/40 p-2.5 text-[11px] leading-relaxed text-slate-300">
-            <div>Kind: <span className="text-slate-200">{scaleMeta?.scale_kind ?? 'resolving'}</span></div>
-            {scaleMeta?.group && <div>Group: <span className="text-slate-200">{scaleMeta.group}</span></div>}
-            <div>Unit: <span className="text-slate-200">{scaleMeta?.unit ?? 'n/a'}</span></div>
-            <div>Bins: <span className="text-slate-200">{intervalHex.length || 'n/a'}</span></div>
+          <div className="relative rounded-lg border border-slate-700/70 bg-slate-950/40 p-2.5">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <TabStrip
+                options={[
+                  { value: 'current', label: 'Current' },
+                  { value: 'original', label: 'Original' },
+                ]}
+                value={showOriginalScale ? 'original' : 'current'}
+                onChange={v => setShowOriginalScale(v === 'original')}
+              />
+              <button type="button" onClick={resetScaleDesigner} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700">
+                Reset
+              </button>
+              <button type="button" onClick={() => { setScaleExportOpen(true); void copyScaleExport() }} className="rounded bg-sky-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-600">
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={() => setScaleInfoOpen(open => !open)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                aria-label="Scale metadata"
+                title="Scale metadata"
+              >
+                <CircleHelp size={15} />
+              </button>
+            </div>
+            {scaleInfoOpen && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-10 cursor-default"
+                  onClick={() => setScaleInfoOpen(false)}
+                  aria-label="Close scale metadata"
+                />
+                <div className="absolute right-2 top-12 z-20 w-52 rounded-lg border border-slate-700 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300 shadow-xl shadow-black/40">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-slate-300">Info</span>
+                    <button
+                      type="button"
+                      onClick={() => setScaleInfoOpen(false)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-800 hover:text-white"
+                      aria-label="Close scale metadata"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <div>Kind: <span className="text-slate-100">{scaleMeta?.scale_kind ?? 'resolving'}</span></div>
+                  {scaleMeta?.group && <div>Group: <span className="text-slate-100">{scaleMeta.group}</span></div>}
+                  <div>Unit: <span className="text-slate-100">{scaleMeta?.unit ?? 'n/a'}</span></div>
+                  <div>Interval: <span className="text-slate-100">{formatScaleValue(activeColorStep)}</span></div>
+                  <div>Bins: <span className="text-slate-100">{renderedDesignerScale.colors.length || 'n/a'}</span></div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {scaleMetaLoading && <p className="text-sm text-slate-400 animate-pulse">Resolving scale...</p>}
         {scaleMetaError && <div className="rounded border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-400">{scaleMetaError}</div>}
 
-        {scaleMeta && boundaries.length > 1 && intervalHex.length > 0 && (
+        {scaleMeta && boundaries.length > 1 && activeDesignerAnchors.length > 1 && (
           <>
             <div className="sticky top-0 z-10 rounded-xl border border-slate-700/80 bg-slate-950/95 p-3 shadow-xl shadow-black/30">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
-                <div>
-                  <span className="text-slate-200">{labVariable}</span>
-                  <span> · {labMode}</span>
-                  <span> · {formatScaleValue(min)}-{formatScaleValue(max)} {scaleMeta.unit ?? ''}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded bg-slate-800 px-2 py-1 text-slate-300">preview only</span>
-                  <button type="button" onClick={resetScaleDesigner} className="rounded bg-slate-800 px-2 py-1 text-slate-300 hover:bg-slate-700">
-                    Reset
-                  </button>
-                </div>
-              </div>
-
               <div ref={scalePreviewRef} className="relative mb-2">
-                <div className="h-12 w-full overflow-hidden rounded-md border border-slate-700" style={{ background: designerGradient }} />
+                <div className="h-12 w-full overflow-hidden rounded-md border border-slate-700" style={{ background: displayGradient }} />
                 {selectedSegmentFrom && selectedSegmentTo && (
                   <div
                     className="pointer-events-none absolute top-0 h-12 rounded border-2 border-sky-300/90 bg-sky-300/10 shadow-[0_0_0_1px_rgba(14,165,233,0.35)]"
@@ -1440,16 +1654,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   <div key={`key-${bp.value}`} className="absolute top-0 bottom-0 w-px bg-sky-200/90" style={{ left: `${bp.left}%` }} />
                 ))}
               </div>
-
-              <div className="h-3 w-full overflow-hidden rounded border border-slate-800 flex">
-                {intervalHex.map((hex, idx) => <div key={`${hex}-${idx}`} className="h-full flex-1" style={{ backgroundColor: hex }} />)}
-              </div>
               <div className="mt-1 grid grid-cols-[5rem_1fr_5rem] items-center text-[11px] font-mono text-slate-300">
                 <input
                   type="number"
                   value={Number.isFinite(min) ? min : 0}
                   onChange={e => updateDomainEndpoint('min', Number(e.target.value))}
-                  className="h-6 w-20 rounded border border-slate-700 bg-slate-900 px-1 text-left text-[11px] text-slate-100 outline-none focus:border-sky-400"
+                  className={`h-6 w-14 rounded border border-slate-700 bg-slate-900 px-1 text-center text-[11px] text-slate-100 outline-none focus:border-sky-400 ${numberInputClass}`}
                   aria-label="Scale minimum"
                 />
                 <span className="text-center">{formatScaleValue((min + max) / 2)}</span>
@@ -1457,26 +1667,18 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   type="number"
                   value={Number.isFinite(max) ? max : 0}
                   onChange={e => updateDomainEndpoint('max', Number(e.target.value))}
-                  className="ml-auto h-6 w-20 rounded border border-slate-700 bg-slate-900 px-1 text-right text-[11px] text-slate-100 outline-none focus:border-sky-400"
+                  className={`ml-auto h-6 w-14 rounded border border-slate-700 bg-slate-900 px-1 text-center text-[11px] text-slate-100 outline-none focus:border-sky-400 ${numberInputClass}`}
                   aria-label="Scale maximum"
                 />
               </div>
             </div>
 
             <div className="rounded-xl border border-slate-700/70 bg-slate-950/50 p-3">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-slate-300">
-                  Anchors follow the scale until they would overlap, then spread just enough to edit.
-                </span>
-                <div className="flex items-center gap-2">
-	                  <button type="button" onClick={() => { setScaleExportOpen(true); void copyScaleExport() }} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700">
-	                    Export
-	                  </button>
-                  <button type="button" onClick={addScaleAnchor} disabled={!hasDesignerDomain || anchorsLocked} className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
-                    <Plus size={12} />
-                    Add
-                  </button>
-                </div>
+              <div className="mb-3 flex items-center justify-end">
+                <button type="button" onClick={addScaleAnchor} disabled={!hasDesignerDomain || anchorsLocked} className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Plus size={12} />
+                  Add
+                </button>
               </div>
 
 	              {scaleExportOpen && (
@@ -1555,13 +1757,21 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                           <input
                             type="number"
                             disabled={anchorsLocked}
-                            value={Number.isFinite(anchor.value) ? formatScaleValue(anchor.value) : ''}
-                            onFocus={() => setEditingAnchorId(anchor.id)}
-                            onChange={e => {
-                              const next = Number(e.target.value)
-                              if (Number.isFinite(next)) updateScaleAnchor(anchor.id, { value: next })
+                            value={anchorValueDrafts[anchor.id] ?? (Number.isFinite(anchor.value) ? formatScaleValue(anchor.value) : '')}
+                            onFocus={() => {
+                              setEditingAnchorId(anchor.id)
+                              setAnchorValueDrafts(prev => ({ ...prev, [anchor.id]: Number.isFinite(anchor.value) ? formatScaleValue(anchor.value) : '' }))
                             }}
-                            className={`h-5 w-12 rounded border border-transparent bg-transparent px-1 text-center font-mono text-[10px] font-semibold text-slate-100 outline-none hover:border-slate-600 hover:bg-slate-800 focus:border-sky-400 focus:bg-slate-800 disabled:cursor-not-allowed ${editingAnchorId === anchor.id ? 'bg-sky-900/70 text-white' : ''}`}
+                            onChange={e => setAnchorValueDrafts(prev => ({ ...prev, [anchor.id]: e.target.value }))}
+                            onBlur={e => commitScaleAnchorValue(anchor.id, e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') e.currentTarget.blur()
+                              if (e.key === 'Escape') {
+                                cancelScaleAnchorValueDraft(anchor.id)
+                                e.currentTarget.blur()
+                              }
+                            }}
+                            className={`h-5 w-8 rounded border border-transparent bg-transparent px-0 text-center font-mono text-[10px] font-semibold text-slate-100 outline-none hover:border-slate-600 hover:bg-slate-800 focus:border-sky-400 focus:bg-slate-800 disabled:cursor-not-allowed ${numberInputClass} ${editingAnchorId === anchor.id ? 'bg-sky-900/70 text-white' : ''}`}
                             title="Edit anchor value"
                             aria-label={`Edit anchor ${idx + 1} value`}
                           />
@@ -1592,7 +1802,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                         </div>
                       ))}
                     </div>
-	                <div className="mt-3 grid gap-3 xl:grid-cols-2">
+	                <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(22rem,0.9fr)_minmax(30rem,1.35fr)]">
 			                {selectedAnchor && (
 		                  <div className="overflow-hidden rounded-lg border border-slate-700 bg-slate-950 p-2">
 			                    <div className="mb-2 flex items-center gap-2">
@@ -1602,15 +1812,21 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 		                    <div className="grid gap-3">
 		                      <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
 		                        <span className="mb-2 block text-[10px] uppercase tracking-widest text-slate-300">Endpoint</span>
-		                        <div className="grid grid-cols-[5rem_2.25rem_minmax(4.5rem,7rem)_2.25rem_auto] items-center gap-2">
+		                        <div className="flex flex-wrap items-center gap-2">
 		                          <input
 		                            type="number"
-		                            value={Number.isFinite(selectedAnchor.value) ? selectedAnchor.value : 0}
-                            onChange={e => {
-                              const next = Number(e.target.value)
-                              if (Number.isFinite(next)) updateScaleAnchor(selectedAnchor.id, { value: next })
-                            }}
-		                            className="input h-8 text-xs"
+		                            value={anchorValueDrafts[selectedAnchor.id] ?? (Number.isFinite(selectedAnchor.value) ? formatScaleValue(selectedAnchor.value) : '')}
+                                onFocus={() => setAnchorValueDrafts(prev => ({ ...prev, [selectedAnchor.id]: Number.isFinite(selectedAnchor.value) ? formatScaleValue(selectedAnchor.value) : '' }))}
+                                onChange={e => setAnchorValueDrafts(prev => ({ ...prev, [selectedAnchor.id]: e.target.value }))}
+                                onBlur={e => commitScaleAnchorValue(selectedAnchor.id, e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') e.currentTarget.blur()
+                                  if (e.key === 'Escape') {
+                                    cancelScaleAnchorValueDraft(selectedAnchor.id)
+                                    e.currentTarget.blur()
+                                  }
+                                }}
+		                            className={`input h-9 w-14 px-1 text-center text-xs ${numberInputClass}`}
 		                            aria-label="Selected anchor value"
 		                          />
 		                          <span
@@ -1618,7 +1834,25 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 		                            style={{ backgroundColor: selectedAnchor.color }}
 		                            title="Selected anchor color"
 		                          />
-		                          <span className="truncate font-mono text-xs text-slate-300">{selectedAnchor.color}</span>
+		                          <input
+                                type="text"
+                                value={anchorColorDrafts[selectedAnchor.id] ?? selectedAnchor.color}
+                                onFocus={() => setAnchorColorDrafts(prev => ({ ...prev, [selectedAnchor.id]: selectedAnchor.color }))}
+                                onChange={e => setAnchorColorDrafts(prev => ({ ...prev, [selectedAnchor.id]: e.target.value }))}
+                                onBlur={e => commitScaleAnchorColor(selectedAnchor.id, e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') e.currentTarget.blur()
+                                  if (e.key === 'Escape') {
+                                    setAnchorColorDrafts(prev => {
+                                      const { [selectedAnchor.id]: _removed, ...rest } = prev
+                                      return rest
+                                    })
+                                    e.currentTarget.blur()
+                                  }
+                                }}
+                                className="input h-9 w-24 px-2 font-mono text-xs"
+                                aria-label="Selected anchor hex color"
+                              />
 		                          <label
 		                            className="relative inline-flex h-9 w-9 items-center justify-center rounded bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white"
 		                            aria-label="Edit selected anchor color"
@@ -1637,11 +1871,22 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 		                            type="button"
 		                            onClick={() => toggleScaleAnchor(selectedAnchor.id)}
 	                            disabled={selectedAnchor.active && activeDesignerAnchors.length <= 2}
-	                            className="inline-flex h-9 items-center justify-center gap-1 rounded bg-slate-800 px-3 text-xs text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+	                            className="inline-flex h-9 w-9 items-center justify-center rounded bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label={selectedAnchor.active ? 'Disable selected anchor' : 'Enable selected anchor'}
+                              title={selectedAnchor.active ? 'Disable selected anchor' : 'Enable selected anchor'}
 	                          >
 	                            {selectedAnchor.active ? <Eye size={13} /> : <EyeOff size={13} />}
-	                            {selectedAnchor.active ? 'Active' : 'Hidden'}
 	                          </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteScaleAnchor(selectedAnchor.id)}
+                              disabled={designerAnchors.length <= 2 || (selectedAnchor.active && activeDesignerAnchors.length <= 2)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded bg-slate-800 text-slate-300 hover:bg-red-900/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="Delete selected anchor"
+                              title="Delete selected anchor"
+                            >
+                              <Trash2 size={13} />
+                            </button>
 		                        </div>
 		                      </div>
 		                    </div>
@@ -1653,20 +1898,26 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 	                      <span className="text-[10px] uppercase tracking-widest text-slate-300">Selected Segment</span>
 	                      <span className="text-[10px] font-mono text-slate-300">{segmentLabel(selectedSegment, anchorsById)}</span>
                     </div>
-                    <div className={`grid gap-3 md:grid-cols-[17rem_1fr] ${segmentsLocked ? 'pointer-events-none opacity-45' : ''}`}>
+                    <div className={`grid gap-3 lg:grid-cols-[13rem_minmax(22rem,1fr)] ${segmentsLocked ? 'pointer-events-none opacity-45' : ''}`}>
                       <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
                         <span className="mb-2 block text-[10px] uppercase tracking-widest text-slate-300">Endpoints</span>
                         {[selectedSegmentFrom, selectedSegmentTo].map((anchor, endpointIdx) => (
-                          <div key={anchor.id} className="mb-2 grid grid-cols-[1.5rem_5.5rem_2.5rem_1fr] items-center gap-2 last:mb-0">
+                          <div key={anchor.id} className="mb-2 grid grid-cols-[1rem_3.5rem_2rem_minmax(4.5rem,1fr)] items-center gap-2 last:mb-0">
                             <span className="text-[10px] text-slate-300">{endpointIdx === 0 ? 'L' : 'R'}</span>
                             <input
                               type="number"
-                              value={Number.isFinite(anchor.value) ? anchor.value : 0}
-                              onChange={e => {
-                                const next = Number(e.target.value)
-                                if (Number.isFinite(next)) updateScaleAnchor(anchor.id, { value: next })
+                              value={anchorValueDrafts[anchor.id] ?? (Number.isFinite(anchor.value) ? formatScaleValue(anchor.value) : '')}
+                              onFocus={() => setAnchorValueDrafts(prev => ({ ...prev, [anchor.id]: Number.isFinite(anchor.value) ? formatScaleValue(anchor.value) : '' }))}
+                              onChange={e => setAnchorValueDrafts(prev => ({ ...prev, [anchor.id]: e.target.value }))}
+                              onBlur={e => commitScaleAnchorValue(anchor.id, e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') e.currentTarget.blur()
+                                if (e.key === 'Escape') {
+                                  cancelScaleAnchorValueDraft(anchor.id)
+                                  e.currentTarget.blur()
+                                }
                               }}
-                              className="input h-8 text-xs"
+                              className={`input h-8 w-14 px-1 text-center text-xs ${numberInputClass}`}
                               aria-label={`${endpointIdx === 0 ? 'Left' : 'Right'} endpoint value`}
                             />
                             <input
@@ -1676,13 +1927,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                               className="h-8 w-8 cursor-pointer rounded border border-slate-700 bg-slate-900 p-0.5"
                               aria-label={`${endpointIdx === 0 ? 'Left' : 'Right'} endpoint color`}
                             />
-                            <span className="truncate font-mono text-xs text-slate-300">{anchor.color}</span>
+                            <span className="truncate font-mono text-[11px] text-slate-300">{anchor.color}</span>
                           </div>
                         ))}
                       </div>
                       <div className="rounded border border-slate-800 bg-slate-900/60 p-2">
                         <span className="mb-2 block text-[10px] uppercase tracking-widest text-slate-300">Transition</span>
-                        <div className="grid gap-2 md:grid-cols-[15rem_1fr]">
+                        <div className="grid gap-2">
                           <div className="space-y-2">
                             <TabStrip
                               options={[
@@ -1697,10 +1948,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                             />
                             <div className="h-9 overflow-hidden rounded border border-slate-700" style={{ background: selectedSegmentGradient }} />
                           </div>
-                          <div className="h-24 overflow-y-auto pr-1">
+                          <div>
                             {selectedSegment.mode === 'palette' ? (
                               <div className="grid gap-2">
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex flex-wrap gap-1.5">
                                   {SCALE_PALETTE_PRESETS.filter(preset => preset.id !== 'backend').map(preset => {
                                     const swatch = paletteSwatch(preset.colors, selectedSegment.reverse)
                                     return (
@@ -1724,11 +1975,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                                     <input type="checkbox" disabled={segmentsLocked} checked={selectedSegment.reverse} onChange={e => updateScaleSegment(selectedSegment.id, { reverse: e.target.checked })} />
                                     Reverse
                                   </label>
-                                  <input type="number" disabled={segmentsLocked} min={2} max={12} value={selectedSegment.samples} onChange={e => updateScaleSegment(selectedSegment.id, { samples: Number(e.target.value) })} className="input h-7 w-16 text-[11px]" />
+                                  <input type="number" disabled={segmentsLocked} min={2} max={12} value={selectedSegment.samples} onChange={e => updateScaleSegment(selectedSegment.id, { samples: Number(e.target.value) })} className={`input h-7 w-12 px-1 text-center text-[11px] ${numberInputClass}`} />
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex h-full items-center text-[11px] text-slate-300">
+                              <div className="text-[11px] text-slate-300">
                                 {selectedSegment.mode === 'linear_rgb'
                                   ? 'The segment blends directly between the two endpoint colors.'
                                   : selectedSegment.mode === 'bucket'
@@ -1753,7 +2004,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className={`bg-slate-950 text-slate-100 flex flex-col ${isVertical ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="relative bg-slate-900 border-b border-slate-700 px-5 py-2 flex items-center gap-3">
@@ -1860,15 +2111,15 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       </header>
 
       <form onSubmit={handleGenerate}
-        className={isVertical ? 'flex flex-1 min-h-0 overflow-hidden' : 'p-4 flex flex-col gap-4'}>
+        className={isVertical ? 'flex flex-1 min-h-0 overflow-x-auto' : 'p-4 flex flex-col gap-4'}>
 
         {/* ── Card panels ─────────────────────────────────────────────────── */}
         <div className={isVertical
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
-          : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch'}>
+          : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start'}>
 
           {/* Mobile · Time Scale */}
-          <Section className="h-full md:hidden">
+          <Section className="md:hidden">
             <CardRow>
               <VariableDisplayControl label="Time Scale">
                 {renderTimeScaleControls()}
@@ -1877,7 +2128,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           </Section>
 
           {/* 1 · Variable & Level */}
-          <Section className="h-full">
+          <Section>
             <CardRow>
             <div className="flex gap-2 items-end">
               <SelectField
@@ -1989,7 +2240,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           </Section>
 
           {/* 2 · Temporal Range */}
-          <Section className="h-full">
+          <Section>
             <CardRow>
               <VariableDisplayControl label={isClimo ? 'Climatology' : (isMonthly ? 'Month Mode' : 'Date Mode')}>
                 {renderTemporalModeControls()}
@@ -2003,7 +2254,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           </Section>
 
           {/* 3 · Region */}
-          <Section className="h-full">
+          <Section>
             <CardRow>
             <VariableDisplayControl label="Region">
               <button type="button" onClick={() => setRegionsOpen(true)}
@@ -2023,7 +2274,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           </Section>
 
           {/* 4 · Analysis + Generate */}
-          <Section className="h-full">
+          <Section>
             <CardRow>
             <VariableDisplayControl label="Analysis">
             {isClimo ? (

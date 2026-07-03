@@ -14,6 +14,7 @@ class RenderRequest(Protocol):
     level: int
     region: str
     color_step: int
+    scale_spec: str
     mode: str
     wind_unit: str
     pwat_unit: str
@@ -64,6 +65,7 @@ def render_map_product(
         wind_type=req.wind_type,
         color_step=req.color_step,
         mode=req.mode,
+        scale_spec=req.scale_spec,
         scale_overrides=scale_overrides,
         wind_unit=req.wind_unit,
         pwat_unit=req.pwat_unit,

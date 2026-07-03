@@ -561,7 +561,7 @@ def _compute_monthly_from_6hourly(
     year: int, month: int, fetch_6h_fn, *args
 ) -> xr.DataArray:
     """
-    Compute a monthly mean by averaging all 6-hourly time steps in the month.
+    Compute a monthly mean by averaging all 3-hourly time steps in the month.
     Used when the month is outside the pre-computed archive or when the pgb
     archive does not contain the requested field (e.g. SPFH at pressure levels).
     Concurrency is capped at 8 to avoid hammering the GCS endpoint.
@@ -569,7 +569,7 @@ def _compute_monthly_from_6hourly(
     days = range(1, _cal.monthrange(year, month)[1] + 1)
     specs = [(f"{year}{month:02d}{d:02d}", h)
              for d in days for h in VALID_HOURS]
-    log.info("6HOURLY  %s %d  computing monthly mean from %d 6-hourly steps  (concurrent)",
+    log.info("6HOURLY  %s %d  computing monthly mean from %d 3-hourly steps  (concurrent)",
              _cal.month_abbr[month], year, len(specs))
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=8) as pool:

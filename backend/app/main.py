@@ -133,6 +133,7 @@ async def get_map(
     color_step: int = 1,
     scale_min: float | None = None,
     scale_max: float | None = None,
+    scale_spec: str = "",
     mode: str = "raw",
     climo_source: str = "monthly-pgb",
     wind_unit: str = "kt",
@@ -141,6 +142,11 @@ async def get_map(
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max)
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
+    if hours:
+        parsed_hours = [h.strip() for h in hours.split(",") if h.strip()]
+        invalid_hours = [h for h in parsed_hours if h not in VALID_HOURS]
+        if invalid_hours:
+            raise HTTPException(status_code=422, detail=f"hours contains invalid values: {invalid_hours}; valid hours are {VALID_HOURS}")
     if region not in REGIONS:
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
@@ -152,7 +158,7 @@ async def get_map(
     if is_surface_or_named_level(variable) and months:
         raise HTTPException(
             status_code=422,
-            detail="CORe surface/named-level starter fields currently support 6-hourly and daily raw maps only.",
+            detail="CORe surface/named-level starter fields currently support 3-hourly and daily raw maps only.",
         )
 
     try:
@@ -173,6 +179,7 @@ async def get_map(
                 color_step=color_step,
                 scale_min=scale_min,
                 scale_max=scale_max,
+                scale_spec=scale_spec,
                 mode=mode,
                 climo_source=climo_source,
                 wind_unit=wind_unit,

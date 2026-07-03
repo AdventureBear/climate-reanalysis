@@ -3,7 +3,7 @@ Climatology from NCEP/DOE Reanalysis 2 (R2), 1991-2020.
 
 Two retrieval strategies:
 
-DAILY (r2-daily): for sub-monthly (6-hourly / daily) anomaly requests.
+DAILY (r2-daily): for sub-monthly (3-hourly / daily) anomaly requests.
   - For a requested (month, day), open 30 year-files via OPeNDAP concurrently.
   - Each open uses a constraint expression to fetch ONLY the requested day and
     level: one 73×144 array (~42 KB) instead of a full year file (~170 MB).
