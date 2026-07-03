@@ -35,6 +35,20 @@ const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surfac
 const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
 const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp', 'total_column'])
 const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
+const MONTH_OPTIONS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+]
 
 type TimeScale   = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 type SubMode     = 'single' | 'range' | 'list'
@@ -264,6 +278,24 @@ function defaultDate(): string {
 }
 
 function toApiDate(s: string) { return s.replace(/-/g, '') }
+
+function fromApiDate(s: string) {
+  return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s
+}
+
+function fromApiMonth(s: string) {
+  return /^\d{6}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}` : s
+}
+
+function isConsecutiveMonths(months: string[]) {
+  if (months.length < 2) return true
+  return monthRange(fromApiMonth(months[0]), fromApiMonth(months[months.length - 1])).join(',') === months.join(',')
+}
+
+function isConsecutiveDates(dates: string[]) {
+  if (dates.length < 2) return true
+  return dateRange(fromApiDate(dates[0]), fromApiDate(dates[dates.length - 1])).join(',') === dates.join(',')
+}
 
 function monthRange(startYM: string, endYM: string): string[] {
   const result: string[] = []
@@ -612,6 +644,18 @@ function apiVariableForSelection(variable: string, level: string): string {
   return variable
 }
 
+function uiSelectionForApiVariable(apiVariable: string, apiLevel: string): { variable: string; level: string } {
+  if (apiVariable === 'wind_10m') return { variable: 'wind_speed', level: 'surface_10m' }
+  if (apiVariable === 'temp_2m') return { variable: 'temp', level: 'surface_2m' }
+  if (apiVariable === 'surface_pressure') return { variable: 'pressure', level: 'surface_mslp' }
+  if (apiVariable === 'precipitable_water') return { variable: 'precipitable_water', level: 'total_column' }
+  return { variable: apiVariable, level: apiLevel }
+}
+
+function shouldDefaultWindOverlay(apiVariable: string): boolean {
+  return apiVariable === 'wind_speed' || apiVariable === 'wind_10m' || apiVariable === 'temp_2m' || apiVariable === 'surface_pressure'
+}
+
 function apiLevelForSelection(level: string): string {
   return SURFACE_LEVELS.has(level) ? '1000' : level
 }
@@ -799,7 +843,7 @@ function CardRow({ children = null, className = '' }: { children?: React.ReactNo
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function App({ adminMode = false }: { adminMode?: boolean }) {
-  const [, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [timeScale,    setTimeScale]    = useState<TimeScale>('3-hourly')
   const [dateSubMode,  setDateSubMode]  = useState<SubMode>('single')
@@ -816,7 +860,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [monthEnd,     setMonthEnd]     = useState(() => new Date().toISOString().slice(0, 7))
   const [customMonths, setCustomMonths] = useState<string[]>([new Date().toISOString().slice(0, 7)])
 
-  const [climoMonth, setClimoMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [climoMonth, setClimoMonth] = useState(() => new Date().toISOString().slice(5, 7))
 
   const [variable, setVariable] = useState('wind_speed')
   const [level,    setLevel]    = useState('850')
@@ -829,9 +873,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
   const [displayMode, setDisplayMode] = useState<DisplayMode>('raw')
 
-  const [windOn,    setWindOn]    = useState(false)
+  const [windOn,    setWindOn]    = useState(true)
   const [windStep,  setWindStep]  = useState('2')
-  const [windType,  setWindType]  = useState<WindOverlayType>('vectors')
+  const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
   const [windAnomalyOverlay, setWindAnomalyOverlay] = useState<WindAnomalyOverlay>('none')
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('mm')
@@ -881,6 +925,103 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
 
   useEffect(() => {
+    if (!searchParams.toString()) return
+
+    const queryVariable = searchParams.get('variable')
+    const queryLevel = searchParams.get('level') ?? '850'
+    if (queryVariable) {
+      const next = uiSelectionForApiVariable(queryVariable, queryLevel)
+      setVariable(next.variable)
+      setLevel(next.level)
+    }
+
+    const queryRegion = searchParams.get('region')
+    if (queryRegion) setRegion(queryRegion)
+
+    const queryMode = searchParams.get('mode')
+    if (queryMode === 'raw' || queryMode === 'anomaly' || queryMode === 'normalized') {
+      setDisplayMode(queryMode)
+    }
+
+    const queryClimoSource = searchParams.get('climo_source')
+    if (queryClimoSource === 'monthly-pgb' || queryClimoSource === 'r2-daily' || queryClimoSource === 'r2-monthly' || queryClimoSource === 'cfsr-daily') {
+      setClimoSource(queryClimoSource)
+    }
+
+    const queryMonths = searchParams.get('months')
+    const queryDates = searchParams.get('dates')
+    const queryDate = searchParams.get('date')
+    const queryHours = searchParams.get('hours')
+    const queryHour = searchParams.get('hour')
+    const queryDateMode = searchParams.get('date_mode')
+
+    if (queryMode === 'climatology') {
+      setTimeScale('climatology')
+      if (queryDate && queryDate.length >= 6) setClimoMonth(queryDate.slice(4, 6))
+    } else if (queryMonths) {
+      setTimeScale('monthly')
+      const parsedMonths = queryMonths.split(',').map(s => s.trim()).filter(Boolean)
+      if (parsedMonths.length === 1) {
+        setMonthSubMode('single')
+        setMonth(fromApiMonth(parsedMonths[0]))
+      } else if (parsedMonths.length > 1 && isConsecutiveMonths(parsedMonths)) {
+        setMonthSubMode('range')
+        setMonthStart(fromApiMonth(parsedMonths[0]))
+        setMonthEnd(fromApiMonth(parsedMonths[parsedMonths.length - 1]))
+      } else if (parsedMonths.length > 1) {
+        setMonthSubMode('list')
+        setCustomMonths(parsedMonths.map(fromApiMonth))
+      }
+    } else {
+      setTimeScale(queryHours ? 'daily' : '3-hourly')
+      if (queryHour && HOURS.includes(queryHour)) setHour(queryHour)
+
+      const parsedDates = queryDates
+        ? queryDates.split(',').map(s => s.trim()).filter(Boolean)
+        : queryDate
+          ? [queryDate]
+          : []
+      if (parsedDates.length === 1) {
+        setDateSubMode('single')
+        setDate(fromApiDate(parsedDates[0]))
+      } else if (parsedDates.length > 1 && (queryDateMode === 'range' || isConsecutiveDates(parsedDates))) {
+        setDateSubMode('range')
+        setStartDate(fromApiDate(parsedDates[0]))
+        setEndDate(fromApiDate(parsedDates[parsedDates.length - 1]))
+      } else if (parsedDates.length > 1) {
+        setDateSubMode('list')
+        setCustomDates(parsedDates.map(fromApiDate))
+      }
+    }
+
+    const queryWindStep = searchParams.get('wind_step')
+    const queryWindType = searchParams.get('wind_type')
+    const queryWindOverlayMode = searchParams.get('wind_overlay_mode')
+    if (queryWindStep !== null) {
+      setWindStep(queryWindStep)
+      if (queryWindType === 'barbs' || queryWindType === 'vectors') {
+        setWindType(queryWindType)
+      }
+      if (queryWindOverlayMode === 'anomaly' && (queryWindType === 'barbs' || queryWindType === 'vectors')) {
+        setWindOn(false)
+        setWindAnomalyOverlay(queryWindType)
+      } else {
+        setWindOn(Number(queryWindStep) > 0)
+        setWindAnomalyOverlay('none')
+      }
+    }
+
+    const queryWindUnit = searchParams.get('wind_unit')
+    if (queryWindUnit === 'kt' || queryWindUnit === 'm/s') setWindUnit(queryWindUnit)
+
+    const queryPwatUnit = searchParams.get('pwat_unit')
+    if (queryPwatUnit === 'mm' || queryPwatUnit === 'in') setPwatUnit(queryPwatUnit)
+
+    const queryColorStep = searchParams.get('color_step')
+    if (queryColorStep) setColorStep(String(normalizeColorStep(queryColorStep)))
+  }, [searchParams])
+
+  useEffect(() => {
     if (!isFlxVariable) return
     if (displayMode !== 'raw') setDisplayMode('raw')
     if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('3-hourly')
@@ -893,7 +1034,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }, [level, levelOptions])
 
   useEffect(() => {
-    if (apiVariable === 'temp_2m' || apiVariable === 'wind_10m' || apiVariable === 'surface_pressure') {
+    if (shouldDefaultWindOverlay(apiVariable)) {
       setWindOn(true)
       setWindType('barbs')
     }
@@ -1011,7 +1152,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (displayMode !== 'raw') params.mode = displayMode
 
     if (isClimo) {
-      params.date = climoMonth.replace('-', '') + '01'
+      params.date = `2000${climoMonth}01`
       params.hour = '00'
       params.mode = 'climatology'
     } else if (isMonthly) {
@@ -1177,8 +1318,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   function renderTemporalInputs() {
     if (isClimo) {
       return (
-        <input type="month" value={climoMonth}
-          onChange={e => setClimoMonth(e.target.value)} className="input" />
+        <SelectField
+          value={climoMonth}
+          options={MONTH_OPTIONS}
+          onChange={setClimoMonth}
+          className="input"
+          wrapperClassName="contents"
+        />
       )
     }
 
@@ -2139,6 +2285,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     setVariable(nextVariable)
                     const nextLevel = levelOptionsForVariable(nextVariable)[0]?.value ?? '850'
                     setLevel(nextLevel)
+                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel))) {
+                      setWindOn(true)
+                      setWindType('barbs')
+                      setWindAnomalyOverlay('none')
+                    }
                 }}
                 wrapperClassName="flex flex-col gap-1 flex-1 min-w-0"
               />
@@ -2146,7 +2297,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 label={levelOptions.length === 1 && SURFACE_LEVELS.has(levelOptions[0].value) ? 'Level' : 'Level (mb)'}
                 value={level}
                 options={levelOptions}
-                onChange={setLevel}
+                onChange={nextLevel => {
+                  setLevel(nextLevel)
+                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel))) {
+                    setWindOn(true)
+                    setWindType('barbs')
+                    setWindAnomalyOverlay('none')
+                  }
+                }}
                 className="input"
                 wrapperClassName="flex flex-col gap-1 shrink-0"
               />
@@ -2341,7 +2499,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           <Section>
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={15} className="text-sky-400" />
-              <Label>Decorations</Label>
+              <Label>Overlays</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
             <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
@@ -2360,12 +2518,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
               <div className={`flex items-center gap-6 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex flex-col gap-0.5">
-                  {(['vectors', 'barbs'] as const).map(t => (
+                  {(['barbs', 'vectors'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setWindType(t)}
                               className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
                                   windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                               }`}>
-                        {t === 'vectors' ? 'Vectors' : 'Barbs'}
+                        {t === 'barbs' ? 'Barbs' : 'Vectors'}
                       </button>
                   ))}
                 </div>

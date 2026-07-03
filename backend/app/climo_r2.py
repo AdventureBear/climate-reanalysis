@@ -140,7 +140,7 @@ def _load_disk(r2_var: str, level: int, month: int, day: int) -> dict[str, xr.Da
         ds = xr.open_dataset(path)
         result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
         ds.close()
-        log.info("CLIMO_R2  disk cache hit  %s", os.path.basename(path))
+        log.debug("CLIMO_R2  disk cache hit  %s", os.path.basename(path))
         return result
     except Exception as exc:
         log.warning("CLIMO_R2  disk cache corrupt (%s), re-fetching", exc)
@@ -151,7 +151,7 @@ def _save_disk(r2_var: str, level: int, month: int, day: int, result: dict[str, 
     os.makedirs(_CACHE_DIR, exist_ok=True)
     path = _disk_path(r2_var, level, month, day)
     xr.Dataset({"mean": result["mean"], "std": result["std"]}).to_netcdf(path)
-    log.info("CLIMO_R2  saved to disk   %s", os.path.basename(path))
+    log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
 
 
 def _disk_path_monthly(r2_var: str, level: int, month: int) -> str:
@@ -166,7 +166,7 @@ def _load_disk_monthly(r2_var: str, level: int, month: int) -> dict[str, xr.Data
         ds = xr.open_dataset(path)
         result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
         ds.close()
-        log.info("CLIMO_R2M  disk cache hit  %s", os.path.basename(path))
+        log.debug("CLIMO_R2M  disk cache hit  %s", os.path.basename(path))
         return result
     except Exception as exc:
         log.warning("CLIMO_R2M  disk cache corrupt (%s), re-fetching", exc)
@@ -177,7 +177,7 @@ def _save_disk_monthly(r2_var: str, level: int, month: int, result: dict[str, xr
     os.makedirs(_CACHE_DIR, exist_ok=True)
     path = _disk_path_monthly(r2_var, level, month)
     xr.Dataset({"mean": result["mean"], "std": result["std"]}).to_netcdf(path)
-    log.info("CLIMO_R2M  saved to disk   %s", os.path.basename(path))
+    log.debug("CLIMO_R2M  saved to disk   %s", os.path.basename(path))
 
 
 # ── Surgical OPeNDAP fetch ───────────────────────────────────────────────────
@@ -418,7 +418,7 @@ def _load_monthly(
             _mcache[cache_key] = ready
 
     if event_to_wait is not None:
-        log.info("CLIMO_R2M  waiting for in-flight fetch  key=%s", cache_key)
+        log.debug("CLIMO_R2M  waiting for in-flight fetch  key=%s", cache_key)
         event_to_wait.wait()
         with _mcache_lock:
             return _mcache[cache_key]
@@ -473,7 +473,7 @@ def _load(
             _cache[cache_key] = ready
 
     if event_to_wait is not None:
-        log.info("CLIMO_R2  waiting for in-flight fetch  key=%s", cache_key)
+        log.debug("CLIMO_R2  waiting for in-flight fetch  key=%s", cache_key)
         event_to_wait.wait()
         with _cache_lock:
             return _cache[cache_key]

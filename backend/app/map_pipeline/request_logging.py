@@ -47,29 +47,29 @@ def obs_description(req: RequestLogContext, selection: TimeSelection) -> tuple[s
     var_name = VAR_NAMES.get(req.variable, req.variable)
     obs_source = "CORe flx" if VARIABLES[req.variable].get("stream") == "flx" else "CORe pgb"
     obs_method = "CORe GCS archive  |  surgical byte-range  |  idx → Range → cfgrib decode"
-    descriptions = {
-        "monthly": (
+    if selection.obs_kind == "monthly":
+        return (
             f"Monthly mean {var_name}  |  {len(selection.year_months)} month(s)",
             (
                 "CORe FTP pgb monthly archive  (surgical byte-range) → day-weighted mean"
                 if len(selection.year_months) > 1
                 else "CORe FTP pgb monthly archive  (surgical byte-range)"
             ),
-        ),
-        "daily": (
+        )
+    if selection.obs_kind == "daily":
+        return (
             f"{var_name}  |  {len(selection.date_list)} date(s) × {len(selection.daily_hours)} synoptic times",
             (
                 f"{obs_source} GCS archive  |  surgical byte-range  |  "
                 f"{len(selection.date_list) * len(selection.daily_hours)} fetches concurrent → mean"
             ),
-        ),
-        "composite": (
+        )
+    if selection.obs_kind == "composite":
+        return (
             f"{var_name}  |  {len(selection.date_list)} dates  {req.hour}z",
             f"{obs_source} GCS archive  |  surgical byte-range  |  {len(selection.date_list)} fetches concurrent → mean",
-        ),
-        "single": (
-            f"{var_name}  |  {selection.date_list[0]}  {req.hour}z",
-            obs_method,
-        ),
-    }
-    return descriptions[selection.obs_kind]
+        )
+    return (
+        f"{var_name}  |  {selection.date_list[0]}  {req.hour}z",
+        obs_method,
+    )

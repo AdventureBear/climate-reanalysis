@@ -38,21 +38,21 @@ def log_scale_diag(scale_diag: dict) -> None:
     ):
         values = scale_diag.get(key)
         if values:
-            log.info("  %-14s: %s", label, preview(values, digits=3))
+            log.debug("  %-14s: %s", label, preview(values, digits=3))
     anchor_hex = scale_diag.get("anchor_hex")
     if anchor_hex:
         if len(anchor_hex) <= 10:
-            log.info("  anchor colors : %s", anchor_hex)
+            log.debug("  anchor colors : %s", anchor_hex)
         else:
-            log.info("  anchor colors : %s ... %s", anchor_hex[:5], anchor_hex[-5:])
+            log.debug("  anchor colors : %s ... %s", anchor_hex[:5], anchor_hex[-5:])
     sample_labels = scale_diag.get("sample_band_labels")
     sample_hex = scale_diag.get("sample_band_hex")
     if sample_labels and sample_hex:
         samples = "  ".join(f"{label}={hex_}" for label, hex_ in zip(sample_labels, sample_hex))
-        log.info("  band colors   : %s", samples)
+        log.debug("  band colors   : %s", samples)
     pct = scale_diag.get("data_percentiles")
     if pct:
-        log.info(
+        log.debug(
             "  percentiles   : p01=%.3f  p05=%.3f  p25=%.3f  p50=%.3f  p75=%.3f  p95=%.3f  p99=%.3f %s",
             pct["1"],
             pct["5"],
@@ -70,4 +70,4 @@ def log_scale_diag(scale_diag: dict) -> None:
             f"[{band_edges[i]:.1f},{band_edges[i + 1]:.1f})={band_pcts[i]:.1f}%"
             for i in range(len(band_pcts))
         ]
-        log.info("  scale bands   : %s", "  ".join(band_parts))
+        log.debug("  scale bands   : %s", "  ".join(band_parts))

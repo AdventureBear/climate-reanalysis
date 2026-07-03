@@ -35,7 +35,7 @@ def _load_obs_monthly(path: str) -> xr.DataArray | None:
         ds = xr.open_dataset(path)
         da = ds["obs"].load()
         ds.close()
-        log.info("OBS_CACHE  hit  %s", os.path.basename(path))
+        log.debug("OBS_CACHE  hit  %s", os.path.basename(path))
         return da
     except Exception as exc:
         log.warning("OBS_CACHE  corrupt (%s), re-fetching", exc)
@@ -47,7 +47,7 @@ def _save_obs_monthly(da: xr.DataArray, path: str) -> None:
     tmp = path + ".tmp"
     da.to_dataset(name="obs").to_netcdf(tmp)
     os.replace(tmp, path)   # atomic on POSIX — safe against concurrent writers
-    log.info("OBS_CACHE  saved  %s", os.path.basename(path))
+    log.debug("OBS_CACHE  saved  %s", os.path.basename(path))
 
 # GCS is the primary archive: 1950 → near real-time, 3-hourly, simpler URL.
 # NOMADS keeps only the last 7 days and uses a more complex batch-dir structure.
@@ -156,12 +156,12 @@ def parse_index_text(text: str) -> list[IndexRecord]:
 def fetch_index(date: str, hour: str) -> list[IndexRecord]:
     """Fetch and parse the .idx file for a given valid date (YYYYMMDD) and valid hour (HH)."""
     url = _gcs_index_url(date, hour)
-    log.info("IDX      GET %s", url)
+    log.debug("IDX      GET %s", url)
     t0 = time.perf_counter()
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     records = parse_index_text(r.text)
-    log.info("IDX      parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
+    log.debug("IDX      parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
     return records
 
 
@@ -173,7 +173,7 @@ def fetch_flx_index(date: str, hour: str) -> list[IndexRecord]:
 
 def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], str]:
     gcs_idx_url = _gcs_flx_index_url(date, hour)
-    log.info("FLX_IDX  GET %s", gcs_idx_url)
+    log.debug("FLX_IDX  GET %s", gcs_idx_url)
     t0 = time.perf_counter()
     try:
         r = requests.get(gcs_idx_url, timeout=15)
@@ -183,12 +183,12 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
         if exc.response is None or exc.response.status_code != 404:
             raise
         nomads_idx_url = _nomads_flx_index_url(date, hour)
-        log.info("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
+        log.debug("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
         r = requests.get(nomads_idx_url, timeout=15)
         r.raise_for_status()
         grib_url = _nomads_flx_url(date, hour)
     records = parse_index_text(r.text)
-    log.info("FLX_IDX  parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
+    log.debug("FLX_IDX  parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
     return records, grib_url
 
 
@@ -214,14 +214,14 @@ def _fetch_record_by_level(grib_url: str, records: list[IndexRecord], variable: 
         range_header = f"bytes={rec.byte_start}-"
         nbytes = -1
 
-    log.info("GRIB     GET %s  %s@%s  %s  (~%s)",
-             grib_url, variable, level_name, range_header,
-             f"{nbytes//1024}KB" if nbytes > 0 else "?KB")
+    log.debug("GRIB     GET %s  %s@%s  %s  (~%s)",
+              grib_url, variable, level_name, range_header,
+              f"{nbytes//1024}KB" if nbytes > 0 else "?KB")
     t0 = time.perf_counter()
     r = requests.get(grib_url, headers={"Range": range_header}, timeout=30)
     if r.status_code not in (200, 206):
         r.raise_for_status()
-    log.info("GRIB     received %dKB  %.2fs", len(r.content) // 1024, time.perf_counter() - t0)
+    log.debug("GRIB     received %dKB  %.2fs", len(r.content) // 1024, time.perf_counter() - t0)
 
     with tempfile.NamedTemporaryFile(suffix=".grib2", delete=False) as tmp:
         tmp.write(r.content)
@@ -334,12 +334,12 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
     Fetch the same field for multiple dates concurrently, return the mean.
     valid_time differs per date so it is dropped before stacking.
     """
-    log.info("COMPOSITE  %d dates  hour=%sz  (concurrent)", len(dates), hour)
+    log.debug("COMPOSITE  %d dates  hour=%sz  (concurrent)", len(dates), hour)
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(dates), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, hour, *args): d for d in dates}
         arrays = [fut.result() for fut in as_completed(futures)]
-    log.info("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
+    log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
     stacked = xr.concat(cleaned, dim="composite_date")
@@ -353,12 +353,12 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args) -> x
     Fetch a field for multiple (date, hour) pairs concurrently and return the mean.
     Used for daily composites that average several synoptic times.
     """
-    log.info("COMPOSITE  %d (date×hour) pairs  (concurrent)", len(date_hour_pairs))
+    log.debug("COMPOSITE  %d (date×hour) pairs  (concurrent)", len(date_hour_pairs))
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, h, *args): (d, h) for d, h in date_hour_pairs}
         arrays = [fut.result() for fut in as_completed(futures)]
-    log.info("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
+    log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
     stacked = xr.concat(cleaned, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
@@ -472,7 +472,7 @@ def _fetch_r2m_field(year: int, month: int, grib_name: str, level: int) -> xr.Da
 
     url = f"{R2_MONTHLY_BASE}/{r2_var}.mon.mean.nc"
     date_str = f"{year}-{month:02d}-01"
-    log.info("R2M      GET %s  %s@%dhPa  %d-%02d", url, r2_var, level, year, month)
+    log.debug("R2M      GET %s  %s@%dhPa  %d-%02d", url, r2_var, level, year, month)
     t0 = time.perf_counter()
     ds = xr.open_dataset(url, engine="netcdf4")
     da = ds[r2_var].sel(level=level, method="nearest").sel(
@@ -481,7 +481,7 @@ def _fetch_r2m_field(year: int, month: int, grib_name: str, level: int) -> xr.Da
     ds.close()
     da = da.where(np.abs(da) < 1e30)
     da = da.rename({"lat": "latitude", "lon": "longitude"})
-    log.info("R2M      fetched %.0fKB in %.2fs", da.nbytes / 1024, time.perf_counter() - t0)
+    log.debug("R2M      fetched %.0fKB in %.2fs", da.nbytes / 1024, time.perf_counter() - t0)
 
     da.attrs["_pyre_obs_source"] = "R2-monthly"
     _save_obs_monthly(da, path)
@@ -498,7 +498,7 @@ def _pgb_monthly_index_url(year: int, month: int) -> str:
 
 def _fetch_monthly_index(year: int, month: int) -> list[IndexRecord]:
     url = _pgb_monthly_index_url(year, month)
-    log.info("IDX      GET %s", url)
+    log.debug("IDX      GET %s", url)
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     return parse_index_text(r.text)
