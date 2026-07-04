@@ -35,7 +35,7 @@ The PSL/NCEP reanalysis interactive pages (used in meteorology education and res
 **The three PSL interfaces being replicated:**
 - Monthly/Seasonal Composites — `https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl`
 - Daily Mean Composites — `https://psl.noaa.gov/data/composites/day/`
-- 6-Hourly Composites (00z/06z/12z/18z) — `https://psl.noaa.gov/data/composites/hour/`
+- Hourly Composites — `https://psl.noaa.gov/data/composites/hour/`
 
 The new underlying dataset is **CORe (Climate-Ocean Reanalysis)** from NCEP/CPC, available back to the 1950s.
 - CORe info: `https://www.cpc.ncep.noaa.gov/products/CORe/index.html`
@@ -51,6 +51,15 @@ Monorepo: `backend/` (Python 3.12, FastAPI, uv) and `frontend/` (React 19, TypeS
 **The frontend is a thin UI shell. All computation and rendering happen on the backend.**
 
 The frontend sends a "recipe" (variable, level, region, date list, mode) → backend fetches, computes, renders → streams a PNG → frontend displays in an `<img>` tag.
+
+### Engineering Guardrails
+
+- Do not add one-off `if` / `else` chains for variable, level, unit, overlay, or scale behavior. Add behavior to a typed registry/config and derive UI/API behavior from that source of truth.
+- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params. Do not scatter URL parsing, API serialization, or variable/level mapping inside `App.tsx`.
+- If a feature will grow with variables, levels, overlays, units, regions, or modes, pause and extend the source-of-truth config first.
+- Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR`, over temporary hardcoded paths or code that will need to be deleted later.
+- Before implementing a quick UI fix, ask whether this is a state/model problem instead of a component problem.
+- Keep changes stepwise and verifiable: make one structural change, run the relevant build/test, then continue.
 
 ### Target Data Flow: Surgical Retrieval
 
@@ -87,12 +96,9 @@ Wind speed is derived: `sqrt(UGRD² + VGRD²)`. Wind direction is derived simila
 
 `config.py` `VARIABLES` dict should use these GRIB short names as keys.
 
-### Current Code Status (Proof of Concept)
+### Current Code Status
 
-Both existing endpoints (`/get-map`, `/map-image`) and the Leaflet rectangle renderer are **scaffolding only**:
-- Download entire GRIB2 files to disk instead of byte-range extraction.
-- `/get-map` returns a raw JSON grid for frontend coloring — replaced by server-side PNG.
-- `/map-image` streams a Cartopy PNG (closer to target) but still does full-file download.
+The active map-rendering API is `/api/map`; it validates a map recipe, fetches the requested field(s), computes composites/anomalies, renders a server-side PNG, and streams it to the frontend. `/api/scale-meta` exposes backend color-scale metadata for Color Lab. Legacy PoC endpoints and client-side grid coloring should not be reintroduced.
 
 ### Backend (`backend/app/`)
 
@@ -111,7 +117,7 @@ Both existing endpoints (`/get-map`, `/map-image`) and the Leaflet rectangle ren
 
 | Mode | PSL Equivalent | Input |
 |---|---|---|
-| 6-Hourly | `composites/hour/` | 1 date + synoptic hour (00/06/12/18z) |
+| 3-Hourly | `composites/hour/` | 1 date + synoptic hour (00/03/06/09/12/15/18/21z) |
 | Daily Mean | `composites/day/` | 1 or more dates (averaged) |
 | Monthly/Seasonal | `composites/printpage.pl` | Month range or non-consecutive month list |
 

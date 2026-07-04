@@ -1,40 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2 } from 'lucide-react'
+import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
 import { REGION_THUMBNAILS } from './regionThumbnails'
+import { HOURS, normalizeColorStep } from './sharedOptions'
+import {
+  COLOR_LAB_SINGLE_LEVEL_VARIABLES,
+  COLOR_LAB_VARIABLES,
+  FLX_VARIABLES,
+  PRESSURE_LEVELS,
+  SURFACE_LEVELS,
+  VARIABLES,
+  apiLevelForSelection,
+  apiVariableForSelection,
+  levelOptionsForVariable,
+  shouldDefaultWindOverlay,
+  type SelectOption,
+} from './variableConfig'
 
 // const API_BASE = 'http://127.0.0.1:8000'
 const API_BASE = import.meta.env.VITE_API_URL;
 
-const MASTER_VARIABLES = [
-  { key: 'wind_speed', label: 'Wind Speed' },
-  { key: 'temp', label: 'Temperature' },
-  { key: 'pressure', label: 'Mean Sea Level Pressure' },
-  { key: 'height', label: 'Geopotential Height' },
-  { key: 'rel_humidity', label: 'Relative Humidity' },
-  { key: 'humidity', label: 'Specific Humidity' },
-  { key: 'precipitable_water', label: 'Precipitable Water' },
-]
-
-const VARIABLES = MASTER_VARIABLES.map(({ key, label }) => ({ key, label }))
-const COLOR_LAB_VARIABLES = [
-  { key: 'wind_speed', label: 'Wind Speed' },
-  { key: 'wind_10m', label: '10m Wind Speed' },
-  { key: 'temp', label: 'Temperature' },
-  { key: 'temp_2m', label: '2m Temperature' },
-  { key: 'surface_pressure', label: 'Mean Sea Level Pressure' },
-  { key: 'height', label: 'Geopotential Height' },
-  { key: 'rel_humidity', label: 'Relative Humidity' },
-  { key: 'humidity', label: 'Specific Humidity' },
-  { key: 'precipitable_water', label: 'Precipitable Water' },
-]
-
-const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
-const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
-
-const LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
-const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp', 'total_column'])
-const HOURS  = ['00', '03', '06', '09', '12', '15', '18', '21']
+const LEVELS = [...PRESSURE_LEVELS]
 const MONTH_OPTIONS = [
   { value: '01', label: 'January' },
   { value: '02', label: 'February' },
@@ -50,14 +37,6 @@ const MONTH_OPTIONS = [
   { value: '12', label: 'December' },
 ]
 
-type TimeScale   = '3-hourly' | 'daily' | 'monthly' | 'climatology'
-type SubMode     = 'single' | 'range' | 'list'
-type DisplayMode = 'raw' | 'anomaly' | 'normalized'
-type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
-type WindUnit = 'kt' | 'm/s'
-type WindOverlayType = 'vectors' | 'barbs'
-type WindAnomalyOverlay = 'none' | WindOverlayType
-type PwatUnit = 'mm' | 'in'
 type TemperatureUnit = 'F' | 'C'
 type HeightDisplay = 'contoured' | 'shaded'
 type ScaleMeta = {
@@ -91,8 +70,6 @@ type ScalePalettePreset = {
   family: 'PyRe' | 'Sequential' | 'Diverging' | 'Perceptual'
   colors: string[]
 }
-type SelectOption = { value: string; label: string; disabled?: boolean }
-
 type ScaleFamily = {
   key: string
   label: string
@@ -277,58 +254,9 @@ function defaultDate(): string {
   return d.toISOString().slice(0, 10)
 }
 
-function toApiDate(s: string) { return s.replace(/-/g, '') }
-
-function fromApiDate(s: string) {
-  return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s
-}
-
-function fromApiMonth(s: string) {
-  return /^\d{6}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}` : s
-}
-
-function isConsecutiveMonths(months: string[]) {
-  if (months.length < 2) return true
-  return monthRange(fromApiMonth(months[0]), fromApiMonth(months[months.length - 1])).join(',') === months.join(',')
-}
-
-function isConsecutiveDates(dates: string[]) {
-  if (dates.length < 2) return true
-  return dateRange(fromApiDate(dates[0]), fromApiDate(dates[dates.length - 1])).join(',') === dates.join(',')
-}
-
-function monthRange(startYM: string, endYM: string): string[] {
-  const result: string[] = []
-  const [sy, sm] = startYM.split('-').map(Number)
-  const [ey, em] = endYM.split('-').map(Number)
-  let y = sy, m = sm
-  while (y < ey || (y === ey && m <= em)) {
-    result.push(`${y}${String(m).padStart(2, '0')}`)
-    m++; if (m > 12) { m = 1; y++ }
-  }
-  return result
-}
-
-function dateRange(startISO: string, endISO: string): string[] {
-  const result: string[] = []
-  const cur = new Date(startISO + 'T00:00:00Z')
-  const end = new Date(endISO  + 'T00:00:00Z')
-  while (cur <= end) {
-    result.push(cur.toISOString().slice(0, 10).replace(/-/g, ''))
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  }
-  return result
-}
-
 function formatScaleValue(value: number): string {
   if (Math.abs(value - Math.round(value)) < 1e-9) return String(Math.round(value))
   return value.toFixed(1).replace(/\.0$/, '')
-}
-
-function normalizeColorStep(value: string) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return 1
-  return Math.max(1, Math.min(50, Math.round(parsed)))
 }
 
 function scaleAnchorId(idx: number) {
@@ -621,45 +549,6 @@ function resolveScaleFamily(variable: string, mode: DisplayMode, level: string):
   return families.find(f => f.levels.includes(Number(level))) ?? families[0]
 }
 
-function levelOptionsForVariable(variable: string): { value: string; label: string }[] {
-  if (variable === 'wind_speed') {
-    return [{ value: 'surface_10m', label: 'Surface (10m)' }, ...LEVELS.map(l => ({ value: String(l), label: String(l) }))]
-  }
-  if (variable === 'temp') {
-    return [{ value: 'surface_2m', label: 'Surface (2m)' }, ...LEVELS.map(l => ({ value: String(l), label: String(l) }))]
-  }
-  if (variable === 'pressure') {
-    return [{ value: 'surface_mslp', label: 'Surface (MSLP)' }]
-  }
-  if (variable === 'precipitable_water') {
-    return [{ value: 'total_column', label: 'Total column' }]
-  }
-  return LEVELS.map(l => ({ value: String(l), label: String(l) }))
-}
-
-function apiVariableForSelection(variable: string, level: string): string {
-  if (variable === 'wind_speed' && level === 'surface_10m') return 'wind_10m'
-  if (variable === 'temp' && level === 'surface_2m') return 'temp_2m'
-  if (variable === 'pressure') return 'surface_pressure'
-  return variable
-}
-
-function uiSelectionForApiVariable(apiVariable: string, apiLevel: string): { variable: string; level: string } {
-  if (apiVariable === 'wind_10m') return { variable: 'wind_speed', level: 'surface_10m' }
-  if (apiVariable === 'temp_2m') return { variable: 'temp', level: 'surface_2m' }
-  if (apiVariable === 'surface_pressure') return { variable: 'pressure', level: 'surface_mslp' }
-  if (apiVariable === 'precipitable_water') return { variable: 'precipitable_water', level: 'total_column' }
-  return { variable: apiVariable, level: apiLevel }
-}
-
-function shouldDefaultWindOverlay(apiVariable: string): boolean {
-  return apiVariable === 'wind_speed' || apiVariable === 'wind_10m' || apiVariable === 'temp_2m' || apiVariable === 'surface_pressure'
-}
-
-function apiLevelForSelection(level: string): string {
-  return SURFACE_LEVELS.has(level) ? '1000' : level
-}
-
 // ── Design primitives ─────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {
   return (
@@ -914,7 +803,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isVertical  = layoutMode === 'vertical'
 
   const apiVariable = apiVariableForSelection(variable, level)
-  const apiLevel = apiLevelForSelection(level)
+  const apiLevel = apiLevelForSelection(variable, level)
   const levelOptions = levelOptionsForVariable(variable)
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
@@ -924,101 +813,107 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
 
+  function applyTimeRecipe(time: TimeRecipe) {
+    setTimeScale(time.scale)
+    switch (time.scale) {
+      case 'climatology':
+        setClimoMonth(time.climoMonth)
+        return
+      case 'monthly':
+        setMonthSubMode(time.subMode)
+        if (time.subMode === 'single') setMonth(time.month)
+        if (time.subMode === 'range') {
+          setMonthStart(time.monthStart)
+          setMonthEnd(time.monthEnd)
+        }
+        if (time.subMode === 'list') setCustomMonths(time.customMonths)
+        return
+      case 'daily':
+        setDateSubMode(time.subMode)
+        if (time.subMode === 'single') setDate(time.date)
+        if (time.subMode === 'range') {
+          setStartDate(time.startDate)
+          setEndDate(time.endDate)
+        }
+        if (time.subMode === 'list') setCustomDates(time.customDates)
+        return
+      case '3-hourly':
+        setDateSubMode(time.subMode)
+        setHour(time.hour)
+        if (time.subMode === 'single') setDate(time.date)
+        if (time.subMode === 'range') {
+          setStartDate(time.startDate)
+          setEndDate(time.endDate)
+        }
+        if (time.subMode === 'list') setCustomDates(time.customDates)
+        return
+    }
+  }
+
+  function applyMapRecipe(recipe: MapRecipe) {
+    if (recipe.variable) setVariable(recipe.variable)
+    if (recipe.level) setLevel(recipe.level)
+    if (recipe.region) setRegion(recipe.region)
+    if (recipe.displayMode) setDisplayMode(recipe.displayMode)
+    if (recipe.climoSource) setClimoSource(recipe.climoSource)
+    if (recipe.windUnit) setWindUnit(recipe.windUnit)
+    if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
+    if (recipe.colorStep) setColorStep(recipe.colorStep)
+    if (recipe.time) applyTimeRecipe(recipe.time)
+    if (recipe.wind) {
+      setWindStep(recipe.wind.step)
+      setWindType(recipe.wind.type)
+      setWindOn(recipe.wind.on)
+      setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
+    }
+  }
+
+  function currentTimeRecipe(): TimeRecipe {
+    if (isClimo) {
+      return { scale: 'climatology', climoMonth }
+    }
+    if (isMonthly) {
+      if (monthSubMode === 'single') return { scale: 'monthly', subMode: 'single', month }
+      if (monthSubMode === 'range') return { scale: 'monthly', subMode: 'range', monthStart, monthEnd }
+      return { scale: 'monthly', subMode: 'list', customMonths }
+    }
+    if (isThreeHourly) {
+      if (dateSubMode === 'single') return { scale: '3-hourly', subMode: 'single', date, hour }
+      if (dateSubMode === 'range') return { scale: '3-hourly', subMode: 'range', startDate, endDate, hour }
+      return { scale: '3-hourly', subMode: 'list', customDates, hour }
+    }
+    if (dateSubMode === 'single') return { scale: 'daily', subMode: 'single', date }
+    if (dateSubMode === 'range') return { scale: 'daily', subMode: 'range', startDate, endDate }
+    return { scale: 'daily', subMode: 'list', customDates }
+  }
+
+  function currentMapRecipe(): MapRecipe {
+    const activeWindAnomaly = canUseWindAnomalyOverlay ? windAnomalyOverlay : 'none'
+    return {
+      variable,
+      level,
+      region,
+      displayMode,
+      climoSource,
+      time: currentTimeRecipe(),
+      wind: windStep
+        ? {
+            on: activeWindAnomaly === 'none' && windOn,
+            step: windStep,
+            type: windType,
+            anomalyOverlay: activeWindAnomaly,
+          }
+        : undefined,
+      windUnit,
+      pwatUnit,
+      colorStep,
+    }
+  }
+
   useEffect(() => {
-    if (!searchParams.toString()) return
-
-    const queryVariable = searchParams.get('variable')
-    const queryLevel = searchParams.get('level') ?? '850'
-    if (queryVariable) {
-      const next = uiSelectionForApiVariable(queryVariable, queryLevel)
-      setVariable(next.variable)
-      setLevel(next.level)
-    }
-
-    const queryRegion = searchParams.get('region')
-    if (queryRegion) setRegion(queryRegion)
-
-    const queryMode = searchParams.get('mode')
-    if (queryMode === 'raw' || queryMode === 'anomaly' || queryMode === 'normalized') {
-      setDisplayMode(queryMode)
-    }
-
-    const queryClimoSource = searchParams.get('climo_source')
-    if (queryClimoSource === 'monthly-pgb' || queryClimoSource === 'r2-daily' || queryClimoSource === 'r2-monthly' || queryClimoSource === 'cfsr-daily') {
-      setClimoSource(queryClimoSource)
-    }
-
-    const queryMonths = searchParams.get('months')
-    const queryDates = searchParams.get('dates')
-    const queryDate = searchParams.get('date')
-    const queryHours = searchParams.get('hours')
-    const queryHour = searchParams.get('hour')
-    const queryDateMode = searchParams.get('date_mode')
-
-    if (queryMode === 'climatology') {
-      setTimeScale('climatology')
-      if (queryDate && queryDate.length >= 6) setClimoMonth(queryDate.slice(4, 6))
-    } else if (queryMonths) {
-      setTimeScale('monthly')
-      const parsedMonths = queryMonths.split(',').map(s => s.trim()).filter(Boolean)
-      if (parsedMonths.length === 1) {
-        setMonthSubMode('single')
-        setMonth(fromApiMonth(parsedMonths[0]))
-      } else if (parsedMonths.length > 1 && isConsecutiveMonths(parsedMonths)) {
-        setMonthSubMode('range')
-        setMonthStart(fromApiMonth(parsedMonths[0]))
-        setMonthEnd(fromApiMonth(parsedMonths[parsedMonths.length - 1]))
-      } else if (parsedMonths.length > 1) {
-        setMonthSubMode('list')
-        setCustomMonths(parsedMonths.map(fromApiMonth))
-      }
-    } else {
-      setTimeScale(queryHours ? 'daily' : '3-hourly')
-      if (queryHour && HOURS.includes(queryHour)) setHour(queryHour)
-
-      const parsedDates = queryDates
-        ? queryDates.split(',').map(s => s.trim()).filter(Boolean)
-        : queryDate
-          ? [queryDate]
-          : []
-      if (parsedDates.length === 1) {
-        setDateSubMode('single')
-        setDate(fromApiDate(parsedDates[0]))
-      } else if (parsedDates.length > 1 && (queryDateMode === 'range' || isConsecutiveDates(parsedDates))) {
-        setDateSubMode('range')
-        setStartDate(fromApiDate(parsedDates[0]))
-        setEndDate(fromApiDate(parsedDates[parsedDates.length - 1]))
-      } else if (parsedDates.length > 1) {
-        setDateSubMode('list')
-        setCustomDates(parsedDates.map(fromApiDate))
-      }
-    }
-
-    const queryWindStep = searchParams.get('wind_step')
-    const queryWindType = searchParams.get('wind_type')
-    const queryWindOverlayMode = searchParams.get('wind_overlay_mode')
-    if (queryWindStep !== null) {
-      setWindStep(queryWindStep)
-      if (queryWindType === 'barbs' || queryWindType === 'vectors') {
-        setWindType(queryWindType)
-      }
-      if (queryWindOverlayMode === 'anomaly' && (queryWindType === 'barbs' || queryWindType === 'vectors')) {
-        setWindOn(false)
-        setWindAnomalyOverlay(queryWindType)
-      } else {
-        setWindOn(Number(queryWindStep) > 0)
-        setWindAnomalyOverlay('none')
-      }
-    }
-
-    const queryWindUnit = searchParams.get('wind_unit')
-    if (queryWindUnit === 'kt' || queryWindUnit === 'm/s') setWindUnit(queryWindUnit)
-
-    const queryPwatUnit = searchParams.get('pwat_unit')
-    if (queryPwatUnit === 'mm' || queryPwatUnit === 'in') setPwatUnit(queryPwatUnit)
-
-    const queryColorStep = searchParams.get('color_step')
-    if (queryColorStep) setColorStep(String(normalizeColorStep(queryColorStep)))
+    const recipe = mapRecipeFromUrl(searchParams)
+    if (!recipe) return
+    applyMapRecipe(recipe)
   }, [searchParams])
 
   useEffect(() => {
@@ -1147,70 +1042,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     e.preventDefault()
     setError(null)
 
-    const params: Record<string, string> = { variable: apiVariable, level: apiLevel, region }
-
-    if (displayMode !== 'raw') params.mode = displayMode
-
-    if (isClimo) {
-      params.date = `2000${climoMonth}01`
-      params.hour = '00'
-      params.mode = 'climatology'
-    } else if (isMonthly) {
-      if (monthSubMode === 'single') {
-        params.months = month.replace('-', '')
-      } else if (monthSubMode === 'range') {
-        const mList = monthRange(monthStart, monthEnd)
-        if (!mList.length) { setError('End month must be on or after start month.'); return }
-        params.months = mList.join(',')
-      } else {
-        const mList = customMonths.filter(Boolean).map(m => m.replace('-', ''))
-        if (!mList.length) { setError('Add at least one month.'); return }
-        params.months = mList.join(',')
-      }
-    } else {
-      if (isThreeHourly) {
-        params.hour = hour
-      } else {
-        // Daily composite: average the four primary synoptic times per day.
-        params.hours = '00,06,12,18'
-      }
-      if (dateSubMode === 'single') {
-        params.date = toApiDate(date)
-        params.date_mode = 'single'
-      } else if (dateSubMode === 'range') {
-        const dates = startDate && endDate && startDate <= endDate ? dateRange(startDate, endDate) : []
-        if (!dates.length) { setError('End date must be on or after start date.'); return }
-        params.dates = dates.join(',')
-        params.date_mode = 'range'
-      } else {
-        const dates = customDates.filter(Boolean).map(toApiDate)
-        if (!dates.length) { setError('Add at least one date.'); return }
-        params.date_mode = 'list'
-        if (dates.length === 1) {
-          params.date = dates[0]
-        } else {
-          params.dates = dates.join(',')
-        }
-      }
+    const recipeParams = mapRecipeToParams(currentMapRecipe())
+    if (!recipeParams.ok) {
+      setError(recipeParams.error)
+      return
     }
-
-    if (canUseWindAnomalyOverlay && windAnomalyOverlay !== 'none' && windStep) {
-      params.wind_step = windStep
-      params.wind_type = windAnomalyOverlay
-      params.wind_overlay_mode = 'anomaly'
-    } else if (windOn && windStep) {
-      params.wind_step = windStep
-      params.wind_type = windType
-      params.wind_overlay_mode = 'actual'
-    }
+    const params = recipeParams.params
     const safeColorStep = normalizeColorStep(colorStep)
-    if (safeColorStep !== 1) params.color_step = String(safeColorStep)
-    if (apiVariable === 'wind_speed' || apiVariable === 'wind_10m') {
-      params.wind_unit = windUnit
-    }
-    if (apiVariable === 'precipitable_water') {
-      params.pwat_unit = pwatUnit
-    }
     const labRenderMode = isClimo ? 'raw' : displayMode
     const labScaleApplies =
       adminMode &&
@@ -1252,15 +1090,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (mapSrc?.startsWith('blob:')) URL.revokeObjectURL(mapSrc)
     setMapSrc(null)
 
-    const fetchParams = { ...params }
-    // Always send the user's climo preference for anomaly/normalized requests.
-    // The backend decides what to actually honour and logs any override.
-    if (params.mode && params.mode !== 'raw') {
-      fetchParams.climo_source = climoSource
-    }
-
     try {
-      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(fetchParams)}`)
+      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(params)}`)
       if (res.ok) {
         const blob = await res.blob()
         setMapSrc(URL.createObjectURL(blob))
@@ -1510,7 +1341,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     function commitScaleAnchorValue(id: string, raw: string) {
       const next = Number(raw)
       setAnchorValueDrafts(prev => {
-        const { [id]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[id]
         return rest
       })
       if (!Number.isFinite(next)) return
@@ -1519,7 +1351,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
     function cancelScaleAnchorValueDraft(id: string) {
       setAnchorValueDrafts(prev => {
-        const { [id]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[id]
         return rest
       })
     }
@@ -1527,7 +1360,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     function commitScaleAnchorColor(id: string, raw: string) {
       const next = raw.trim()
       setAnchorColorDrafts(prev => {
-        const { [id]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[id]
         return rest
       })
       if (!/^#[0-9a-fA-F]{6}$/.test(next)) return
@@ -1591,11 +1425,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         return next
       })
       setAnchorValueDrafts(prev => {
-        const { [id]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[id]
         return rest
       })
       setAnchorColorDrafts(prev => {
-        const { [id]: _removed, ...rest } = prev
+        const rest = { ...prev }
+        delete rest[id]
         return rest
       })
     }
@@ -1619,7 +1455,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <div className="flex flex-wrap items-center gap-2">
               <SelectField
                 value={labVariable}
-                options={COLOR_LAB_VARIABLES.map(opt => ({ value: opt.key, label: opt.label }))}
+                options={COLOR_LAB_VARIABLES}
                 onChange={nextKey => {
                   const nextFamily = resolveScaleFamily(nextKey, labMode, labLevel)
                   setLabVariable(nextKey)
@@ -1990,7 +1826,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                                   if (e.key === 'Enter') e.currentTarget.blur()
                                   if (e.key === 'Escape') {
                                     setAnchorColorDrafts(prev => {
-                                      const { [selectedAnchor.id]: _removed, ...rest } = prev
+                                      const rest = { ...prev }
+                                      delete rest[selectedAnchor.id]
                                       return rest
                                     })
                                     e.currentTarget.blur()
@@ -2280,7 +2117,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <SelectField
                 label="Variable"
                 value={variable === 'humidity' ? 'rel_humidity' : variable}
-                options={VARIABLES.map(v => ({ value: v.key, label: v.label }))}
+                options={VARIABLES}
                 onChange={nextVariable => {
                     setVariable(nextVariable)
                     const nextLevel = levelOptionsForVariable(nextVariable)[0]?.value ?? '850'

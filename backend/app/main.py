@@ -16,7 +16,7 @@ from .api_options import (
 from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
-from .retrieval import VALID_HOURS
+from .retrieval import DataUnavailableError, VALID_HOURS
 from .visualizer import describe_color_scale
 
 load_dotenv()
@@ -187,6 +187,8 @@ async def get_map(
             )
         )
         return StreamingResponse(buf, media_type="image/png")
+    except DataUnavailableError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except HTTPException:
         raise
     except Exception as exc:

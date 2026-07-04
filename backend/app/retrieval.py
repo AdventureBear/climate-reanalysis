@@ -14,6 +14,10 @@ import xarray as xr
 
 log = logging.getLogger("pyre.retrieval")
 
+
+class DataUnavailableError(RuntimeError):
+    """Raised when the requested primary observation data is not available."""
+
 # ── Monthly obs disk cache ────────────────────────────────────────────────────
 # Stores the decoded DataArray for each (grib_name, level, YYYYMM) slice.
 # Written as NetCDF via atomic rename — safe for concurrent requests.
@@ -82,6 +86,22 @@ def _gcs_index_url(valid_date: str, valid_hour: str) -> str:
     return f"{GCS_BASE}/{yyyy}/{mm}/pgb.{valid_date}{valid_hour}.idx"
 
 
+def _gcs_index_exists(valid_date: str, valid_hour: str) -> bool:
+    url = _gcs_index_url(valid_date, valid_hour)
+    r = None
+    try:
+        r = requests.head(url, timeout=10)
+        if r.status_code == 405:
+            r = requests.get(url, timeout=10, stream=True)
+        if r.status_code == 404:
+            return False
+        r.raise_for_status()
+        return True
+    finally:
+        if r is not None:
+            r.close()
+
+
 def _gcs_flx_url(valid_date: str, valid_hour: str) -> str:
     yyyy = valid_date[:4]
     mm = valid_date[4:6]
@@ -92,6 +112,22 @@ def _gcs_flx_index_url(valid_date: str, valid_hour: str) -> str:
     yyyy = valid_date[:4]
     mm = valid_date[4:6]
     return f"{GCS_FLX_BASE}/{yyyy}/{mm}/flx.{valid_date}{valid_hour}.idx"
+
+
+def _gcs_flx_index_exists(valid_date: str, valid_hour: str) -> bool:
+    url = _gcs_flx_index_url(valid_date, valid_hour)
+    r = None
+    try:
+        r = requests.head(url, timeout=10)
+        if r.status_code == 405:
+            r = requests.get(url, timeout=10, stream=True)
+        if r.status_code == 404:
+            return False
+        r.raise_for_status()
+        return True
+    finally:
+        if r is not None:
+            r.close()
 
 
 def _nomads_url(valid_date: str, valid_hour: str) -> str:
@@ -116,6 +152,20 @@ def _nomads_flx_url(valid_date: str, valid_hour: str) -> str:
 
 def _nomads_flx_index_url(valid_date: str, valid_hour: str) -> str:
     return _nomads_flx_url(valid_date, valid_hour) + ".idx"
+
+
+def require_core_index_available(valid_date: str, valid_hour: str, *, stream: str = "pgb") -> None:
+    exists = _gcs_flx_index_exists(valid_date, valid_hour) if stream == "flx" else _gcs_index_exists(valid_date, valid_hour)
+    if exists:
+        return
+    raise DataUnavailableError(
+        f"CORe {stream} data are not available for {valid_date} {valid_hour}z yet."
+    )
+
+
+def require_month_complete(year: int, month: int, *, stream: str = "pgb") -> None:
+    last_day = _cal.monthrange(year, month)[1]
+    require_core_index_available(f"{year}{month:02d}{last_day:02d}", VALID_HOURS[-1], stream=stream)
 
 
 def _grib_url(valid_date: str, valid_hour: str) -> str:
@@ -434,7 +484,7 @@ _pgb_known_missing: set[tuple[int, int]] = set()
 # level and month are transferred per call (~42 KB per record).
 # ---------------------------------------------------------------------------
 
-R2_MONTHLY_BASE  = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/pressure"
+R2_MONTHLY_BASE  = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/pressure"
 R2_MONTHLY_START: tuple[int, int] = (1979, 1)
 R2_MONTHLY_END:   tuple[int, int] = (2021, 12)   # conservative; falls back gracefully on OSError
 
@@ -532,6 +582,23 @@ def _fetch_monthly_index_if_present(year: int, month: int) -> list[IndexRecord] 
     return records
 
 
+def require_monthly_archive_available(year: int, month: int) -> None:
+    """
+    Ensure monthly mode can start from an actual monthly product.
+
+    Monthly map requests should not discover a missing month by falling into the
+    expensive 3-hourly aggregation path. CORe pgb monthly is the preferred
+    source; R2 monthly is a legacy fallback for its covered period.
+    """
+    if _fetch_monthly_index_if_present(year, month) is not None:
+        return
+    if R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
+        return
+    raise DataUnavailableError(
+        f"Monthly data are not available for {_cal.month_name[month]} {year} yet."
+    )
+
+
 def _fetch_monthly_pgb_record(
     year: int,
     month: int,
@@ -557,39 +624,11 @@ def _fetch_monthly_pgb_record(
         raise
 
 
-def _compute_monthly_from_6hourly(
-    year: int, month: int, fetch_6h_fn, *args
-) -> xr.DataArray:
-    """
-    Compute a monthly mean by averaging all 3-hourly time steps in the month.
-    Used when the month is outside the pre-computed archive or when the pgb
-    archive does not contain the requested field (e.g. SPFH at pressure levels).
-    Concurrency is capped at 8 to avoid hammering the GCS endpoint.
-    """
-    days = range(1, _cal.monthrange(year, month)[1] + 1)
-    specs = [(f"{year}{month:02d}{d:02d}", h)
-             for d in days for h in VALID_HOURS]
-    log.info("6HOURLY  %s %d  computing monthly mean from %d 3-hourly steps  (concurrent)",
-             _cal.month_abbr[month], year, len(specs))
-    t0 = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(fetch_6h_fn, date, hour, *args): (date, hour)
-                   for date, hour in specs}
-        arrays = [f.result().drop_vars("valid_time", errors="ignore")
-                  for f in as_completed(futures)]
-    log.info("6HOURLY  done  %.1fs", time.perf_counter() - t0)
-    stacked = xr.concat(arrays, dim="composite_step")
-    mean    = stacked.mean(dim="composite_step")
-    mean.attrs = arrays[0].attrs
-    return mean
-
-
 def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr.DataArray:
     """
-    Monthly mean with three-tier source hierarchy (all tiers disk-cached):
+    Monthly mean with source hierarchy (all successful slices disk-cached):
       1. CORe pgb archive  — surgical byte-range, 1950–present (probed dynamically)
       2. R2 monthly OPeNDAP — surgical constraint, 1979–Dec 2021
-      3. CORe 3-hourly aggregate — all steps in month (slow first call, cached after)
     The '_pyre_obs_source' attr records which tier was used.
     Tier 1 is probed with an actual HTTP request rather than a hardcoded end-date
     so the archive can grow without code changes.
@@ -622,14 +661,11 @@ def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr
             da = _fetch_r2m_field(year, month, grib_name, level)
             return da
         except Exception as exc:
-            log.warning("OBS      R2-monthly failed (%s) → CORe-3hrly fallback", exc)
+            log.warning("OBS      R2-monthly failed (%s)", exc)
 
-    # Tier 3: CORe 3-hourly aggregate
-    log.info("OBS      %s %d  %s@%dhPa  → CORe-3hrly", _cal.month_abbr[month], year, grib_name, level)
-    da = _compute_monthly_from_6hourly(year, month, fetch_field, grib_name, level)
-    da.attrs["_pyre_obs_source"] = "CORe-3hrly"
-    _save_obs_monthly(da, path)
-    return da
+    raise DataUnavailableError(
+        f"Monthly {grib_name}@{level}mb data are not available for {_cal.month_name[month]} {year}."
+    )
 
 
 def fetch_monthly_wind_speed(year: int, month: int, level: int) -> xr.DataArray:
@@ -644,7 +680,7 @@ def fetch_monthly_wind_speed(year: int, month: int, level: int) -> xr.DataArray:
 def fetch_monthly_relative_humidity(year: int, month: int, level: int) -> xr.DataArray:
     """
     Monthly RH with the same three-tier hierarchy.
-    pgb and R2 both carry RH pre-computed; 3-hourly fallback uses Bolton formula.
+    pgb and R2 both carry RH pre-computed.
     """
     path = _obs_monthly_path("RH", level, year, month)
     cached = _load_obs_monthly(path)
@@ -672,13 +708,11 @@ def fetch_monthly_relative_humidity(year: int, month: int, level: int) -> xr.Dat
             rh.attrs.update({"units": "%", "long_name": "Relative Humidity"})
             return rh
         except Exception as exc:
-            log.warning("OBS      R2-monthly RH failed (%s) → CORe-3hrly fallback", exc)
+            log.warning("OBS      R2-monthly RH failed (%s)", exc)
 
-    log.info("OBS      %s %d  RH@%dhPa  → CORe-3hrly", _cal.month_abbr[month], year, level)
-    rh = _compute_monthly_from_6hourly(year, month, fetch_relative_humidity, level)
-    rh.attrs["_pyre_obs_source"] = "CORe-3hrly"
-    _save_obs_monthly(rh, path)
-    return rh
+    raise DataUnavailableError(
+        f"Monthly relative humidity@{level}mb data are not available for {_cal.month_name[month]} {year}."
+    )
 
 
 def _mean_of_monthly(
@@ -773,22 +807,11 @@ def fetch_monthly_wind_components(year: int, month: int, level: int) -> tuple[xr
                 v = _fetch_r2m_field(year, month, "VGRD", level)
             return u, v
         except Exception as exc:
-            log.warning("OBS      R2-monthly wind failed (%s) → CORe-3hrly fallback", exc)
+            log.warning("OBS      R2-monthly wind failed (%s)", exc)
 
-    log.info("OBS      %s %d  UGRD+VGRD@%dhPa  → CORe-3hrly", _cal.month_abbr[month], year, level)
-    if u is None:
-        u = _compute_monthly_from_6hourly(
-            year, month, lambda d, h, lv: fetch_wind_components(d, h, lv)[0], level
-        )
-        u.attrs["_pyre_obs_source"] = "CORe-3hrly"
-        _save_obs_monthly(u, u_path)
-    if v is None:
-        v = _compute_monthly_from_6hourly(
-            year, month, lambda d, h, lv: fetch_wind_components(d, h, lv)[1], level
-        )
-        v.attrs["_pyre_obs_source"] = "CORe-3hrly"
-        _save_obs_monthly(v, v_path)
-    return u, v
+    raise DataUnavailableError(
+        f"Monthly wind components@{level}mb data are not available for {_cal.month_name[month]} {year}."
+    )
 
 
 def fetch_monthly_wind_components_composite(

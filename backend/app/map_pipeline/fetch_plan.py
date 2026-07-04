@@ -41,6 +41,7 @@ from ..retrieval import (
     get_climatology_field,
     get_climatology_relative_humidity,
     get_climatology_wind_speed,
+    require_monthly_archive_available,
 )
 from ..config import VARIABLES
 from .time_selection import TimeSelection
@@ -50,6 +51,13 @@ class FetchRequest(Protocol):
     variable: str
     level: int
     hour: str
+
+
+def preflight_obs_available(req: FetchRequest, selection: TimeSelection) -> None:
+    if not selection.monthly_mode:
+        return
+    for year, month in selection.year_months:
+        require_monthly_archive_available(year, month)
 
 
 def _variable_fetch_key(variable: str) -> str:

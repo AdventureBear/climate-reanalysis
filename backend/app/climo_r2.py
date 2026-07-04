@@ -26,7 +26,7 @@ MONTHLY (r2-monthly): for monthly composite anomaly requests.
 Daily OPeNDAP base:
   https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Dailies/pressure
 Monthly OPeNDAP base:
-  https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/pressure
+  https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/pressure
 
 R2 variables:
   air   – temperature (K)
@@ -92,7 +92,7 @@ _silence_hdf5_errors()
 # ── Constants ────────────────────────────────────────────────────────────────
 
 _BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Dailies/pressure"
-_R2M_BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/pressure"
+_R2M_BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/pressure"
 _CLIMO_YEARS = list(range(1991, 2021))   # 1991–2020 inclusive, 30 years
 _R2M_FIRST_YEAR = 1979
 

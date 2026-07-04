@@ -19,3 +19,10 @@ __pycache__/
 backend/.env
 frontend/.env.local
 frontend/.env.production
+
+# Runtime/generated backend data
+backend/cache/
+backend/climo_cache/
+backend/obs_cache/
+backend/app/*.grib2
+backend/app/*.idx

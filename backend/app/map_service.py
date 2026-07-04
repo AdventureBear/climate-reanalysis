@@ -16,6 +16,7 @@ from .map_pipeline.fetch_plan import (
     fetch_weighted_wind_climo_components,
     fetch_wind,
     fetch_wind_climo_components,
+    preflight_obs_available,
 )
 from .map_pipeline.map_labels import map_date_label, variable_label
 from .map_pipeline.pipeline_steps import (
@@ -43,6 +44,7 @@ def create_map_buffer(req: MapRequest):
     use_vector_wind_anomaly = is_vector_wind_anomaly(req)
 
     log_request_banner(req, selection, climo_source)
+    preflight_obs_available(req, selection)
 
     step = 0
     scale_overrides = scale_overrides_from_query(

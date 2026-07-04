@@ -53,7 +53,7 @@ log = logging.getLogger("precompute")
 
 # ── Constants (kept local so the script runs standalone) ─────────────────────
 _R2D_BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Dailies/pressure"
-_R2M_BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/pressure"
+_R2M_BASE = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/pressure"
 
 _CLIMO_YEARS = list(range(1991, 2021))   # 30 years
 
