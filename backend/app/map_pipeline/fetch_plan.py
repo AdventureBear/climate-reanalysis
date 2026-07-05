@@ -52,10 +52,6 @@ class FetchRequest(Protocol):
     hour: str
 
 
-def preflight_obs_available(req: FetchRequest, selection: TimeSelection) -> None:
-    return
-
-
 def _variable_fetch_key(variable: str) -> str:
     if VARIABLES[variable].get("stream") == "flx":
         return "flx"
