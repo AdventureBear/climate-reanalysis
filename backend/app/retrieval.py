@@ -61,6 +61,7 @@ NOMADS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod"
 
 # CORe valid hours (3-hourly)
 VALID_HOURS = ["00", "03", "06", "09", "12", "15", "18", "21"]
+SYNOPTIC_HOURS = ["00", "06", "12", "18"]
 
 # NOMADS only: maps valid hour → batch directory hour.
 # 00z rolls back to the previous day's 18z batch.
@@ -559,8 +560,8 @@ def _fetch_monthly_index_if_present(year: int, month: int) -> list[IndexRecord] 
     Optimistically probe the CORe monthly pgb archive.
 
     Newer months may not have precomputed monthly means yet. Treat a missing or
-    empty index as "try the next tier" so those requests can still be composed
-    from the 3-hourly archive without hardcoding an archive end date.
+    empty index as unavailable; monthly map requests do not synthesize monthly
+    products from 3-hourly data.
     """
     if (year, month) in _pgb_known_missing:
         return None
@@ -580,23 +581,6 @@ def _fetch_monthly_index_if_present(year: int, month: int) -> list[IndexRecord] 
         return None
 
     return records
-
-
-def require_monthly_archive_available(year: int, month: int) -> None:
-    """
-    Ensure monthly mode can start from an actual monthly product.
-
-    Monthly map requests should not discover a missing month by falling into the
-    expensive 3-hourly aggregation path. CORe pgb monthly is the preferred
-    source; R2 monthly is a legacy fallback for its covered period.
-    """
-    if _fetch_monthly_index_if_present(year, month) is not None:
-        return
-    if R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
-        return
-    raise DataUnavailableError(
-        f"Monthly data are not available for {_cal.month_name[month]} {year} yet."
-    )
 
 
 def _fetch_monthly_pgb_record(
@@ -622,6 +606,31 @@ def _fetch_monthly_pgb_record(
             )
             return None
         raise
+
+
+def _compute_monthly_from_synoptic(
+    year: int, month: int, fetch_synoptic_fn, *args
+) -> xr.DataArray:
+    """
+    Compute a monthly mean from synoptic CORe analyses when the monthly archive
+    has not caught up. Uses 00/06/12/18z only, matching the legacy composite cadence.
+    """
+    days = range(1, _cal.monthrange(year, month)[1] + 1)
+    specs = [(f"{year}{month:02d}{d:02d}", h)
+             for d in days for h in SYNOPTIC_HOURS]
+    log.info("SYNOPTIC %s %d  computing monthly mean from %d synoptic steps  (concurrent)",
+             _cal.month_abbr[month], year, len(specs))
+    t0 = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(fetch_synoptic_fn, date, hour, *args): (date, hour)
+                   for date, hour in specs}
+        arrays = [f.result().drop_vars("valid_time", errors="ignore")
+                  for f in as_completed(futures)]
+    log.info("SYNOPTIC done  %.1fs", time.perf_counter() - t0)
+    stacked = xr.concat(arrays, dim="composite_step")
+    mean = stacked.mean(dim="composite_step")
+    mean.attrs = arrays[0].attrs
+    return mean
 
 
 def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr.DataArray:
@@ -663,9 +672,11 @@ def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr
         except Exception as exc:
             log.warning("OBS      R2-monthly failed (%s)", exc)
 
-    raise DataUnavailableError(
-        f"Monthly {grib_name}@{level}mb data are not available for {_cal.month_name[month]} {year}."
-    )
+    log.info("OBS      %s %d  %s@%dhPa  → CORe-synoptic", _cal.month_abbr[month], year, grib_name, level)
+    da = _compute_monthly_from_synoptic(year, month, fetch_field, grib_name, level)
+    da.attrs["_pyre_obs_source"] = "CORe-synoptic"
+    _save_obs_monthly(da, path)
+    return da
 
 
 def fetch_monthly_wind_speed(year: int, month: int, level: int) -> xr.DataArray:
@@ -710,9 +721,11 @@ def fetch_monthly_relative_humidity(year: int, month: int, level: int) -> xr.Dat
         except Exception as exc:
             log.warning("OBS      R2-monthly RH failed (%s)", exc)
 
-    raise DataUnavailableError(
-        f"Monthly relative humidity@{level}mb data are not available for {_cal.month_name[month]} {year}."
-    )
+    log.info("OBS      %s %d  RH@%dhPa  → CORe-synoptic", _cal.month_abbr[month], year, level)
+    rh = _compute_monthly_from_synoptic(year, month, fetch_relative_humidity, level)
+    rh.attrs["_pyre_obs_source"] = "CORe-synoptic"
+    _save_obs_monthly(rh, path)
+    return rh
 
 
 def _mean_of_monthly(
@@ -809,9 +822,20 @@ def fetch_monthly_wind_components(year: int, month: int, level: int) -> tuple[xr
         except Exception as exc:
             log.warning("OBS      R2-monthly wind failed (%s)", exc)
 
-    raise DataUnavailableError(
-        f"Monthly wind components@{level}mb data are not available for {_cal.month_name[month]} {year}."
-    )
+    log.info("OBS      %s %d  UGRD+VGRD@%dhPa  → CORe-synoptic", _cal.month_abbr[month], year, level)
+    if u is None:
+        u = _compute_monthly_from_synoptic(
+            year, month, lambda d, h, lv: fetch_wind_components(d, h, lv)[0], level
+        )
+        u.attrs["_pyre_obs_source"] = "CORe-synoptic"
+        _save_obs_monthly(u, u_path)
+    if v is None:
+        v = _compute_monthly_from_synoptic(
+            year, month, lambda d, h, lv: fetch_wind_components(d, h, lv)[1], level
+        )
+        v.attrs["_pyre_obs_source"] = "CORe-synoptic"
+        _save_obs_monthly(v, v_path)
+    return u, v
 
 
 def fetch_monthly_wind_components_composite(

@@ -221,14 +221,14 @@ def _tiny_da(value: float = 1.0) -> xr.DataArray:
     )
 
 
-class TestMonthlyArchivePolicy:
+class TestMonthlyFallback:
     @pytest.fixture(autouse=True)
     def no_monthly_cache(self, monkeypatch):
         monkeypatch.setattr(retrieval, "_load_obs_monthly", lambda _path: None)
         monkeypatch.setattr(retrieval, "_save_obs_monthly", lambda _da, _path: None)
         retrieval._pgb_known_missing.clear()
 
-    def test_missing_monthly_index_raises_for_field_outside_r2_range(self, monkeypatch):
+    def test_missing_monthly_index_falls_back_to_synoptic_field(self, monkeypatch):
         response = requests.Response()
         response.status_code = 404
 
@@ -236,32 +236,52 @@ class TestMonthlyArchivePolicy:
             raise requests.HTTPError(response=response)
 
         monkeypatch.setattr(retrieval, "_fetch_monthly_index", missing_index)
+        monkeypatch.setattr(
+            retrieval,
+            "_compute_monthly_from_synoptic",
+            lambda *_args: _tiny_da(2.0),
+        )
 
-        with pytest.raises(retrieval.DataUnavailableError, match="Monthly TMP@850mb data are not available"):
-            retrieval.fetch_monthly_field(2026, 1, "TMP", 850)
+        da = retrieval.fetch_monthly_field(2026, 1, "TMP", 850)
+
+        assert float(da.item()) == 2.0
+        assert da.attrs["_pyre_obs_source"] == "CORe-synoptic"
         assert (2026, 1) in retrieval._pgb_known_missing
 
-    def test_existing_monthly_index_missing_field_raises_outside_r2_range(self, monkeypatch):
+    def test_existing_monthly_index_missing_field_falls_back_to_synoptic(self, monkeypatch):
         monkeypatch.setattr(
             retrieval,
             "_fetch_monthly_index",
             lambda _year, _month: [IndexRecord(1, 0, "TMP", "500 mb")],
         )
+        monkeypatch.setattr(
+            retrieval,
+            "_compute_monthly_from_synoptic",
+            lambda *_args: _tiny_da(3.0),
+        )
 
-        with pytest.raises(retrieval.DataUnavailableError, match="Monthly TMP@850mb data are not available"):
-            retrieval.fetch_monthly_field(2026, 1, "TMP", 850)
+        da = retrieval.fetch_monthly_field(2026, 1, "TMP", 850)
 
-    def test_missing_monthly_index_raises_for_wind_components_outside_r2_range(self, monkeypatch):
+        assert float(da.item()) == 3.0
+        assert da.attrs["_pyre_obs_source"] == "CORe-synoptic"
+
+    def test_missing_monthly_index_falls_back_for_wind_components(self, monkeypatch):
         response = requests.Response()
         response.status_code = 404
 
         def missing_index(_year, _month):
             raise requests.HTTPError(response=response)
 
+        calls = iter([_tiny_da(4.0), _tiny_da(5.0)])
         monkeypatch.setattr(retrieval, "_fetch_monthly_index", missing_index)
+        monkeypatch.setattr(retrieval, "_compute_monthly_from_synoptic", lambda *_args: next(calls))
 
-        with pytest.raises(retrieval.DataUnavailableError, match="Monthly wind components@850mb data are not available"):
-            retrieval.fetch_monthly_wind_components(2026, 1, 850)
+        u, v = retrieval.fetch_monthly_wind_components(2026, 1, 850)
+
+        assert float(u.item()) == 4.0
+        assert float(v.item()) == 5.0
+        assert u.attrs["_pyre_obs_source"] == "CORe-synoptic"
+        assert v.attrs["_pyre_obs_source"] == "CORe-synoptic"
 
 
 # ── Network: live index fetch (~20KB) ────────────────────────────────────────────
