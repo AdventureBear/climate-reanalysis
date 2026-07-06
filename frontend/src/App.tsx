@@ -18,8 +18,9 @@ import {
   type SelectOption,
 } from './variableConfig'
 
-// const API_BASE = 'http://127.0.0.1:8000'
-const API_BASE = import.meta.env.VITE_API_URL;
+// Same-origin by default so a missing VITE_API_URL doesn't produce
+// requests to literally "undefined/api/..." in production builds.
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 const LEVELS = [...PRESSURE_LEVELS]
 const MONTH_OPTIONS = [
@@ -780,6 +781,15 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+
+  // Release the last rendered blob URL when the component unmounts.
+  const mapSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    mapSrcRef.current = mapSrc
+  }, [mapSrc])
+  useEffect(() => () => {
+    if (mapSrcRef.current?.startsWith('blob:')) URL.revokeObjectURL(mapSrcRef.current)
+  }, [])
   const [labVariable, setLabVariable] = useState('wind_speed')
   const [labLevel, setLabLevel] = useState('850')
   const [labMode, setLabMode] = useState<DisplayMode>('raw')
@@ -815,61 +825,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
-
-  function applyTimeRecipe(time: TimeRecipe) {
-    setTimeScale(time.scale)
-    switch (time.scale) {
-      case 'climatology':
-        setClimoMonth(time.climoMonth)
-        return
-      case 'monthly':
-        setMonthSubMode(time.subMode)
-        if (time.subMode === 'single') setMonth(time.month)
-        if (time.subMode === 'range') {
-          setMonthStart(time.monthStart)
-          setMonthEnd(time.monthEnd)
-        }
-        if (time.subMode === 'list') setCustomMonths(time.customMonths)
-        return
-      case 'daily':
-        setDateSubMode(time.subMode)
-        if (time.subMode === 'single') setDate(time.date)
-        if (time.subMode === 'range') {
-          setStartDate(time.startDate)
-          setEndDate(time.endDate)
-        }
-        if (time.subMode === 'list') setCustomDates(time.customDates)
-        return
-      case '3-hourly':
-        setDateSubMode(time.subMode)
-        setHour(time.hour)
-        if (time.subMode === 'single') setDate(time.date)
-        if (time.subMode === 'range') {
-          setStartDate(time.startDate)
-          setEndDate(time.endDate)
-        }
-        if (time.subMode === 'list') setCustomDates(time.customDates)
-        return
-    }
-  }
-
-  function applyMapRecipe(recipe: MapRecipe) {
-    if (recipe.variable) setVariable(recipe.variable)
-    if (recipe.level) setLevel(recipe.level)
-    if (recipe.region) setRegion(recipe.region)
-    if (recipe.displayMode) setDisplayMode(recipe.displayMode)
-    if (recipe.climoSource) setClimoSource(recipe.climoSource)
-    if (recipe.windUnit) setWindUnit(recipe.windUnit)
-    if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
-    if (recipe.colorStep) setColorStep(recipe.colorStep)
-    if (recipe.time) applyTimeRecipe(recipe.time)
-    if (recipe.wind) {
-      setWindStep(recipe.wind.step)
-      setWindType(recipe.wind.type)
-      setWindOn(recipe.wind.on)
-      setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
-    }
-  }
 
   function currentTimeRecipe(): TimeRecipe {
     if (isClimo) {
@@ -913,10 +868,75 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     }
   }
 
+  // URL → state synchronization. Runs for deep links and browser back/forward;
+  // URL updates made by handleGenerate itself are skipped via the ref below.
+  const selfUpdatedParamsRef = useRef<string | null>(null)
+
   useEffect(() => {
+    const paramsString = searchParams.toString()
+    if (paramsString === selfUpdatedParamsRef.current) return
+    selfUpdatedParamsRef.current = paramsString
+
     const recipe = mapRecipeFromUrl(searchParams)
     if (!recipe) return
-    applyMapRecipe(recipe)
+
+    function applyTimeRecipe(time: TimeRecipe) {
+      setTimeScale(time.scale)
+      switch (time.scale) {
+        case 'climatology':
+          setClimoMonth(time.climoMonth)
+          return
+        case 'monthly':
+          setMonthSubMode(time.subMode)
+          if (time.subMode === 'single') setMonth(time.month)
+          if (time.subMode === 'range') {
+            setMonthStart(time.monthStart)
+            setMonthEnd(time.monthEnd)
+          }
+          if (time.subMode === 'list') setCustomMonths(time.customMonths)
+          return
+        case 'daily':
+          setDateSubMode(time.subMode)
+          if (time.subMode === 'single') setDate(time.date)
+          if (time.subMode === 'range') {
+            setStartDate(time.startDate)
+            setEndDate(time.endDate)
+          }
+          if (time.subMode === 'list') setCustomDates(time.customDates)
+          return
+        case '3-hourly':
+          setDateSubMode(time.subMode)
+          setHour(time.hour)
+          if (time.subMode === 'single') setDate(time.date)
+          if (time.subMode === 'range') {
+            setStartDate(time.startDate)
+            setEndDate(time.endDate)
+          }
+          if (time.subMode === 'list') setCustomDates(time.customDates)
+          return
+      }
+    }
+
+    if (recipe.variable) setVariable(recipe.variable)
+    if (recipe.level) setLevel(recipe.level)
+    if (recipe.region) setRegion(recipe.region)
+    if (recipe.displayMode) setDisplayMode(recipe.displayMode)
+    if (recipe.climoSource) setClimoSource(recipe.climoSource)
+    if (recipe.windUnit) setWindUnit(recipe.windUnit)
+    if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
+    if (recipe.colorStep) setColorStep(recipe.colorStep)
+    if (recipe.time) applyTimeRecipe(recipe.time)
+    if (recipe.wind) {
+      setWindStep(recipe.wind.step)
+      setWindType(recipe.wind.type)
+      setWindOn(recipe.wind.on)
+      setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
+    }
+
+    // Shared/deep-linked URLs that describe a complete map render immediately
+    // instead of showing an empty panel until the user clicks Generate.
+    const recipeParams = mapRecipeToParams(recipe)
+    if (recipeParams.ok) void generateFromParams(recipeParams.params)
   }, [searchParams])
 
   useEffect(() => {
@@ -1041,6 +1061,30 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }
 
   // ── API call ─────────────────────────────────────────────────────────────────
+  async function generateFromParams(params: Record<string, string>) {
+    setLoading(true)
+    setError(null)
+    setMapSrc(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+
+    try {
+      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(params)}`)
+      if (res.ok) {
+        const blob = await res.blob()
+        setMapSrc(URL.createObjectURL(blob))
+      } else {
+        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+        setError(body.detail ?? `HTTP ${res.status}`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -1088,25 +1132,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       }
     }
 
+    // Mark this URL update as our own so the URL-sync effect doesn't re-apply
+    // it (and re-render the map a second time).
+    selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
     setSearchParams(params)
-    setLoading(true)
-    if (mapSrc?.startsWith('blob:')) URL.revokeObjectURL(mapSrc)
-    setMapSrc(null)
-
-    try {
-      const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(params)}`)
-      if (res.ok) {
-        const blob = await res.blob()
-        setMapSrc(URL.createObjectURL(blob))
-      } else {
-        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-        setError(body.detail ?? `HTTP ${res.status}`)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
+    await generateFromParams(params)
   }
 
   // ── Temporal inputs ──────────────────────────────────────────────────────────

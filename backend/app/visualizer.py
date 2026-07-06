@@ -774,8 +774,13 @@ def _custom_scale_from_spec(
     if int(spec.get("level", level)) != int(level):
         return None
 
-    boundaries = [float(v) for v in spec.get("boundaries", [])]
-    colors = [str(v) for v in spec.get("interval_hex", [])]
+    try:
+        boundaries = [float(v) for v in spec.get("boundaries", [])]
+        colors = [mcolors.to_rgb(str(v)) for v in spec.get("interval_hex", [])]
+    except (TypeError, ValueError):
+        # Malformed numbers or color strings → ignore the custom scale rather
+        # than failing the whole render.
+        return None
     if len(boundaries) < 2 or len(colors) != len(boundaries) - 1:
         return None
 
@@ -798,7 +803,7 @@ def _custom_scale_from_spec(
     tick_idx = sorted(set(tick_idx))
     return {
         "boundaries": native_boundaries,
-        "colors": [mcolors.to_rgb(color) for color in colors],
+        "colors": colors,
         "ticks": [native_boundaries[idx] for idx in tick_idx],
         "ticklabels": [label_value(boundaries[idx]) for idx in tick_idx],
         "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),

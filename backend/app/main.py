@@ -39,9 +39,17 @@ MAX_COMPOSITE_DATES = 93    # one season of daily composites
 MAX_COMPOSITE_MONTHS = 60   # five years of monthly means
 
 cors_origins = os.getenv("CORS_ORIGINS", "")
-allowed_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+# Browser Origin headers never carry a trailing slash; strip any configured by
+# accident so "https://example.com/" doesn't silently fail to match.
+allowed_origins = [origin.strip().rstrip("/") for origin in cors_origins.split(",") if origin.strip("/ ")]
 
-log.info("CORS origins: %s", allowed_origins)
+if allowed_origins:
+    log.info("CORS origins: %s", allowed_origins)
+else:
+    log.warning(
+        "CORS_ORIGINS is empty — browsers on any other origin cannot call this API. "
+        "Set CORS_ORIGINS (comma-separated) if the frontend is served from a different origin."
+    )
 
 app.add_middleware(
     CORSMiddleware,
