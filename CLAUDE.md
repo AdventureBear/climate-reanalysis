@@ -1,6 +1,6 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 See `PROJECT.md` for the current project context, user stories, scientific design principles, roadmap, and reference notes.
 
@@ -35,7 +35,7 @@ The PSL/NCEP reanalysis interactive pages (used in meteorology education and res
 **The three PSL interfaces being replicated:**
 - Monthly/Seasonal Composites — `https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl`
 - Daily Mean Composites — `https://psl.noaa.gov/data/composites/day/`
-- Hourly Composites — `https://psl.noaa.gov/data/composites/hour/`
+- Hourly Composites — `https://psl.noaa.gov/data/composites/hour/` (PyRe supports CORe's 3-hourly 00/03/06/09/12/15/18/21z analyses)
 
 The new underlying dataset is **CORe (Climate-Ocean Reanalysis)** from NCEP/CPC, available back to the 1950s.
 - CORe info: `https://www.cpc.ncep.noaa.gov/products/CORe/index.html`
@@ -54,12 +54,14 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 
 ### Engineering Guardrails
 
-- Do not add one-off `if` / `else` chains for variable, level, unit, overlay, or scale behavior. Add behavior to a typed registry/config and derive UI/API behavior from that source of truth.
-- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params. Do not scatter URL parsing, API serialization, or variable/level mapping inside `App.tsx`.
-- If a feature will grow with variables, levels, overlays, units, regions, or modes, pause and extend the source-of-truth config first.
-- Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR`, over temporary hardcoded paths or code that will need to be deleted later.
-- Before implementing a quick UI fix, ask whether this is a state/model problem instead of a component problem.
-- Keep changes stepwise and verifiable: make one structural change, run the relevant build/test, then continue.
+- Do not add one-off `if` / `else` chains for variable, level, unit, overlay, region, mode, or scale behavior. Add behavior to typed registries/configuration and derive UI/API behavior from those sources of truth.
+- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params ↔ backend `MapRequest`. Do not scatter URL parsing, API serialization, or variable/level mapping inside incidental component code.
+- If a feature will grow with variables, levels, overlays, units, regions, modes, or color scales, extend the source-of-truth config first.
+- Keep the frontend thin. All scientific computation, climatology, compositing, projection choice, and map rendering belong on the backend.
+- Preserve scientific rendering meaning: fixed physical color anchors, discrete stepped boundaries, explicit units, provenance-aware labels, and 200+ DPI output.
+- Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR` or `PYRE_CLIMO_DIR`, over temporary hardcoded paths.
+- Do not reintroduce legacy proof-of-concept endpoints or client-side grid coloring. `/api/map` and `/api/scale-meta` are the active API surface.
+- Keep changes stepwise and verifiable: make one structural change, run the relevant backend/frontend check, then continue.
 
 ### React / Frontend Guardrails
 
@@ -110,17 +112,37 @@ Wind speed is derived: `sqrt(UGRD² + VGRD²)`. Wind direction is derived simila
 
 ### Current Code Status
 
-The active map-rendering API is `/api/map`; it validates a map recipe, fetches the requested field(s), computes composites/anomalies, renders a server-side PNG, and streams it to the frontend. `/api/scale-meta` exposes backend color-scale metadata for Color Lab. Legacy PoC endpoints and client-side grid coloring should not be reintroduced.
+The active map-rendering API is `/api/map`. It validates a typed map recipe, fetches requested observation and climatology fields, computes raw composites, anomalies, normalized anomalies, and climatology views, renders a server-side Matplotlib/Cartopy PNG, and streams it to the frontend.
+
+The active scale metadata API is `/api/scale-meta`. It exposes backend color-scale metadata for the frontend Color Lab.
+
+Legacy proof-of-concept endpoints and client-side grid coloring should not be reintroduced.
+
+Current backend capabilities include:
+- Surgical CORe pgb/flx retrieval using `.idx` parsing and HTTP Range requests.
+- GCS-first retrieval with NOMADS fallback paths for some recent flx data.
+- 3-hourly maps, daily composites, and monthly/month-list composites.
+- Climatology, anomaly, and normalized anomaly modes for supported pressure-level variables.
+- R2 daily/monthly climatology support, with sub-monthly anomaly modes forced to `r2-daily`.
+- Wind speed, wind overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
+
+Current frontend capabilities include:
+- A Composite Builder in `App.tsx`.
+- Typed recipe serialization in `mapRecipe.ts`.
+- Frontend variable/level API mapping in `variableConfig.ts`.
+- Region browser/thumbnails, settings controls, rendered PNG display, and admin-only Color Lab.
 
 ### Backend (`backend/app/`)
 
 - **`main.py`** — FastAPI app and all API endpoints. CORS configured for `localhost:5173` / `127.0.0.1:5173`.
 - **`config.py`** — `REGIONS` dict (lat/lon bounding boxes, 0–360 longitude) and `VARIABLES` dict (GRIB key mappings). Source of truth — don't hardcode bounds or variable names elsewhere.
-- **`visualizer.py`** — `create_map_product()` renders a Matplotlib/Cartopy PNG, returns `io.BytesIO`.
+- **`map_service.py`** — orchestrates `MapRequest` → fetch/compute/render pipeline.
+- **`map_pipeline/`** — time selection, climatology policy, fetch planning, labels, logging, computation helpers, and wind overlays.
+- **`visualizer.py`** — renders Matplotlib/Cartopy PNGs and owns current color-scale logic.
 
 ### Frontend (`frontend/src/`)
 
-- **`App.tsx`** — current PoC. Will become the Composite Builder: mode selector, variable/level/region pickers, date list input, and an `<img>` tag showing the returned PNG.
+- **`App.tsx`** — current Composite Builder: time mode selector, variable/level/region controls, date/month inputs, display modes, settings, Color Lab, and an `<img>` showing the streamed backend PNG.
 - Styled with **Tailwind CSS v4** (installed via `@tailwindcss/vite` plugin). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
 
 ---
@@ -129,11 +151,11 @@ The active map-rendering API is `/api/map`; it validates a map recipe, fetches t
 
 | Mode | PSL Equivalent | Input |
 |---|---|---|
-| 3-Hourly | `composites/hour/` | 1 date + synoptic hour (00/03/06/09/12/15/18/21z) |
-| Daily Mean | `composites/day/` | 1 or more dates (averaged) |
+| 3-Hourly | `composites/hour/` | 1 date, date range, or date list + hour (00/03/06/09/12/15/18/21z) |
+| Daily Mean | `composites/day/` | 1 or more dates averaged across synoptic hours (currently 00/06/12/18z) |
 | Monthly/Seasonal | `composites/printpage.pl` | Month range or non-consecutive month list |
 
-Anomaly mode is a toggle on any composite: subtract the 30-year climatological mean for the same calendar day/hour. Render with a divergent colormap (Blues below, Reds above, neutral at zero). Climatological means must be computed or sourced separately — this is a deferred problem.
+Anomaly mode is a toggle on supported composites: subtract the 30-year climatological mean. Sub-monthly anomaly modes currently use R2 daily climatology; monthly anomaly modes support `monthly-pgb` and `r2-monthly`. Render with a divergent colormap centered at zero. CORe-native daily/3-hourly climatology remains a longer-term open problem.
 
 ---
 

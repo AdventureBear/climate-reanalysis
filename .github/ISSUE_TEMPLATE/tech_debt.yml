@@ -1,0 +1,36 @@
+name: Tech debt / refactor
+description: Track cleanup that preserves behavior.
+title: "[Tech Debt]: "
+labels: ["type:tech-debt"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What code shape or maintenance risk should be improved?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Files/areas expected to change. Keep this narrow.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Behavior that must not change.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Commands and manual checks proving behavior was preserved.
+    validations:
+      required: true
+  - type: textarea
+    id: followups
+    attributes:
+      label: Follow-ups
+

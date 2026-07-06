@@ -1,5 +1,7 @@
 # PyRe: Staged Implementation Plan
 
+> Historical archive note: this file preserves an earlier implementation plan. Render.com is now the active deployment target; Docker/docker-compose is no longer part of the active roadmap.
+
 ## Implementation Status (as of 2026-05-09)
 
 Stages 1–6 are **complete and working**. The system is a functioning end-to-end application with polished rendering and a settings panel.

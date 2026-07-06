@@ -1,0 +1,36 @@
+name: Science review
+description: Track meteorological correctness, climatology, color scales, or domain review.
+title: "[Science]: "
+labels: ["type:science", "status:needs-domain-review"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Science Question
+      description: What meteorological, climatological, or visualization decision needs review?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Current Implementation / Context
+  - type: textarea
+    id: options
+    attributes:
+      label: Options Considered
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision Needed
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation / Reference Material
+      description: Reference sites, sample recipes, papers, screenshots, or expert feedback.
+
