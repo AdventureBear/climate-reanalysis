@@ -519,7 +519,8 @@ function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFamily[] {
     return [
       { key: 'surface', label: 'Surface', levels: [1000], description: 'Surface temperature scale with Fahrenheit breakpoints.' },
       { key: 'low', label: 'Low', levels: [925, 850, 700], description: 'Lower-level temperature scales with fixed meteorological anchors.' },
-      { key: 'other', label: 'Other', levels: [600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10], description: 'Levels currently using the generic fallback path.' },
+      { key: 'mid', label: 'Mid', levels: [600, 500, 400], description: 'Mid-tropospheric temperature scales (evenly spaced anchors, pending scientific review).' },
+      { key: 'upper', label: 'Upper', levels: [300, 250, 200, 150, 100, 70, 50, 20, 10], description: 'Upper-air temperature scales (evenly spaced anchors, pending scientific review).' },
     ]
   }
 
@@ -809,6 +810,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isMonthly   = timeScale === 'monthly'
   const isThreeHourly = timeScale === '3-hourly'
   const isFlxVariable = FLX_VARIABLES.has(apiVariable)
+  // Specific humidity has no climatology baseline (no SPFH mapping in R2) — raw only.
+  const rawOnlyVariable = isFlxVariable || apiVariable === 'humidity'
   const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
@@ -917,10 +920,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }, [searchParams])
 
   useEffect(() => {
-    if (!isFlxVariable) return
+    if (!rawOnlyVariable) return
     if (displayMode !== 'raw') setDisplayMode('raw')
-    if (timeScale === 'monthly' || timeScale === 'climatology') setTimeScale('3-hourly')
-  }, [displayMode, isFlxVariable, timeScale])
+    if (timeScale === 'climatology' || (isFlxVariable && timeScale === 'monthly')) setTimeScale('3-hourly')
+  }, [displayMode, rawOnlyVariable, isFlxVariable, timeScale])
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {
@@ -1137,7 +1140,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           { value: '3-hourly',    label: '3-Hourly' },
           { value: 'daily',       label: 'Daily' },
           { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
-          { value: 'climatology', label: 'Climatology', disabled: isFlxVariable },
+          { value: 'climatology', label: 'Climatology', disabled: rawOnlyVariable },
         ]}
         value={timeScale}
         onChange={v => setTimeScale(v as TimeScale)}
@@ -2282,8 +2285,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <TabStrip
                 options={[
                   { value: 'raw',        label: 'Raw Data'   },
-                  { value: 'anomaly',    label: 'Anomaly', disabled: isFlxVariable },
-                  { value: 'normalized', label: 'Normalized', disabled: isFlxVariable },
+                  { value: 'anomaly',    label: 'Anomaly', disabled: rawOnlyVariable },
+                  { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable },
                 ]}
                 value={displayMode}
                 onChange={v => {

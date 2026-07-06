@@ -210,6 +210,11 @@ def fetch_index(date: str, hour: str) -> list[IndexRecord]:
     log.debug("IDX      GET %s", url)
     t0 = time.perf_counter()
     r = requests.get(url, timeout=15)
+    if r.status_code == 404:
+        raise DataUnavailableError(
+            f"CORe pgb data are not available for {date} {hour}z — "
+            "the date may be outside the archive or not yet published."
+        )
     r.raise_for_status()
     records = parse_index_text(r.text)
     log.debug("IDX      parsed %d records  %.2fs", len(records), time.perf_counter() - t0)
@@ -236,6 +241,11 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
         nomads_idx_url = _nomads_flx_index_url(date, hour)
         log.debug("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
         r = requests.get(nomads_idx_url, timeout=15)
+        if r.status_code == 404:
+            raise DataUnavailableError(
+                f"CORe flx data are not available for {date} {hour}z — "
+                "the date may be outside the archive or not yet published."
+            ) from exc
         r.raise_for_status()
         grib_url = _nomads_flx_url(date, hour)
     records = parse_index_text(r.text)
@@ -431,11 +441,28 @@ def fetch_wind_speed_daily_composite(dates: list[str], hours: list[str], level: 
     return _mean_of_pairs(fetch_wind_speed, [(d, h) for d in dates for h in hours], level)
 
 
-def fetch_wind_components_daily_composite(dates: list[str], hours: list[str], level: int) -> tuple[xr.DataArray, xr.DataArray]:
-    pairs = [(d, h) for d in dates for h in hours]
-    u_mean = _mean_of_pairs(lambda d, h, lv: fetch_wind_components(d, h, lv)[0], pairs, level)
-    v_mean = _mean_of_pairs(lambda d, h, lv: fetch_wind_components(d, h, lv)[1], pairs, level)
+def _mean_wind_components_of_pairs(
+    date_hour_pairs: list[tuple[str, str]], level: int
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Fetch (U, V) once per (date, hour) pair concurrently, mean each component."""
+    log.debug("COMPOSITE  U+V for %d (date×hour) pairs  (concurrent, single fetch per pair)", len(date_hour_pairs))
+    t0 = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
+        futures = [pool.submit(fetch_wind_components, d, h, level) for d, h in date_hour_pairs]
+        results = [f.result() for f in futures]
+    log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
+
+    u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
+    v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
+    u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
+    v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
+    u_mean.attrs = u_list[0].attrs
+    v_mean.attrs = v_list[0].attrs
     return u_mean, v_mean
+
+
+def fetch_wind_components_daily_composite(dates: list[str], hours: list[str], level: int) -> tuple[xr.DataArray, xr.DataArray]:
+    return _mean_wind_components_of_pairs([(d, h) for d in dates for h in hours], level)
 
 
 def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], level: int) -> xr.DataArray:
@@ -456,9 +483,7 @@ def fetch_wind_speed_composite(dates: list[str], hour: str, level: int) -> xr.Da
 
 def fetch_wind_components_composite(dates: list[str], hour: str, level: int) -> tuple[xr.DataArray, xr.DataArray]:
     """Return mean U and mean V (vector mean wind — correct for compositing)."""
-    u_mean = _mean_of(lambda d, h, lv: fetch_wind_components(d, h, lv)[0], dates, hour, level)
-    v_mean = _mean_of(lambda d, h, lv: fetch_wind_components(d, h, lv)[1], dates, hour, level)
-    return u_mean, v_mean
+    return _mean_wind_components_of_pairs([(d, hour) for d in dates], level)
 
 
 def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int) -> xr.DataArray:

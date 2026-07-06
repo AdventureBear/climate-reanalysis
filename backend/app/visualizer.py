@@ -1,15 +1,23 @@
 import io
 import json
+import threading
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.cm as mcm
 import matplotlib.colorbar as mcolorbar
 import matplotlib.colors as mcolors
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 from matplotlib.path import Path
-import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
+
+# Rendering runs on FastAPI's worker threads (the endpoint is sync so slow
+# fetches don't stall the event loop). Matplotlib's OO API is mostly re-entrant
+# but cartopy/matplotlib share global state (font cache, Natural Earth
+# downloader), so figure assembly itself is serialized behind this lock.
+_RENDER_LOCK = threading.Lock()
 
 # ── Per-region map projection and extent ─────────────────────────────────────────
 # Extent is in -180/180 lon convention (passed with crs=PlateCarree to set_extent).
@@ -51,10 +59,10 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "North Atlantic": ccrs.PlateCarree(),
     "Western Atlantic": ccrs.PlateCarree(),
     "Tropical Atlantic": ccrs.PlateCarree(),
-    "Western Pacific": ccrs.PlateCarree(),
+    "Western Pacific": ccrs.PlateCarree(central_longitude=180),
     "Central Pacific": ccrs.PlateCarree(),
     "Eastern Pacific": ccrs.PlateCarree(),
-    "Southwest Pacific": ccrs.PlateCarree(),
+    "Southwest Pacific": ccrs.PlateCarree(central_longitude=180),
     "Southeast Pacific": ccrs.PlateCarree(),
     "India": ccrs.PlateCarree(),
     "Southern Africa": ccrs.PlateCarree(),
@@ -102,6 +110,12 @@ _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
 }
 
 _POLAR_HEMISPHERE_REGIONS = {"Northern Hemisphere", "Southern Hemisphere"}
+
+# Regions whose extent crosses (or touches) the antimeridian. Their extents are
+# expressed above in true longitude, but set_extent on a central_longitude=0 CRS
+# wraps values past ±180 into a broken globe-wide strip. For these regions the
+# extent is converted to offsets from 180° and applied in a dateline-centred CRS.
+_DATELINE_EXTENT_REGIONS = {"North Pacific", "Western Pacific", "Southwest Pacific"}
 
 
 def _apply_polar_boundary(ax) -> None:
@@ -286,6 +300,32 @@ _TEMP_LOW_ANCHOR_HEX = [
     '#f2f1a7', '#610000', '#f2e7dc', '#c7bfb7',
 ]
 
+# Mid- and upper-level temperature anchors: evenly spaced cold-to-warm palette
+# across each level group's climatological range. Practical defaults pending the
+# scientific color-scale review tracked in PROJECT.md §8.
+_TEMP_UPPER_ANCHOR_HEX = [
+    '#3b0f70', '#6247aa', '#2c7bb6', '#63a8d1', '#abd9e9',
+    '#e0f3f8', '#f7f7f7', '#fee090', '#fdae61', '#d7301f',
+]
+
+
+def _even_anchors(t_min: float, t_max: float, anchor_hex: list[str]) -> list[float]:
+    n = len(anchor_hex)
+    return [t_min + i * (t_max - t_min) / (n - 1) for i in range(n)]
+
+
+def _upper_temp_scale(t_min: int, t_max: int) -> dict:
+    return {
+        "mapping": "fixed_anchors",
+        "unit": "C",
+        "anchors": _even_anchors(t_min, t_max, _TEMP_UPPER_ANCHOR_HEX),
+        "anchor_hex": _TEMP_UPPER_ANCHOR_HEX,
+        "t_min": t_min,
+        "t_max": t_max,
+        "key_breakpoints": [0] if t_min < 0 < t_max else [],
+    }
+
+
 _TEMP_SCALES: dict[int, dict] = {
     1000: {
         "mapping": "fixed_anchors",
@@ -303,6 +343,18 @@ _TEMP_SCALES: dict[int, dict] = {
     925: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
     850: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
     700: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  30, "key_breakpoints": [0]},
+    600: _upper_temp_scale(-50, 15),
+    500: _upper_temp_scale(-55, 10),
+    400: _upper_temp_scale(-65,  0),
+    300: _upper_temp_scale(-75, -10),
+    250: _upper_temp_scale(-80, -20),
+    200: _upper_temp_scale(-80, -30),
+    150: _upper_temp_scale(-85, -35),
+    100: _upper_temp_scale(-90, -35),
+    70:  _upper_temp_scale(-90, -35),
+    50:  _upper_temp_scale(-90, -30),
+    20:  _upper_temp_scale(-85, -25),
+    10:  _upper_temp_scale(-80, -20),
 }
 
 
@@ -991,10 +1043,22 @@ def describe_color_scale(
 # ── Core rendering function ──────────────────────────────────────────────────────
 
 def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
-    plt.close('all')
-    fig = plt.figure(figsize=(14, 9))
+    with _RENDER_LOCK:
+        return _create_map_product(
+            data_array, region_bounds, var_name, date_str, variable=variable, level=level,
+            region=region, u_array=u_array, v_array=v_array, wind_step=wind_step,
+            wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
+            scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
+        )
+
+
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
+    # OO API (no pyplot): keeps figures off pyplot's global registry so worker
+    # threads cannot close each other's in-flight renders.
+    fig = Figure(figsize=(14, 9))
+    FigureCanvasAgg(fig)
     proj = _REGION_PROJECTIONS.get(region, ccrs.PlateCarree())
-    ax = plt.axes(projection=proj)
+    ax = fig.add_subplot(1, 1, 1, projection=proj)
 
     # Phase 1: create the filled plot; collect colorbar config separately.
     # The colorbar is added AFTER fig.canvas.draw() so we can read the final
@@ -1273,7 +1337,13 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
         (region_bounds["lon"][0], region_bounds["lon"][1],
          region_bounds["lat"][0], region_bounds["lat"][1]),
     )
-    ax.set_extent([lon0, lon1, lat0, lat1], crs=ccrs.PlateCarree())
+    if region in _DATELINE_EXTENT_REGIONS:
+        # Offsets from 180° stay continuous across the antimeridian.
+        x0 = (lon0 % 360) - 180
+        x1 = (lon1 % 360) - 180
+        ax.set_extent([x0, x1, lat0, lat1], crs=ccrs.PlateCarree(central_longitude=180))
+    else:
+        ax.set_extent([lon0, lon1, lat0, lat1], crs=ccrs.PlateCarree())
     if region in _POLAR_HEMISPHERE_REGIONS:
         _apply_polar_boundary(ax)
     ax.coastlines(resolution='50m', color='black', linewidth=1.2)
@@ -1389,7 +1459,6 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
     )
 
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=200)
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=200)
     buf.seek(0)
-    plt.close(fig)
     return buf

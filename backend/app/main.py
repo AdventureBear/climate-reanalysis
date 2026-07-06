@@ -1,6 +1,7 @@
 import logging
 import os
 
+import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,12 @@ log = logging.getLogger("pyre.api")
 
 app = FastAPI(title="PyRe Climate Reanalysis API")
 
+# Request guards: every date in a composite fans out to concurrent NOAA fetches
+# (and each distinct calendar day of an r2-daily anomaly costs 30 OPeNDAP calls),
+# so unbounded lists let one URL monopolize the service.
+MAX_COMPOSITE_DATES = 93    # one season of daily composites
+MAX_COMPOSITE_MONTHS = 60   # five years of monthly means
+
 cors_origins = os.getenv("CORS_ORIGINS", "")
 allowed_origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 
@@ -53,6 +60,7 @@ def _validate_common(
     pwat_unit: str,
     scale_min: float | None,
     scale_max: float | None,
+    color_step: int,
 ) -> None:
     checks = (
         (variable in VARIABLES, f"variable must be one of {list(VARIABLES.keys())}"),
@@ -64,6 +72,7 @@ def _validate_common(
             scale_min is None or scale_max is None or scale_min < scale_max,
             "scale_min must be less than scale_max",
         ),
+        (color_step >= 1, "color_step must be at least 1"),
     )
     for ok, detail in checks:
         if not ok:
@@ -101,9 +110,7 @@ def get_scale_meta(
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
 ):
-    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max)
-    if color_step < 1:
-        raise HTTPException(status_code=422, detail="color_step must be at least 1")
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
 
     return describe_color_scale(
         variable=variable,
@@ -117,7 +124,7 @@ def get_scale_meta(
 
 
 @app.get("/api/map")
-async def get_map(
+def get_map(
     date: str = "",
     dates: str = "",
     date_mode: str = "",
@@ -139,7 +146,7 @@ async def get_map(
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
 ):
-    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max)
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
     if hours:
@@ -147,6 +154,20 @@ async def get_map(
         invalid_hours = [h for h in parsed_hours if h not in VALID_HOURS]
         if invalid_hours:
             raise HTTPException(status_code=422, detail=f"hours contains invalid values: {invalid_hours}; valid hours are {VALID_HOURS}")
+    if dates:
+        n_dates = len([d for d in dates.split(",") if d.strip()])
+        if n_dates > MAX_COMPOSITE_DATES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"too many dates ({n_dates}); composites are limited to {MAX_COMPOSITE_DATES} dates per map",
+            )
+    if months:
+        n_months = len([m for m in months.split(",") if m.strip()])
+        if n_months > MAX_COMPOSITE_MONTHS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"too many months ({n_months}); composites are limited to {MAX_COMPOSITE_MONTHS} months per map",
+            )
     if region not in REGIONS:
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
@@ -159,6 +180,13 @@ async def get_map(
         raise HTTPException(
             status_code=422,
             detail="CORe surface/named-level starter fields currently support 3-hourly and daily raw maps only.",
+        )
+    # SPFH has no R2 climatology mapping, so every non-raw humidity map would 500
+    # in the climo fetch. Reject up front until a baseline is wired.
+    if variable == "humidity" and mode != "raw":
+        raise HTTPException(
+            status_code=422,
+            detail="Specific humidity currently supports raw maps only; no climatology baseline is wired for SPFH yet.",
         )
 
     try:
@@ -191,6 +219,12 @@ async def get_map(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except HTTPException:
         raise
+    except requests.RequestException as exc:
+        log.exception("UPSTREAM %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Upstream data source error while fetching CORe/R2 data. Please try again shortly.",
+        ) from exc
     except Exception as exc:
         log.exception("ERROR    %s", exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

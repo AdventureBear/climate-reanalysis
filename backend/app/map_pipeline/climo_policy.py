@@ -21,6 +21,13 @@ def resolve_climo_source(req: ClimoRequest, selection: TimeSelection) -> str:
     if req.mode == "raw":
         return req.climo_source
 
+    if req.mode == "climatology":
+        # Climatology maps always show a monthly-mean baseline, regardless of how
+        # the request selected its month (legacy URLs pass a single date).
+        if req.climo_source in MONTHLY_IMPLEMENTED_CLIMO_SOURCES:
+            return req.climo_source
+        return MONTHLY_FALLBACK_CLIMO_SOURCE
+
     if selection.monthly_mode:
         if req.climo_source in MONTHLY_IMPLEMENTED_CLIMO_SOURCES:
             return req.climo_source

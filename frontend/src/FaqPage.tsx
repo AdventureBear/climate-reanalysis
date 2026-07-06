@@ -34,7 +34,9 @@ export default function FaqPage() {
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
                 This page is built directly from the frontend FAQ markdown source. Add or edit a question in{' '}
                 <a
-                  href="/Users/suzanne2022/Developer/PyRe/climate-reanalysis/frontend/src/content/FAQ.md:1"
+                  href="https://github.com/AdventureBear/climate-reanalysis/blob/main/frontend/src/content/FAQ.md"
+                  target="_blank"
+                  rel="noreferrer"
                   className="text-sky-300 hover:text-sky-200 underline underline-offset-2"
                 >
                   frontend/src/content/FAQ.md

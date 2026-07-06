@@ -1,6 +1,11 @@
 import { HOURS, normalizeColorStep } from './sharedOptions'
 import { apiLevelForSelection, apiVariableForSelection, uiSelectionForApiVariable } from './variableConfig'
 
+// Mirror the backend request guards (MAX_COMPOSITE_DATES / MAX_COMPOSITE_MONTHS
+// in backend/app/main.py) so users get instant feedback instead of a 422.
+export const MAX_COMPOSITE_DATES = 93
+export const MAX_COMPOSITE_MONTHS = 60
+
 export type TimeScale = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 export type SubMode = 'single' | 'range' | 'list'
 export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
@@ -132,11 +137,11 @@ function pwatUnit(value: string | null): PwatUnit | undefined {
 
 function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   if (time.scale === 'climatology') {
+    // The year is arbitrary — climatology mode never fetches observations.
     return {
       ok: true,
       params: {
-        date: `2000${time.climoMonth}01`,
-        hour: '00',
+        months: `2000${time.climoMonth}`,
         mode: 'climatology',
       },
     }
@@ -149,10 +154,16 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
     if (time.subMode === 'range') {
       const months = monthRange(time.monthStart, time.monthEnd)
       if (!months.length) return { ok: false, error: 'End month must be on or after start month.' }
+      if (months.length > MAX_COMPOSITE_MONTHS) {
+        return { ok: false, error: `Month ranges are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
+      }
       return { ok: true, params: { months: months.join(',') } }
     }
     const months = time.customMonths.filter(Boolean).map(toApiMonth)
     if (!months.length) return { ok: false, error: 'Add at least one month.' }
+    if (months.length > MAX_COMPOSITE_MONTHS) {
+      return { ok: false, error: `Month lists are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
+    }
     return { ok: true, params: { months: months.join(',') } }
   }
 
@@ -173,6 +184,9 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
       ? dateRange(time.startDate, time.endDate)
       : []
     if (!dates.length) return { ok: false, error: 'End date must be on or after start date.' }
+    if (dates.length > MAX_COMPOSITE_DATES) {
+      return { ok: false, error: `Date ranges are limited to ${MAX_COMPOSITE_DATES} days per map.` }
+    }
     params.dates = dates.join(',')
     params.date_mode = 'range'
     return { ok: true, params }
@@ -180,6 +194,9 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
 
   const dates = time.customDates.filter(Boolean).map(toApiDate)
   if (!dates.length) return { ok: false, error: 'Add at least one date.' }
+  if (dates.length > MAX_COMPOSITE_DATES) {
+    return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
+  }
   params.date_mode = 'list'
   if (dates.length === 1) {
     params.date = dates[0]
@@ -244,10 +261,12 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
   const dateMode = params.get('date_mode')
 
   if (mode === 'climatology') {
+    // Current URLs carry months=YYYYMM; legacy shared URLs carried date=YYYYMM01.
+    const parsedMonth = months ? parseApiMonth(months.split(',')[0].trim()) : null
     const parsedDate = date ? parseApiDate(date) : null
     return {
       scale: 'climatology',
-      climoMonth: parsedDate?.month ?? '01',
+      climoMonth: parsedMonth?.month ?? parsedDate?.month ?? '01',
     }
   }
 

@@ -66,6 +66,10 @@ def map_date_label(
     def ym_label(ym: tuple[int, int]) -> str:
         return f"{cal.month_abbr[ym[1]]} {ym[0]}"
 
+    if req.mode == "climatology":
+        source = climo_source_labels.get(climo_source, climo_source)
+        return f"Climatology mean · {month_abbr}\nBaseline: {source} {climo_period}"
+
     if selection.monthly_mode:
         period = (
             ym_label(selection.year_months[0])
@@ -76,9 +80,6 @@ def map_date_label(
             mode_label = mode_labels[(req.mode, use_vector_wind_anomaly)]
             return f"Monthly {mode_label} · {period}{obs_source_tag}\n{climo_ref()}"
         return f"Monthly composite · {period}{obs_source_tag}"
-
-    if req.mode == "climatology":
-        return f"Climatology mean · {month_abbr}\nBaseline: {climo_period}"
 
     if req.mode in ("anomaly", "normalized"):
         mode_label = mode_labels[(req.mode, use_vector_wind_anomaly)]

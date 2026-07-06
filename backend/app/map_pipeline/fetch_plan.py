@@ -85,20 +85,17 @@ def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -
 
 
 def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]]):
-    u_mean = _mean_flx_component(date_hour_pairs, 0)
-    v_mean = _mean_flx_component(date_hour_pairs, 1)
-    return u_mean, v_mean
-
-
-def _mean_flx_component(date_hour_pairs: list[tuple[str, str]], component_idx: int) -> xr.DataArray:
+    """Fetch 10m (U, V) once per (date, hour) pair concurrently, mean each component."""
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = [pool.submit(lambda d, h: fetch_flx_wind_components(d, h)[component_idx], date, hour)
-                   for date, hour in date_hour_pairs]
-        arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in as_completed(futures)]
-    stacked = xr.concat(arrays, dim="composite_step")
-    mean = stacked.mean(dim="composite_step")
-    mean.attrs = arrays[0].attrs
-    return mean
+        futures = [pool.submit(fetch_flx_wind_components, date, hour) for date, hour in date_hour_pairs]
+        results = [f.result() for f in futures]
+    u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
+    v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
+    u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
+    v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
+    u_mean.attrs = u_list[0].attrs
+    v_mean.attrs = v_list[0].attrs
+    return u_mean, v_mean
 
 
 ClimoFetcher = Callable[[int, int, int, str], tuple]
@@ -188,15 +185,27 @@ def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib
     return CLIMO_FETCHERS[key](month, day, req.level, grib_name)
 
 
+def _selection_month_weights(selection: TimeSelection) -> list[tuple[int, int]]:
+    """
+    Weight each unique calendar month by the actual number of days it contributes
+    to the obs selection (a month picked from several years counts every year).
+    Mirrors the day-weighting that _mean_of_monthly applies to the observations,
+    so the anomaly baseline stays aligned with the composite.
+    """
+    counts: dict[int, int] = {}
+    for year, month in selection.year_months:
+        counts[month] = counts.get(month, 0) + cal.monthrange(year, month)[1]
+    return sorted(counts.items())
+
+
 def fetch_climo_weighted(req: FetchRequest, climo_source: str, selection: TimeSelection, grib_name: str):
-    unique_months = sorted(set(m for _, m in selection.year_months))
-    if len(unique_months) == 1:
-        return fetch_climo(req, climo_source, unique_months[0], 15, grib_name)
-    day_weights = [cal.monthrange(2001, m)[1] for m in unique_months]
-    total_days = sum(day_weights)
-    climo_data = [fetch_climo(req, climo_source, m, 15, grib_name) for m in unique_months]
-    mean = sum(w * cm for w, (cm, _) in zip(day_weights, climo_data)) / total_days
-    std = sum(w * cs for w, (_, cs) in zip(day_weights, climo_data)) / total_days
+    month_weights = _selection_month_weights(selection)
+    if len(month_weights) == 1:
+        return fetch_climo(req, climo_source, month_weights[0][0], 15, grib_name)
+    total_days = sum(weight for _, weight in month_weights)
+    climo_data = [(weight, fetch_climo(req, climo_source, month, 15, grib_name)) for month, weight in month_weights]
+    mean = sum(weight * cm for weight, (cm, _) in climo_data) / total_days
+    std = sum(weight * cs for weight, (_, cs) in climo_data) / total_days
     return mean, std
 
 
@@ -227,14 +236,13 @@ def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int
 
 
 def fetch_weighted_wind_climo_components(req: FetchRequest, climo_source: str, selection: TimeSelection):
-    unique_months = sorted(set(m for _, m in selection.year_months))
-    if len(unique_months) == 1:
-        return fetch_wind_climo_components(req, climo_source, unique_months[0], 15)
-    day_weights = [cal.monthrange(2001, m)[1] for m in unique_months]
-    total_days = sum(day_weights)
-    comps = [fetch_wind_climo_components(req, climo_source, m, 15) for m in unique_months]
-    mean_u = sum(w * cu for w, (cu, _) in zip(day_weights, comps)) / total_days
-    mean_v = sum(w * cv for w, (_, cv) in zip(day_weights, comps)) / total_days
+    month_weights = _selection_month_weights(selection)
+    if len(month_weights) == 1:
+        return fetch_wind_climo_components(req, climo_source, month_weights[0][0], 15)
+    total_days = sum(weight for _, weight in month_weights)
+    comps = [(weight, fetch_wind_climo_components(req, climo_source, month, 15)) for month, weight in month_weights]
+    mean_u = sum(weight * cu for weight, (cu, _) in comps) / total_days
+    mean_v = sum(weight * cv for weight, (_, cv) in comps) / total_days
     return mean_u, mean_v
 
 

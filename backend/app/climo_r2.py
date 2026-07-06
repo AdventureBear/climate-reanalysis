@@ -114,15 +114,26 @@ _GRIB_TO_R2: dict[str, str] = {
 # Disk cache: backend/climo_cache/ (one level above app/)
 _CACHE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "climo_cache"))
 
+class _PendingFetch:
+    """In-flight fetch sentinel. Carries the outcome to waiting threads so a
+    failed fetch raises in every waiter instead of leaving them to KeyError on
+    a deleted cache entry."""
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.result: dict | None = None
+        self.error: Exception | None = None
+
+
 # In-process memory cache for daily climatology.
 # Key: (r2_var, level, month, day) — DOY-granular.
-# Value: dict{'mean': DataArray, 'std': DataArray} or threading.Event while loading.
-_cache: dict[tuple, dict | threading.Event] = {}
+# Value: dict{'mean': DataArray, 'std': DataArray} or _PendingFetch while loading.
+_cache: dict[tuple, dict | _PendingFetch] = {}
 _cache_lock = threading.Lock()
 
 # In-process memory cache for monthly climatology (separate key space).
 # Key: (r2_var, level, month) — calendar-month granular.
-_mcache: dict[tuple, dict | threading.Event] = {}
+_mcache: dict[tuple, dict | _PendingFetch] = {}
 _mcache_lock = threading.Lock()
 
 
@@ -397,6 +408,65 @@ def _fetch_r2m_monthly_wind_speed(level: int, month: int) -> dict[str, xr.DataAr
     return {"mean": mean, "std": std}
 
 
+# ── Cache-aware loader ────────────────────────────────────────────────────────
+
+def _load_cached(
+    cache: dict,
+    lock: threading.Lock,
+    cache_key: tuple,
+    disk_load,       # callable() → dict | None
+    disk_save,       # callable(result) → None
+    fetch_fn,        # callable() → dict[str, DataArray]
+    log_tag: str,
+) -> dict[str, xr.DataArray]:
+    """
+    Return (mean, std) for the requested key, checking caches in order:
+      1. In-process memory
+      2. Disk
+      3. OPeNDAP (concurrent fetch)
+
+    Thread-safe: a _PendingFetch sentinel blocks concurrent duplicate fetches,
+    and hands the fetch outcome (result or exception) to every waiter.
+    """
+    with lock:
+        entry = cache.get(cache_key)
+        if isinstance(entry, dict):
+            return entry
+        if isinstance(entry, _PendingFetch):
+            pending = entry
+        else:
+            pending = None
+            mine = _PendingFetch()
+            cache[cache_key] = mine
+
+    if pending is not None:
+        log.debug("%s  waiting for in-flight fetch  key=%s", log_tag, cache_key)
+        pending.event.wait()
+        if pending.error is not None:
+            raise pending.error
+        return pending.result
+
+    try:
+        result = disk_load()
+        if result is None:
+            result = fetch_fn()
+            disk_save(result)
+
+        with lock:
+            cache[cache_key] = result
+        mine.result = result
+        return result
+
+    except Exception as exc:
+        with lock:
+            if cache.get(cache_key) is mine:
+                del cache[cache_key]
+        mine.error = exc
+        raise
+    finally:
+        mine.event.set()
+
+
 def _load_monthly(
     r2_var: str,
     level: int,
@@ -404,45 +474,16 @@ def _load_monthly(
     fetch_fn,
 ) -> dict[str, xr.DataArray]:
     """Cache-aware loader for monthly climatology (same pattern as _load for daily)."""
-    cache_key = (r2_var, level, month)
+    return _load_cached(
+        _mcache,
+        _mcache_lock,
+        (r2_var, level, month),
+        disk_load=lambda: _load_disk_monthly(r2_var, level, month),
+        disk_save=lambda result: _save_disk_monthly(r2_var, level, month, result),
+        fetch_fn=fetch_fn,
+        log_tag="CLIMO_R2M",
+    )
 
-    with _mcache_lock:
-        entry = _mcache.get(cache_key)
-        if isinstance(entry, dict):
-            return entry
-        if isinstance(entry, threading.Event):
-            event_to_wait = entry
-        else:
-            event_to_wait = None
-            ready = threading.Event()
-            _mcache[cache_key] = ready
-
-    if event_to_wait is not None:
-        log.debug("CLIMO_R2M  waiting for in-flight fetch  key=%s", cache_key)
-        event_to_wait.wait()
-        with _mcache_lock:
-            return _mcache[cache_key]
-
-    try:
-        result = _load_disk_monthly(r2_var, level, month)
-        if result is None:
-            result = fetch_fn()
-            _save_disk_monthly(r2_var, level, month, result)
-
-        with _mcache_lock:
-            _mcache[cache_key] = result
-            ready.set()
-        return result
-
-    except Exception:
-        with _mcache_lock:
-            if _mcache.get(cache_key) is ready:
-                del _mcache[cache_key]
-        ready.set()
-        raise
-
-
-# ── Cache-aware loader ────────────────────────────────────────────────────────
 
 def _load(
     r2_var: str,
@@ -451,50 +492,16 @@ def _load(
     day: int,
     fetch_fn,        # callable() → dict[str, DataArray]
 ) -> dict[str, xr.DataArray]:
-    """
-    Return (mean, std) for the requested key, checking caches in order:
-      1. In-process memory
-      2. Disk
-      3. OPeNDAP (concurrent fetch)
-
-    Thread-safe: a threading.Event sentinel blocks concurrent duplicate fetches.
-    """
-    cache_key = (r2_var, level, month, day)
-
-    with _cache_lock:
-        entry = _cache.get(cache_key)
-        if isinstance(entry, dict):
-            return entry
-        if isinstance(entry, threading.Event):
-            event_to_wait = entry
-        else:
-            event_to_wait = None
-            ready = threading.Event()
-            _cache[cache_key] = ready
-
-    if event_to_wait is not None:
-        log.debug("CLIMO_R2  waiting for in-flight fetch  key=%s", cache_key)
-        event_to_wait.wait()
-        with _cache_lock:
-            return _cache[cache_key]
-
-    try:
-        result = _load_disk(r2_var, level, month, day)
-        if result is None:
-            result = fetch_fn()
-            _save_disk(r2_var, level, month, day, result)
-
-        with _cache_lock:
-            _cache[cache_key] = result
-            ready.set()
-        return result
-
-    except Exception:
-        with _cache_lock:
-            if _cache.get(cache_key) is ready:
-                del _cache[cache_key]
-        ready.set()
-        raise
+    """Cache-aware loader for daily (DOY-granular) climatology."""
+    return _load_cached(
+        _cache,
+        _cache_lock,
+        (r2_var, level, month, day),
+        disk_load=lambda: _load_disk(r2_var, level, month, day),
+        disk_save=lambda result: _save_disk(r2_var, level, month, day, result),
+        fetch_fn=fetch_fn,
+        log_tag="CLIMO_R2",
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
