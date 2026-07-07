@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2 } from 'lucide-react'
+import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2, Save, FolderOpen, LogIn, LogOut, User } from 'lucide-react'
+import { useAuth } from './auth/authContext'
+import { AuthModal } from './auth/AuthModal'
+import { LibraryModal } from './projects/LibraryModal'
+import { createProject, listProjects, saveMap, type SavedMap } from './lib/library'
+import { publicUrl } from './lib/storage'
+import { blobFromObjectUrl } from './lib/images'
 import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 import { HOURS, normalizeColorStep } from './sharedOptions'
@@ -813,6 +819,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
 
+  const { enabled: authEnabled, user, signOut } = useAuth()
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+
   const apiVariable = apiVariableForSelection(variable, level)
   const apiLevel = apiLevelForSelection(variable, level)
   const levelOptions = levelOptionsForVariable(variable)
@@ -868,18 +880,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     }
   }
 
-  // URL → state synchronization. Runs for deep links and browser back/forward;
-  // URL updates made by handleGenerate itself are skipped via the ref below.
-  const selfUpdatedParamsRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    const paramsString = searchParams.toString()
-    if (paramsString === selfUpdatedParamsRef.current) return
-    selfUpdatedParamsRef.current = paramsString
-
-    const recipe = mapRecipeFromUrl(searchParams)
-    if (!recipe) return
-
+  // Apply a recipe (from a shared URL or a saved library map) to the builder
+  // controls. Shared by the URL-sync effect and by loading a saved map.
+  function applyRecipeToState(recipe: MapRecipe) {
     function applyTimeRecipe(time: TimeRecipe) {
       setTimeScale(time.scale)
       switch (time.scale) {
@@ -932,9 +935,23 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       setWindOn(recipe.wind.on)
       setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
     }
+  }
 
-    // Shared/deep-linked URLs that describe a complete map render immediately
-    // instead of showing an empty panel until the user clicks Generate.
+  // URL → state synchronization. Runs for deep links and browser back/forward;
+  // URL updates made by handleGenerate / library-load are skipped via the ref.
+  const selfUpdatedParamsRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const paramsString = searchParams.toString()
+    if (paramsString === selfUpdatedParamsRef.current) return
+    selfUpdatedParamsRef.current = paramsString
+
+    const recipe = mapRecipeFromUrl(searchParams)
+    if (!recipe) return
+    applyRecipeToState(recipe)
+
+    // Shared/deep-linked URLs render immediately instead of showing an empty
+    // panel until the user clicks Generate.
     const recipeParams = mapRecipeToParams(recipe)
     if (recipeParams.ok) void generateFromParams(recipeParams.params)
   }, [searchParams])
@@ -1137,6 +1154,47 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
     setSearchParams(params)
     await generateFromParams(params)
+  }
+
+  // ── Save / load library maps ─────────────────────────────────────────────────
+  async function handleSaveMap() {
+    if (!user) { setAuthModalOpen(true); return }
+    if (!mapSrc) { setError('Generate a map before saving.'); return }
+    const name = window.prompt('Save map as')?.trim()
+    if (!name) return
+
+    setSaving(true)
+    setError(null)
+    try {
+      const projects = await listProjects()
+      const project = projects[0] ?? await createProject(user.id, 'My Maps')
+      const fullPng = await blobFromObjectUrl(mapSrc)
+      await saveMap({ userId: user.id, projectId: project.id, name, recipe: currentMapRecipe(), fullPng })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function handleLoadMap(map: SavedMap) {
+    const recipe = map.recipe as unknown as MapRecipe
+    applyRecipeToState(recipe)
+
+    // Show the stored image directly — no re-render. Keep the URL in sync but
+    // suppress the URL effect so it doesn't kick off a redundant render.
+    const url = publicUrl(map.image_path)
+    setMapSrc(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return url
+    })
+    const recipeParams = mapRecipeToParams(recipe)
+    if (recipeParams.ok) {
+      selfUpdatedParamsRef.current = new URLSearchParams(recipeParams.params).toString()
+      setSearchParams(recipeParams.params)
+    }
+    setError(null)
+    setLibraryOpen(false)
   }
 
   // ── Temporal inputs ──────────────────────────────────────────────────────────
@@ -2040,6 +2098,48 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             FAQ
           </Link>
           {renderTimeScaleControls()}
+          {authEnabled && (
+            <>
+              <button type="button" onClick={handleSaveMap} disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                title={user ? 'Save current map' : 'Sign in to save maps'}>
+                <Save size={14} />
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              {user ? (
+                <div className="relative">
+                  <button type="button" onClick={() => setAccountMenuOpen(o => !o)}
+                    className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                    title="Account">
+                    <User size={14} />
+                    <span className="max-w-[9rem] truncate">{user.email}</span>
+                    <ChevronDown size={13} />
+                  </button>
+                  {accountMenuOpen && (
+                    <>
+                      <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="Close menu" onClick={() => setAccountMenuOpen(false)} />
+                      <div className="absolute right-0 top-9 z-40 w-44 rounded-lg border border-slate-700 bg-slate-950 p-1 shadow-xl">
+                        <button type="button" onClick={() => { setAccountMenuOpen(false); setLibraryOpen(true) }}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                          <FolderOpen size={14} /> My Maps
+                        </button>
+                        <button type="button" onClick={() => { setAccountMenuOpen(false); void signOut() }}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                          <LogOut size={14} /> Sign out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <button type="button" onClick={() => setAuthModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                  title="Sign in">
+                  <LogIn size={14} /> Sign in
+                </button>
+              )}
+            </>
+          )}
 	          {adminMode ? (
 	            <button
 	              type="button"
@@ -2122,6 +2222,32 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Settings size={14} />
               Settings
             </button>
+            {authEnabled && (
+              <>
+                <div className="my-1 h-px bg-slate-800" />
+                <button type="button" onClick={() => { setMobileMenuOpen(false); handleSaveMap() }} disabled={saving}
+                  className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+                  <Save size={14} /> {saving ? 'Saving…' : 'Save map'}
+                </button>
+                {user ? (
+                  <>
+                    <button type="button" onClick={() => { setMobileMenuOpen(false); setLibraryOpen(true) }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                      <FolderOpen size={14} /> My Maps
+                    </button>
+                    <button type="button" onClick={() => { setMobileMenuOpen(false); void signOut() }}
+                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                      <LogOut size={14} /> Sign out
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => { setMobileMenuOpen(false); setAuthModalOpen(true) }}
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                    <LogIn size={14} /> Sign in
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </header>
@@ -2635,6 +2761,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             </div>
           </div>
         </>
+      )}
+
+      {authEnabled && authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      {authEnabled && libraryOpen && user && (
+        <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={handleLoadMap} />
       )}
 
     </div>

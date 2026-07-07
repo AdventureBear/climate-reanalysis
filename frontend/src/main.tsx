@@ -4,15 +4,20 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import FaqPage from './FaqPage.tsx'
+import { AuthProvider } from './auth/AuthProvider.tsx'
+import AuthCallback from './auth/AuthCallback.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/admin" element={<App adminMode />} />
-        <Route path="/faq" element={<FaqPage />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/admin" element={<App adminMode />} />
+          <Route path="/faq" element={<FaqPage />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 )
