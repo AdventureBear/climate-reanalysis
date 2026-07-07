@@ -27,7 +27,7 @@ The PSL composite tools were built on **NCEP Reanalysis 1** (R1), a global retro
 PyRe uses **CORe — Climate-Ocean Reanalysis** from NCEP/CPC.
 
 - **Resolution**: 0.25° × 0.25° (~28 km at mid-latitudes) — roughly 10× finer than R1
-- **Temporal coverage**: Back to the 1950s; updated in near-real-time
+- **Temporal coverage**: January 1, 1950 to near-real-time
 - **Format**: GRIB2 ensemble mean files; PyRe fetches data surgically using HTTP byte-range requests (no full file downloads)
 - **Naming**: `core.{YYYYMMDD}.t{HH}z.pgrb2.0p25.f000.grib2`
 
@@ -45,12 +45,12 @@ CORe is the designated successor to R1/R2 for NCEP operational reanalysis produc
 
 ## 5. So what IS R2 used for, and why?
 
-R2 is used as the **climatology baseline** — the reference against which we measure anomalies.
+R2 is used as a **climatology baseline** — the reference against which we measure anomalies.
 
 - **For daily and 3-hourly modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
-- **For monthly modes**: PyRe uses R2 **monthly** climatologies — the mean and standard deviation of each calendar month across the same 30 years. A single strided OPeNDAP request fetches all 30 years of a given month in one round-trip.
+- **For monthly modes**: PyRe can use either the CORe-era monthly PGB climatology source or R2 **monthly** climatologies, depending on the selected climatology source. Monthly baselines are calendar-month means and standard deviations.
 
-**Why R2 for climatology instead of CORe?** CORe is still relatively new and does not yet have a long enough archive (30 years of continuous data) to compute a statistically robust climatology. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available source for a 1991–2020 baseline.
+**Why R2 for sub-monthly climatology instead of CORe?** CORe is still relatively new and does not yet have a full 30-year daily/3-hourly climatology product wired into PyRe. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available 1991–2020 baseline for daily and 3-hourly anomaly maps.
 
 ---
 
@@ -79,6 +79,24 @@ All variables are available at 16 standard pressure levels: 1000, 925, 850, 700,
 
 Anomaly and normalized anomaly maps require a climatology source.
 
+### How anomaly maps are built by time scale
+
+| Time Scale | Observation Field | Climatology Baseline | Result |
+|---|---|---|---|
+| 3-hourly / single synoptic time | CORe field for the selected date and hour | R2 daily climatology for that calendar day | `obs - climo_mean` |
+| 3-hourly composite | CORe fields for multiple dates at the same selected hour | Mean of matching R2 daily climatologies | `composite - climo_mean` |
+| Daily | CORe average across selected daily hours, currently 00z/06z/12z/18z | R2 daily climatology for that calendar day | `daily_mean - climo_mean` |
+| Daily composite | CORe average across dates and daily hours | Weighted/averaged matching R2 daily climatologies | `composite - climo_mean` |
+| Monthly | CORe monthly field/composite | Monthly climatology from `monthly-pgb` or `r2-monthly` | `monthly_value - climo_mean` |
+| Multi-month monthly | CORe monthly composite | Day-weighted mean of each month’s climatology | `monthly_composite - climo_mean` |
+| Climatology | No observation fetched | Monthly climatology source | The climatological mean itself |
+
+`Climatology` is a map mode, not an anomaly. It answers “what is normal for this month?” Anomaly and normalized anomaly answer “how different was this event or composite from normal?”
+
+Before subtraction, PyRe interpolates the coarser climatology grid onto the CORe observation grid.
+
+Specific humidity and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
+
 ---
 
 ## 8. How are wind anomalies defined?
@@ -98,13 +116,13 @@ For example, if the climatological 850 mb wind is weak easterly and the observed
 
 ## 9. How is the standard deviation (sigma) calculated?
 
-PyRe computes sigma **itself** from the raw R2 time series — it is not pre-fetched from a file.
+For R2 climatology, PyRe computes sigma **itself** from the raw R2 time series — it is not pre-fetched from a file.
 
 - For each calendar day (or month), PyRe fetches 30 individual years of that day/month from R2 (1991–2020).
 - The mean and sample standard deviation (ddof=1) are computed across those 30 values at each grid point.
 - **ddof=1** (sample standard deviation) is used because we have a finite 30-year sample, not the full population of all possible climate states.
 
-**Do the R2 files contain pre-computed sigma?** No. The PSL THREDDS long-term mean (LTM) files contain only the mean field and a `valid_yr_count` variable — no sigma. PyRe computes sigma from scratch each time (cached to disk after the first request).
+**Do the R2 files contain pre-computed sigma?** No. The PSL THREDDS long-term mean (LTM) files contain only the mean field and a `valid_yr_count` variable — no sigma. PyRe computes R2 sigma from scratch and caches the result after the first request.
 
 ---
 
@@ -196,7 +214,7 @@ The R2 daily climatology uses 1991–2020. Not every year has Feb 29. PyRe maps 
 
 The wind overlay draws vectors or barbs on top of any scalar field. It requires U and V wind components.
 
-**When the mapped variable is already wind speed**: PyRe fetches U and V once, derives wind speed as √(U²+V²), and reuses the same U/V arrays for the overlay — no additional network requests.
+**When the mapped variable is already wind speed**: PyRe fetches U and V once, derives wind speed as `sqrt(U²+V²)`, and reuses the same U/V arrays for the overlay — no additional network requests.
 
 **When the mapped variable is something else** (e.g., temperature with a wind overlay): U and V are fetched separately as a second step.
 
@@ -220,7 +238,7 @@ This is the same technique NOMADS uses internally and what enables PyRe to respo
 
 ## 18. Where is data cached and why?
 
-Climatology data (R2 daily and monthly means/sigmas) is cached to disk on the server after the first computation. This is appropriate because:
+Climatology data is cached to disk on the server after the first computation. This includes R2 daily climatology and R2 monthly climatology; monthly PGB climatology has its own retrieval path. Caching is appropriate because:
 
 - Climatology values are the same regardless of who requests them — they only depend on calendar day/month and variable.
 - The first computation takes 2–10 seconds (30 concurrent OPeNDAP requests); subsequent requests are instant.
