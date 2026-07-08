@@ -11,11 +11,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return
     let active = true
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return
-      setSession(data.session)
-      setLoading(false)
-    })
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return
+        setSession(data.session)
+        setLoading(false)
+      })
+      .catch(err => {
+        // Never leave the app stuck in a loading state (e.g. AuthCallback would
+        // hang on "Signing you in…" forever). Resolve loading and log the cause.
+        if (!active) return
+        console.error('Supabase getSession failed:', err)
+        setLoading(false)
+      })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next)

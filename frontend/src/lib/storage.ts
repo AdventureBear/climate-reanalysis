@@ -37,11 +37,45 @@ export async function uploadMapImages(
   return { image_path, thumbnail_path }
 }
 
-// Public URL for a stored object key (the bucket is public-read).
-export function publicUrl(path: string | null | undefined): string | null {
+// The bucket is private, so images are never exposed via a public URL. An owner
+// reaches their own image through a short-lived signed URL (usable directly as an
+// <img> src) or by downloading the bytes. RLS on storage.objects still scopes both
+// to the owner; the signature only makes an already-authorized read shareable to a
+// browser <img>/download for its short lifetime.
+const SIGNED_URL_TTL = 60 * 60 // seconds
+
+export async function signedUrl(
+  path: string | null | undefined,
+  expiresIn = SIGNED_URL_TTL,
+): Promise<string | null> {
   if (!path) return null
   const sb = requireSupabase()
-  return sb.storage.from(STORAGE_BUCKET).getPublicUrl(path).data.publicUrl
+  const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(path, expiresIn)
+  if (error) throw error
+  return data.signedUrl
+}
+
+// Batch variant for grids of thumbnails: returns a { path -> signed URL } map.
+export async function signedUrls(
+  paths: (string | null | undefined)[],
+  expiresIn = SIGNED_URL_TTL,
+): Promise<Record<string, string>> {
+  const clean = [...new Set(paths.filter((p): p is string => Boolean(p)))]
+  if (!clean.length) return {}
+  const sb = requireSupabase()
+  const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrls(clean, expiresIn)
+  if (error) throw error
+  const out: Record<string, string> = {}
+  for (const item of data) if (item.path && item.signedUrl) out[item.path] = item.signedUrl
+  return out
+}
+
+// Download a stored object's bytes (owner-only, via RLS) for "Download map".
+export async function downloadImageBlob(path: string): Promise<Blob> {
+  const sb = requireSupabase()
+  const { data, error } = await sb.storage.from(STORAGE_BUCKET).download(path)
+  if (error) throw error
+  return data
 }
 
 // Remove both objects for a saved map. Missing objects are not an error.

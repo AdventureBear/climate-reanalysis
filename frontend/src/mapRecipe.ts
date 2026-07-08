@@ -251,6 +251,17 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   return { ok: true, params }
 }
 
+// Build a shareable deep-link that regenerates this map for anyone who opens it.
+// This is the ONLY sharing path for a saved map — the recipe travels as URL text;
+// the rendered image itself is private and never gets a public link.
+export function recipeShareUrl(recipe: MapRecipe, base?: string): string | null {
+  const result = mapRecipeToParams(recipe)
+  if (!result.ok) return null
+  const root = base ?? `${window.location.origin}${window.location.pathname}`
+  const qs = new URLSearchParams(result.params).toString()
+  return qs ? `${root}?${qs}` : root
+}
+
 function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
   const mode = params.get('mode')
   const months = params.get('months')

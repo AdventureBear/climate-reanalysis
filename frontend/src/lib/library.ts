@@ -44,6 +44,15 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 // ── Folders ───────────────────────────────────────────────────────────────
+// All of the owner's folders across projects (RLS scopes to the owner); the
+// library home view groups them client-side.
+export async function listAllFolders(): Promise<Folder[]> {
+  const sb = requireSupabase()
+  const { data, error } = await sb.from('folders').select('*').order('created_at', { ascending: true })
+  if (error) throw error
+  return data
+}
+
 export async function listFolders(projectId: string): Promise<Folder[]> {
   const sb = requireSupabase()
   const { data, error } = await sb
@@ -64,6 +73,17 @@ export async function createFolder(
   return data
 }
 
+// Move a folder (with everything in it) to another project. Maps carry a
+// denormalized project_id, so they must follow their folder.
+export async function moveFolder(id: string, projectId: string): Promise<void> {
+  const sb = requireSupabase()
+  const { error } = await sb.from('folders').update({ project_id: projectId }).eq('id', id)
+  if (error) throw error
+  const { error: mapsError } = await sb
+    .from('saved_maps').update({ project_id: projectId }).eq('folder_id', id)
+  if (mapsError) throw mapsError
+}
+
 export async function renameFolder(id: string, name: string): Promise<void> {
   const sb = requireSupabase()
   const { error } = await sb.from('folders').update({ name }).eq('id', id)
@@ -81,10 +101,12 @@ export async function deleteFolder(id: string): Promise<void> {
 }
 
 // ── Saved maps ──────────────────────────────────────────────────────────────
-export async function listMaps(projectId: string): Promise<SavedMap[]> {
+// All of the owner's maps, newest first. The library modal loads everything up
+// front and filters client-side (home "All maps" grid + per-project views).
+export async function listAllMaps(): Promise<SavedMap[]> {
   const sb = requireSupabase()
   const { data, error } = await sb
-    .from('saved_maps').select('*').eq('project_id', projectId).order('created_at', { ascending: false })
+    .from('saved_maps').select('*').order('created_at', { ascending: false })
   if (error) throw error
   return data
 }

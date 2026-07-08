@@ -4,9 +4,11 @@ import { Wind, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, Chevr
 import { useAuth } from './auth/authContext'
 import { AuthModal } from './auth/AuthModal'
 import { LibraryModal } from './projects/LibraryModal'
-import { createProject, listProjects, saveMap, type SavedMap } from './lib/library'
-import { publicUrl } from './lib/storage'
+import { saveMap, type SavedMap } from './lib/library'
+import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
+import { signedUrl } from './lib/storage'
 import { blobFromObjectUrl } from './lib/images'
+import { suggestedMapName } from './mapName'
 import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 import { HOURS, normalizeColorStep } from './sharedOptions'
@@ -27,6 +29,7 @@ import {
 // Same-origin by default so a missing VITE_API_URL doesn't produce
 // requests to literally "undefined/api/..." in production builds.
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
+const SAVE_TARGET_STORAGE_KEY = 'pyre.saveTarget'
 
 const LEVELS = [...PRESSURE_LEVELS]
 const MONTH_OPTIONS = [
@@ -824,6 +827,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
+  // Last save destination, remembered across saves (and reloads) so saving
+  // repeatedly into the same project/folder is a single confirm.
+  const [saveTarget, setSaveTarget] = useState<SaveTarget | null>(() => {
+    try { return JSON.parse(localStorage.getItem(SAVE_TARGET_STORAGE_KEY) ?? 'null') } catch { return null }
+  })
 
   const apiVariable = apiVariableForSelection(variable, level)
   const apiLevel = apiLevelForSelection(variable, level)
@@ -1157,33 +1166,39 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }
 
   // ── Save / load library maps ─────────────────────────────────────────────────
-  async function handleSaveMap() {
+  function handleSaveMap() {
     if (!user) { setAuthModalOpen(true); return }
     if (!mapSrc) { setError('Generate a map before saving.'); return }
-    const name = window.prompt('Save map as')?.trim()
-    if (!name) return
+    setSaveModalOpen(true)
+  }
 
+  // Called by SaveMapModal once a name + project/folder target are confirmed.
+  // Thrown errors surface inside the modal, so no catch here.
+  async function handleSaveMapConfirm({ name, target }: { name: string; target: SaveTarget }) {
+    if (!user || !mapSrc) return
     setSaving(true)
-    setError(null)
     try {
-      const projects = await listProjects()
-      const project = projects[0] ?? await createProject(user.id, 'My Maps')
       const fullPng = await blobFromObjectUrl(mapSrc)
-      await saveMap({ userId: user.id, projectId: project.id, name, recipe: currentMapRecipe(), fullPng })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      await saveMap({
+        userId: user.id, projectId: target.projectId, folderId: target.folderId,
+        name, recipe: currentMapRecipe(), fullPng,
+      })
+      setSaveTarget(target)
+      localStorage.setItem(SAVE_TARGET_STORAGE_KEY, JSON.stringify(target))
+      setSaveModalOpen(false)
     } finally {
       setSaving(false)
     }
   }
 
-  function handleLoadMap(map: SavedMap) {
+  async function handleLoadMap(map: SavedMap) {
     const recipe = map.recipe as unknown as MapRecipe
     applyRecipeToState(recipe)
 
-    // Show the stored image directly — no re-render. Keep the URL in sync but
-    // suppress the URL effect so it doesn't kick off a redundant render.
-    const url = publicUrl(map.image_path)
+    // Show the stored image directly — no re-render. The bucket is private, so we
+    // fetch a short-lived signed URL for the owner's own image. Keep the browser
+    // URL in sync but suppress the URL effect so it doesn't kick off a re-render.
+    const url = await signedUrl(map.image_path)
     setMapSrc(prev => {
       if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
       return url
@@ -2766,6 +2781,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       {authEnabled && authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
       {authEnabled && libraryOpen && user && (
         <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={handleLoadMap} />
+      )}
+      {authEnabled && saveModalOpen && user && (
+        <SaveMapModal
+          suggestedName={suggestedMapName(currentMapRecipe())}
+          initialTarget={saveTarget}
+          onClose={() => setSaveModalOpen(false)}
+          onSave={handleSaveMapConfirm}
+        />
       )}
 
     </div>

@@ -18,7 +18,16 @@ if (!isSupabaseConfigured) {
 
 export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured
   ? createClient<Database>(url!, anonKey!, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        // PKCE: OAuth/redirect callbacks return a short-lived `?code=` that we
+        // exchange for a session, instead of the implicit flow's `#access_token`
+        // in the URL. More secure (no tokens in the URL/history) and it's the
+        // handling `detectSessionInUrl` completes automatically on /auth/callback.
+        flowType: 'pkce',
+      },
     })
   : null
 

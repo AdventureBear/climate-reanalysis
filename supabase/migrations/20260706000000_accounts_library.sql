@@ -39,6 +39,12 @@ create trigger on_auth_user_created
     after insert on auth.users
     for each row execute function public.handle_new_user();
 
+-- Only ever runs as the trigger above (as the auth admin). It's SECURITY DEFINER
+-- and bypasses RLS, so it must not be callable directly via the PostgREST RPC API.
+-- Postgres grants EXECUTE to PUBLIC by default; revoke there (anon/authenticated
+-- inherit it via PUBLIC). Triggers still fire — they don't check caller EXECUTE.
+revoke execute on function public.handle_new_user() from public;
+
 -- ── projects ──────────────────────────────────────────────────────────────
 create table if not exists public.projects (
     id         uuid primary key default gen_random_uuid(),
@@ -114,16 +120,28 @@ create trigger projects_touch  before update on public.projects  for each row ex
 create trigger folders_touch    before update on public.folders    for each row execute function public.touch_updated_at();
 create trigger saved_maps_touch before update on public.saved_maps for each row execute function public.touch_updated_at();
 
--- ── object storage: "maps" bucket (public read, owner-only write) ─────────
--- Objects are keyed {user_id}/{map_id}/full.png and .../thumb.png, so the
--- first path segment is the owner's uid — that's what the write policies check.
+-- ── table privileges for the API roles ────────────────────────────────────
+-- RLS (enabled above) restricts rows to auth.uid(), but Postgres still checks
+-- table-level grants first. A fresh project's default privileges usually cover
+-- this; grant explicitly so the migration is self-contained on any project.
+grant select, insert, update, delete
+  on public.profiles, public.projects, public.folders, public.saved_maps
+  to authenticated, anon;
+
+-- ── object storage: "maps" bucket (private, owner-only) ───────────────────
+-- Saved-map images are private user assets. Sharing happens by re-sharing the
+-- recipe (a text URL that regenerates the map) or by downloading the PNG — never
+-- via a public object URL. The bucket is private; owners reach their own images
+-- through short-lived signed URLs. Objects are keyed {user_id}/{map_id}/full.png
+-- and .../thumb.png, so the first path segment is the owner's uid — that's what
+-- every policy checks.
 insert into storage.buckets (id, name, public)
-values ('maps', 'maps', true)
+values ('maps', 'maps', false)
 on conflict (id) do nothing;
 
-create policy "maps: public read"
+create policy "maps: owner read"
     on storage.objects for select
-    using (bucket_id = 'maps');
+    using (bucket_id = 'maps' and (storage.foldername(name))[1] = auth.uid()::text);
 
 create policy "maps: owner insert"
     on storage.objects for insert
