@@ -11,6 +11,7 @@ export type Profile = {
   display_name: string | null
   tier: string
   stripe_customer_id: string | null
+  is_admin: boolean
   created_at: string
 }
 
@@ -45,7 +46,8 @@ export type Database = {
       profiles: {
         Row: Profile
         Insert: { id: string; display_name?: string | null; tier?: string; stripe_customer_id?: string | null }
-        Update: Partial<{ display_name: string | null; tier: string; stripe_customer_id: string | null }>
+        // Column-level grants only allow owners to change display_name.
+        Update: Partial<{ display_name: string | null }>
         Relationships: []
       }
       projects: {

@@ -8,6 +8,8 @@ export type AuthContextValue = {
   loading: boolean
   user: User | null
   session: Session | null
+  /** True when the signed-in user's profile has the is_admin flag. */
+  isAdmin: boolean
   signUpWithPassword: (email: string, password: string) => Promise<{ needsconfirmation: boolean }>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>

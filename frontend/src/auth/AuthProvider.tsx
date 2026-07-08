@@ -6,6 +6,7 @@ import { AuthContext, type AuthContextValue } from './authContext'
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(isSupabaseConfigured)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     if (!supabase) return
@@ -37,11 +38,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // The admin flag lives on the profile row (auto-created at signup). Failures
+  // just mean no admin UI — never block the app on this lookup.
+  const userId = session?.user.id
+  useEffect(() => {
+    if (!supabase || !userId) {
+      setIsAdmin(false)
+      return
+    }
+    let active = true
+    supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', userId)
+      .single()
+      .then(({ data, error }) => {
+        if (!active) return
+        if (error) console.error('Profile lookup failed:', error)
+        setIsAdmin(Boolean(data?.is_admin))
+      })
+    return () => { active = false }
+  }, [userId])
+
   const value = useMemo<AuthContextValue>(() => ({
     enabled: isSupabaseConfigured,
     loading,
     user: session?.user ?? null,
     session,
+    isAdmin,
     async signUpWithPassword(email, password) {
       if (!supabase) throw new Error('Accounts are unavailable')
       const { data, error } = await supabase.auth.signUp({ email, password })
@@ -81,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
     },
-  }), [loading, session])
+  }), [loading, session, isAdmin])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

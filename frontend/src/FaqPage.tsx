@@ -3,10 +3,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft, CircleHelp, Wind } from 'lucide-react'
 import faqMarkdown from './content/FAQ.md?raw'
+import { SiteFooter } from './SiteFooter'
 
 export default function FaqPage() {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="bg-slate-900 border-b border-slate-700 px-5 py-3 flex items-center gap-3">
         <Wind className="text-sky-400 shrink-0" size={20} />
         <span className="font-bold tracking-tight text-sm">PyRe</span>
@@ -23,7 +24,7 @@ export default function FaqPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 md:px-6 md:py-10">
         <section className="mb-8 rounded-2xl border border-slate-700/60 bg-slate-900/80 p-6 shadow-xl">
           <div className="flex items-start gap-4">
             <div className="rounded-xl bg-sky-900/40 p-3 text-sky-300">
@@ -51,6 +52,8 @@ export default function FaqPage() {
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{faqMarkdown}</ReactMarkdown>
         </article>
       </main>
+
+      <SiteFooter />
     </div>
   )
 }

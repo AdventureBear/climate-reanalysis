@@ -9,6 +9,7 @@ import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
 import { signedUrl } from './lib/storage'
 import { blobFromObjectUrl } from './lib/images'
 import { suggestedMapName } from './mapName'
+import { SiteFooter } from './SiteFooter'
 import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 import { HOURS, normalizeColorStep } from './sharedOptions'
@@ -222,39 +223,6 @@ const REGION_SECTIONS: RegionSection[] = [
         { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
       ],
     ],
-  },
-]
-
-const CLIMO_SOURCES: {
-  value: ClimoSource; label: string; period: string; description: string; available: boolean
-}[] = [
-  {
-    value: 'monthly-pgb',
-    label: 'CORe PGB monthly',
-    period: '1991–2020',
-    description: 'CDAS pgb monthly means. Best baseline for monthly composites.',
-    available: true,
-  },
-  {
-    value: 'r2-daily',
-    label: 'NCEP/DOE R2 daily',
-    period: '1991–2020',
-    description: 'R2 day-of-year climatology via PSL OPeNDAP. Correct baseline for 3-hourly and daily anomalies.',
-    available: true,
-  },
-  {
-    value: 'r2-monthly',
-    label: 'NCEP/DOE R2 monthly',
-    period: '1991–2020',
-    description: 'R2 monthly climatology via PSL OPeNDAP. WMO 1991–2020 standard normal. Default for monthly anomalies.',
-    available: true,
-  },
-  {
-    value: 'cfsr-daily',
-    label: 'CFSR daily',
-    period: '1981–2010',
-    description: 'Climate Forecast System Reanalysis daily climatology.',
-    available: false,
   },
 ]
 
@@ -822,7 +790,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
 
-  const { enabled: authEnabled, user, signOut } = useAuth()
+  const { enabled: authEnabled, user, isAdmin, signOut } = useAuth()
+  // Color Lab is admin-only tooling. With accounts enabled it needs the
+  // profile admin flag; without accounts (local dev / dark launch) the /admin
+  // route stays available as a dev escape hatch.
+  const colorLabVisible = authEnabled ? isAdmin : true
+  const colorLabAccess = adminMode && colorLabVisible
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
@@ -985,7 +958,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }, [apiVariable])
 
   useEffect(() => {
-    if (!adminMode) return
+    if (!colorLabAccess) return
     const safeColorStep = normalizeColorStep(colorStep)
 
     const params = new URLSearchParams({
@@ -1023,7 +996,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     void loadScaleMeta()
 
     return () => controller.abort()
-  }, [adminMode, colorStep, labLevel, labMode, labVariable, pwatUnit, windUnit])
+  }, [colorLabAccess, colorStep, labLevel, labMode, labVariable, pwatUnit, windUnit])
 
   useEffect(() => {
     const backendAnchors = anchorsFromScaleMeta(scaleMeta)
@@ -1124,7 +1097,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     const safeColorStep = normalizeColorStep(colorStep)
     const labRenderMode = isClimo ? 'raw' : displayMode
     const labScaleApplies =
-      adminMode &&
+      colorLabAccess &&
       labVariable === apiVariable &&
       labMode === labRenderMode &&
       String(labLevel) === String(apiLevel) &&
@@ -1362,7 +1335,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }
 
   function renderScaleInspector() {
-    if (!adminMode) return null
+    if (!colorLabAccess) return null
 
     const boundaries = scaleMeta?.boundaries ?? []
     const keyBreaks = scaleMeta?.key_breakpoints ?? []
@@ -2104,14 +2077,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
         {/* Time scale — far right of header */}
         <div className="ml-auto hidden md:flex items-center gap-3">
-          <Link
-            to="/faq"
-            className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-            title="Open FAQ"
-          >
-            <CircleHelp size={14} />
-            FAQ
-          </Link>
           {renderTimeScaleControls()}
           {authEnabled && (
             <>
@@ -2138,6 +2103,17 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                           className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                           <FolderOpen size={14} /> My Maps
                         </button>
+                        {colorLabVisible && (adminMode ? (
+                          <button type="button" onClick={() => { setAccountMenuOpen(false); openColorLab() }}
+                            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                            <SlidersHorizontal size={14} /> Color Lab
+                          </button>
+                        ) : (
+                          <Link to="/admin" onClick={() => setAccountMenuOpen(false)}
+                            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                            <SlidersHorizontal size={14} /> Color Lab
+                          </Link>
+                        ))}
                         <button type="button" onClick={() => { setAccountMenuOpen(false); void signOut() }}
                           className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                           <LogOut size={14} /> Sign out
@@ -2155,13 +2131,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               )}
             </>
           )}
-	          {adminMode ? (
-	            <button
-	              type="button"
-	              onClick={openColorLab}
-	              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-	              title="Open color lab"
-	            >
+          {!authEnabled && colorLabVisible && (adminMode ? (
+            <button
+              type="button"
+              onClick={openColorLab}
+              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              title="Open color lab"
+            >
               Color Lab
             </button>
           ) : (
@@ -2172,13 +2148,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             >
               Color Lab
             </Link>
-          )}
-          <button type="button"
-            onClick={() => setLayoutMode(m => m === 'horizontal' ? 'vertical' : 'horizontal')}
-            className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
-            title={isVertical ? 'Switch to grid layout' : 'Switch to side-by-side layout'}>
-            {isVertical ? <LayoutGrid size={17} /> : <PanelLeft size={17} />}
-          </button>
+          ))}
           <button type="button" onClick={() => setSettingsOpen(o => !o)}
             className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
             title="Settings">
@@ -2196,20 +2166,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         </button>
         {mobileMenuOpen && (
           <div className="absolute right-3 top-11 z-40 w-48 rounded-lg border border-slate-700 bg-slate-950 p-2 shadow-xl md:hidden">
-            <Link
-              to="/faq"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-2 rounded px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
-            >
-              <CircleHelp size={14} />
-              FAQ
-            </Link>
-            {adminMode ? (
+            {colorLabVisible && (adminMode ? (
               <button
                 type="button"
                 onClick={() => { setMobileMenuOpen(false); openColorLab() }}
                 className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
               >
+                <SlidersHorizontal size={14} />
                 Color Lab
               </button>
             ) : (
@@ -2218,17 +2181,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-2 rounded px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
               >
+                <SlidersHorizontal size={14} />
                 Color Lab
               </Link>
-            )}
-            <button
-              type="button"
-              onClick={() => { setMobileMenuOpen(false); setLayoutMode(m => m === 'horizontal' ? 'vertical' : 'horizontal') }}
-              className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800"
-            >
-              {isVertical ? <LayoutGrid size={14} /> : <PanelLeft size={14} />}
-              {isVertical ? 'Grid Layout' : 'Side-by-Side'}
-            </button>
+            ))}
             <button
               type="button"
               onClick={() => { setMobileMenuOpen(false); setSettingsOpen(o => !o) }}
@@ -2715,36 +2671,31 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             </div>
             <div className="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-7">
               <section>
-                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Render Options</h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  General render controls live here. Color-scale controls are available in the Color Lab.
-                </p>
+                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Layout</h3>
+                <div className="flex flex-col gap-2">
+                  <button type="button" onClick={() => setLayoutMode('horizontal')}
+                    className={`flex items-center gap-2.5 rounded border px-3 py-2 text-left text-sm transition-colors cursor-pointer ${!isVertical ? 'border-sky-500 bg-sky-950/40 text-slate-100' : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                    <LayoutGrid size={15} className="shrink-0" />
+                    <span>
+                      Grid
+                      <span className="block text-xs text-slate-400 font-normal">Controls above the map.</span>
+                    </span>
+                  </button>
+                  <button type="button" onClick={() => setLayoutMode('vertical')}
+                    className={`flex items-center gap-2.5 rounded border px-3 py-2 text-left text-sm transition-colors cursor-pointer ${isVertical ? 'border-sky-500 bg-sky-950/40 text-slate-100' : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                    <PanelLeft size={15} className="shrink-0" />
+                    <span>
+                      Side-by-side
+                      <span className="block text-xs text-slate-400 font-normal">Controls in a column beside the map.</span>
+                    </span>
+                  </button>
+                </div>
               </section>
               <section>
-                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Climatology Source</h3>
-                <div className="flex flex-col gap-4">
-                  {CLIMO_SOURCES.map(src => (
-                    <label key={src.value}
-                      className={`flex gap-3 ${src.available ? 'cursor-pointer' : 'cursor-not-allowed opacity-45'}`}>
-                      <input type="radio" name="climo_source" value={src.value}
-                        checked={climoSource === src.value} disabled={!src.available}
-                        onChange={() => setClimoSource(src.value)} className="mt-0.5 shrink-0 accent-sky-500" />
-                      <div>
-                        <div className="text-sm font-medium leading-snug">
-                          {src.label}
-                          <span className="ml-2 text-xs text-slate-400 font-normal font-mono">{src.period}</span>
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5 leading-relaxed">{src.description}</div>
-                        {!src.available && (
-                          <div className="text-xs text-amber-400 mt-1">Not yet implemented</div>
-                        )}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-600 mt-4 leading-relaxed">
-                  The backend may override your selection when the chosen source does not match
-                  the temporal resolution of the request. Check the map title for the source actually used.
+                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Anomalies</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  The climatology baseline is chosen automatically to match the map&rsquo;s
+                  temporal resolution. The map title always shows the source actually used.
                 </p>
               </section>
             </div>
@@ -2752,7 +2703,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         </>
       )}
 
-      {adminMode && colorLabOpen && (
+      <SiteFooter />
+
+      {colorLabAccess && colorLabOpen && (
         <>
           <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setColorLabOpen(false)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
