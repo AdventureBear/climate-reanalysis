@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, CircleHelp, Wind } from 'lucide-react'
+import { ArrowLeft, CircleHelp } from 'lucide-react'
 import faqMarkdown from './content/FAQ.md?raw'
 import { SiteFooter } from './SiteFooter'
 
@@ -9,7 +9,7 @@ export default function FaqPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="bg-slate-900 border-b border-slate-700 px-5 py-3 flex items-center gap-3">
-        <Wind className="text-sky-400 shrink-0" size={20} />
+        <img src="/logo-mark.png" alt="" className="h-5 w-5 shrink-0" />
         <span className="font-bold tracking-tight text-sm">PyRe</span>
         <span className="text-slate-400 text-sm font-light">Climate Reanalysis</span>
         <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded">CORe / NCEP</span>
