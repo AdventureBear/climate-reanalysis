@@ -13,6 +13,22 @@ print size without pixelation.
 | `pyre-logo-black-4500.png` | Print-ready raster, solid black |
 | `pyre-logo-white-4500.png` | Print-ready raster, solid white (invisible on white backgrounds — it's not broken) |
 
+## Wordmark ("pyreweather" lockup)
+
+Brand font: **Audiowide** (Google Fonts, OFL) — chosen 2026-07-08 as the closest
+real font to the AI-generated wordmark sample. Text in these files is converted
+to outlines, so no font installation is needed to use them.
+
+| File | Use |
+|---|---|
+| `pyre-wordmark-color-light.svg` / `-4500.png` | Two-tone swirl + slate text — light backgrounds/garments |
+| `pyre-wordmark-color-dark.svg` / `-4500.png` | Two-tone swirl + white text — dark backgrounds/garments |
+| `pyre-wordmark-black.svg` / `-4500.png` | Single-color black |
+| `pyre-wordmark-white.svg` / `-4500.png` | Single-color white |
+
+PNGs are 4500px wide with transparent backgrounds (Spring-ready). To set new
+text in the brand font, get Audiowide from https://fonts.google.com/specimen/Audiowide.
+
 Notes for print shops:
 
 - All files share the same 2000×2000 viewBox and geometry; only fills differ.
