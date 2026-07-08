@@ -11,6 +11,10 @@ export type AuthContextValue = {
   signUpWithPassword: (email: string, password: string) => Promise<{ needsconfirmation: boolean }>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
+  /** Emails a password-recovery link (draws on the shared email quota). */
+  resetPassword: (email: string) => Promise<void>
+  /** Sets a new password for the currently signed-in user. */
+  updatePassword: (newPassword: string) => Promise<void>
   signOut: () => Promise<void>
 }
 

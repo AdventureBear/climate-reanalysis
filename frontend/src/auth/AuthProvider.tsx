@@ -62,6 +62,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (error) throw error
     },
+    async resetPassword(email) {
+      if (!supabase) throw new Error('Accounts are unavailable')
+      // The recovery link lands on /auth/reset, where the PKCE code exchange
+      // signs the user in and they pick a new password.
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/reset`,
+      })
+      if (error) throw error
+    },
+    async updatePassword(newPassword) {
+      if (!supabase) throw new Error('Accounts are unavailable')
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+    },
     async signOut() {
       if (!supabase) return
       const { error } = await supabase.auth.signOut()
