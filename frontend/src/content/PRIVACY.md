@@ -42,4 +42,4 @@ If this policy changes, we will update this page and its effective date.
 
 ## Contact
 
-Questions or data-deletion requests: **suzanneatkinson@gmail.com**
+Questions or data-deletion requests: **suzyq@pyreweather.org**
