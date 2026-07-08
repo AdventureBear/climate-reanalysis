@@ -1,7 +1,9 @@
 import io
 import json
+import os
 import threading
 
+import cartopy
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.cm as mcm
@@ -13,11 +15,20 @@ from matplotlib.path import Path
 import matplotlib.ticker as mticker
 import numpy as np
 
+from .config import CACHE_ROOT
+
 # Rendering runs on FastAPI's worker threads (the endpoint is sync so slow
 # fetches don't stall the event loop). Matplotlib's OO API is mostly re-entrant
 # but cartopy/matplotlib share global state (font cache, Natural Earth
 # downloader), so figure assembly itself is serialized behind this lock.
 _RENDER_LOCK = threading.Lock()
+
+# Natural Earth shapefiles (coastlines, borders, states) download on first use
+# into cartopy's data dir — ~/.local/share/cartopy by default, which is
+# ephemeral on Render and re-downloads every deploy. Keep them with the other
+# disk caches under PYRE_CACHE_DIR; an explicit CARTOPY_DATA_DIR still wins.
+if os.environ.get("PYRE_CACHE_DIR") and not os.environ.get("CARTOPY_DATA_DIR"):
+    cartopy.config["data_dir"] = os.path.join(CACHE_ROOT, "cartopy")
 
 # ── Per-region map projection and extent ─────────────────────────────────────────
 # Extent is in -180/180 lon convention (passed with crs=PlateCarree to set_extent).
