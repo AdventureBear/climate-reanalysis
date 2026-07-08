@@ -9,6 +9,9 @@ print size without pixelation.
 | `pyre-logo.svg` | Two-tone brand mark (sky-500 `#0ea5e9` / amber-500 `#f59e0b`) — full-color printing |
 | `pyre-logo-black.svg` | Single-color version for screen printing on light garments |
 | `pyre-logo-white.svg` | Single-color version for dark garments |
+| `pyre-logo-4500.png` | Print-ready raster of the two-tone mark (4500×4500, transparent) for services that reject SVG (Spring/Teespring, etc.) |
+| `pyre-logo-black-4500.png` | Print-ready raster, solid black |
+| `pyre-logo-white-4500.png` | Print-ready raster, solid white (invisible on white backgrounds — it's not broken) |
 
 Notes for print shops:
 
