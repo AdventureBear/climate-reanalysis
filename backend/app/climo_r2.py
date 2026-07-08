@@ -57,6 +57,7 @@ import numpy as np
 import xarray as xr
 
 from .config import CACHE_ROOT
+from .disk_cache import atomic_write_netcdf
 
 log = logging.getLogger("pyre.climo_r2")
 
@@ -162,9 +163,8 @@ def _load_disk(r2_var: str, level: int, month: int, day: int) -> dict[str, xr.Da
 
 
 def _save_disk(r2_var: str, level: int, month: int, day: int, result: dict[str, xr.DataArray]) -> None:
-    os.makedirs(_CACHE_DIR, exist_ok=True)
     path = _disk_path(r2_var, level, month, day)
-    xr.Dataset({"mean": result["mean"], "std": result["std"]}).to_netcdf(path)
+    atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
     log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
 
 
@@ -188,9 +188,8 @@ def _load_disk_monthly(r2_var: str, level: int, month: int) -> dict[str, xr.Data
 
 
 def _save_disk_monthly(r2_var: str, level: int, month: int, result: dict[str, xr.DataArray]) -> None:
-    os.makedirs(_CACHE_DIR, exist_ok=True)
     path = _disk_path_monthly(r2_var, level, month)
-    xr.Dataset({"mean": result["mean"], "std": result["std"]}).to_netcdf(path)
+    atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
     log.debug("CLIMO_R2M  saved to disk   %s", os.path.basename(path))
 
 

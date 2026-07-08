@@ -13,6 +13,7 @@ import requests
 import xarray as xr
 
 from .config import CACHE_ROOT
+from .disk_cache import atomic_write_netcdf
 
 log = logging.getLogger("pyre.retrieval")
 
@@ -47,10 +48,7 @@ def _load_obs_monthly(path: str) -> xr.DataArray | None:
 
 
 def _save_obs_monthly(da: xr.DataArray, path: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    da.to_dataset(name="obs").to_netcdf(tmp)
-    os.replace(tmp, path)   # atomic on POSIX — safe against concurrent writers
+    atomic_write_netcdf(da.to_dataset(name="obs"), path)
     log.debug("OBS_CACHE  saved  %s", os.path.basename(path))
 
 # GCS is the primary archive: 1950 → near real-time, 3-hourly, simpler URL.
