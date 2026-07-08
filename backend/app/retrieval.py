@@ -12,7 +12,7 @@ import numpy as np
 import requests
 import xarray as xr
 
-from .config import CACHE_ROOT
+from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf
 
 log = logging.getLogger("pyre.retrieval")
@@ -512,13 +512,13 @@ R2_MONTHLY_BASE  = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2
 R2_MONTHLY_START: tuple[int, int] = (1979, 1)
 R2_MONTHLY_END:   tuple[int, int] = (2021, 12)   # conservative; falls back gracefully on OSError
 
-# GRIB short name → R2 NetCDF variable name (monthly means files)
+# GRIB short name → R2 NetCDF variable name (monthly means files).
+# Derived from the shared registry in config.py; this obs-fallback path only
+# reads the pressure-level monthly files, so single-level specs are excluded.
 _GRIB_TO_R2M: dict[str, str] = {
-    "TMP": "air",
-    "HGT": "hgt",
-    "UGRD": "uwnd",
-    "VGRD": "vwnd",
-    "RH":  "rhum",   # monthly pgb calls it "RH"; R2 file is rhum.mon.mean.nc
+    grib: spec["var"]
+    for grib, spec in R2_CLIMO_FIELDS.items()
+    if spec["dataset"] == "pressure"
 }
 
 

@@ -18,6 +18,7 @@ import {
   COLOR_LAB_VARIABLES,
   FLX_VARIABLES,
   PRESSURE_LEVELS,
+  RAW_ONLY_API_VARIABLES,
   SURFACE_LEVELS,
   VARIABLES,
   apiLevelForSelection,
@@ -815,8 +816,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isMonthly   = timeScale === 'monthly'
   const isThreeHourly = timeScale === '3-hourly'
   const isFlxVariable = FLX_VARIABLES.has(apiVariable)
-  // Specific humidity has no climatology baseline (no SPFH mapping in R2) — raw only.
-  const rawOnlyVariable = isFlxVariable || apiVariable === 'humidity'
+  const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
   const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
@@ -1544,7 +1544,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   setLabVariable(nextKey)
                   setLabFamily(nextFamily.key)
                   if (!nextFamily.levels.includes(Number(labLevel))) setLabLevel(String(nextFamily.levels[0]))
-                  if (COLOR_LAB_SINGLE_LEVEL_VARIABLES.has(nextKey) && labMode !== 'raw') setLabMode('raw')
+                  if (RAW_ONLY_API_VARIABLES.has(nextKey) && labMode !== 'raw') setLabMode('raw')
                 }}
                 className="input h-8 min-w-44"
                 wrapperClassName="contents"
@@ -1575,12 +1575,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 	            <TabStrip
 	              options={[
 	                { value: 'raw', label: 'Raw' },
-	                { value: 'anomaly', label: 'Anomaly', disabled: COLOR_LAB_SINGLE_LEVEL_VARIABLES.has(labVariable) },
-	                { value: 'normalized', label: 'Norm', disabled: COLOR_LAB_SINGLE_LEVEL_VARIABLES.has(labVariable) },
+	                { value: 'anomaly', label: 'Anomaly', disabled: RAW_ONLY_API_VARIABLES.has(labVariable) },
+	                { value: 'normalized', label: 'Norm', disabled: RAW_ONLY_API_VARIABLES.has(labVariable) },
 	              ]}
 	              value={labMode}
 	              onChange={v => {
-	                if (COLOR_LAB_SINGLE_LEVEL_VARIABLES.has(labVariable) && v !== 'raw') return
+	                if (RAW_ONLY_API_VARIABLES.has(labVariable) && v !== 'raw') return
 	                const nextMode = v as DisplayMode
 	                const nextFamily = resolveScaleFamily(labVariable, nextMode, labLevel)
 	                setLabMode(nextMode)

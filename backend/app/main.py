@@ -17,8 +17,9 @@ from .api_options import (
     VALID_PWAT_UNITS,
     VALID_WIND_UNITS,
     scale_overrides_from_query,
+    supported_modes,
 )
-from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level
+from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import DataUnavailableError, VALID_HOURS
@@ -88,12 +89,12 @@ def _validate_common(
         if not ok:
             raise HTTPException(status_code=422, detail=detail)
 
-    if is_surface_or_named_level(variable) and mode != "raw":
+    if mode != "raw" and not supports_climatology(variable):
         raise HTTPException(
             status_code=422,
             detail=(
-                "CORe surface/named-level starter fields currently support raw maps only; "
-                "climatology/anomaly support is not wired yet."
+                f"'{variable}' currently supports raw maps only; "
+                "no climatology baseline is wired (see config.VARIABLES climo_sources)."
             ),
         )
 
@@ -106,6 +107,9 @@ def root():
         "regions": list(REGIONS.keys()),
         "valid_hours": VALID_HOURS,
         "modes": list(VALID_MODES),
+        # Per-variable mode availability, derived from config.VARIABLES
+        # climo_sources. The frontend registry mirrors this.
+        "variable_modes": {name: list(supported_modes(name)) for name in VARIABLES},
     }
 
 
@@ -186,17 +190,12 @@ def get_map(
         raise HTTPException(status_code=422, detail="wind_overlay_mode must be 'actual' or 'anomaly'")
     if wind_overlay_mode == "anomaly" and not (variable == "wind_speed" and mode == "anomaly"):
         raise HTTPException(status_code=422, detail="wind_overlay_mode='anomaly' is only supported for wind anomaly maps")
+    # Monthly obs composites are not wired for flx/named-level streams
+    # (no ("monthly", "flx") obs fetcher) — a separate gap from climatology.
     if is_surface_or_named_level(variable) and months:
         raise HTTPException(
             status_code=422,
-            detail="CORe surface/named-level starter fields currently support 3-hourly and daily raw maps only.",
-        )
-    # SPFH has no R2 climatology mapping, so every non-raw humidity map would 500
-    # in the climo fetch. Reject up front until a baseline is wired.
-    if variable == "humidity" and mode != "raw":
-        raise HTTPException(
-            status_code=422,
-            detail="Specific humidity currently supports raw maps only; no climatology baseline is wired for SPFH yet.",
+            detail="CORe surface/named-level starter fields currently support 3-hourly and daily maps only.",
         )
 
     try:

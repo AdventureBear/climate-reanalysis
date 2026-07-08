@@ -87,6 +87,11 @@ export const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_msl
 export const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
 
+// API variables with no wired climatology baseline — raw display mode only.
+// Mirrors backend config.py VARIABLES[*].climo_sources (served at GET / as
+// variable_modes); update both together when a baseline is wired.
+export const RAW_ONLY_API_VARIABLES = new Set([...FLX_VARIABLES, 'humidity'])
+
 const API_TO_UI_SELECTION = new Map<string, { variable: string; level: string }>()
 for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {
   for (const level of config.levels) {

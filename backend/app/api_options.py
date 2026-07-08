@@ -1,3 +1,5 @@
+from .config import supports_climatology
+
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
 VALID_WIND_UNITS = ("kt", "m/s")
@@ -33,6 +35,15 @@ CLIMO_DESC = {
     ),
     "monthly-pgb": "CORe pgb monthly means  |  FTP surgical byte-range  |  1991–2020  |  0.25° grid",
 }
+
+
+def supported_modes(variable: str) -> tuple[str, ...]:
+    """Display modes available for a variable, derived from config.VARIABLES.
+
+    Variables with no wired climatology baseline (empty climo_sources) are
+    raw-only; everything else supports all modes.
+    """
+    return VALID_MODES if supports_climatology(variable) else ("raw",)
 
 
 def preview(values, digits: int = 3, n: int = 6) -> str:

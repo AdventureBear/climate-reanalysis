@@ -168,7 +168,33 @@ REGIONS = {
     },
 }
 
+# ── R2 climatology field registry ─────────────────────────────────────────────
+# NCEP/DOE Reanalysis 2 files that provide 30-year (1991–2020) baselines,
+# keyed by CORe GRIB short name. Consumed by climo_r2.py (daily + monthly
+# climatology) and retrieval.py (R2 monthly obs fallback).
+#
+#   var:     variable name inside the R2 NetCDF file (also its filename stem)
+#   dataset: THREDDS subdirectory under Dailies/ and Monthlies/.
+#            "pressure" files carry a level dimension; "surface" and
+#            "gaussian_grid" files are single-level.
+R2_CLIMO_FIELDS: dict[str, dict] = {
+    "TMP":  {"var": "air",  "dataset": "pressure"},
+    "HGT":  {"var": "hgt",  "dataset": "pressure"},
+    "UGRD": {"var": "uwnd", "dataset": "pressure"},
+    "VGRD": {"var": "vwnd", "dataset": "pressure"},
+    "RH":   {"var": "rhum", "dataset": "pressure"},
+    # No daily SPFH: R2 publishes no daily shum file, so specific humidity has
+    # no sub-monthly baseline and stays raw-only until one is wired.
+}
+
+# Every climatology source wired for standard pressure-level fields.
+_PRESSURE_LEVEL_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily")
+
 # Keyed by UI name. wind_speed is derived from UGRD+VGRD; all others are direct GRIB fields.
+#
+# climo_sources: climatology baselines wired for this variable. Empty tuple →
+# raw maps only; the API rejects climatology/anomaly/normalized modes and the
+# UI derives mode availability from the same fact (GET / → variable_modes).
 #
 # normalized_mask_threshold: for normalized anomaly maps, grid points where the
 # observed value is BELOW this threshold are masked (set to NaN before rendering).
@@ -180,6 +206,7 @@ VARIABLES = {
         "name": "Wind Speed",
         "units": "m/s",
         "grib_names": ["UGRD", "VGRD"],
+        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         # Minimum observed wind (m/s) for a normalized anomaly to be physically meaningful.
         # Below threshold → masked to NaN. Scales with pressure level because wind speed
         # climatology drops significantly from upper troposphere to the surface.
@@ -209,24 +236,28 @@ VARIABLES = {
         "name": "Temperature",
         "units": "K",
         "grib_name": "TMP",
+        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,   # temperature anomalies always meaningful
     },
     "height": {
         "name": "Geopotential Height",
         "units": "gpm",
         "grib_name": "HGT",
+        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,
     },
     "humidity": {
         "name": "Specific Humidity",
         "units": "kg/kg",
         "grib_name": "SPFH",
+        "climo_sources": (),   # R2 has no daily shum file — see R2_CLIMO_FIELDS
         "normalized_mask_threshold": None,
     },
     "rel_humidity": {
         "name": "Relative Humidity",
         "units": "%",
         "grib_names": ["SPFH", "TMP"],
+        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,
     },
     "temp_2m": {
@@ -236,6 +267,7 @@ VARIABLES = {
         "grib_name": "TMP",
         "flx_level": "2 m above ground",
         "display_level": "2 m above ground",
+        "climo_sources": (),
         "normalized_mask_threshold": None,
     },
     "wind_10m": {
@@ -245,6 +277,7 @@ VARIABLES = {
         "grib_name": "WIND",
         "flx_level": "10 m above ground",
         "display_level": "10 m above ground",
+        "climo_sources": (),
         "normalized_mask_threshold": None,
     },
     "surface_pressure": {
@@ -254,6 +287,7 @@ VARIABLES = {
         "grib_name": "PRES",
         "level_name": "mean sea level",
         "display_level": "mean sea level",
+        "climo_sources": (),
         "normalized_mask_threshold": None,
     },
     "precipitable_water": {
@@ -263,6 +297,7 @@ VARIABLES = {
         "grib_name": "PWAT",
         "flx_level": "atmos col",
         "display_level": "total column",
+        "climo_sources": (),
         "normalized_mask_threshold": None,
     },
 }
@@ -273,6 +308,16 @@ PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 
 def is_surface_or_named_level(variable: str) -> bool:
     """Return True for fields that are not selected by pressure level."""
     return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level"}
+
+
+def supported_climo_sources(variable: str) -> tuple[str, ...]:
+    """Climatology baselines wired for this variable; empty → raw-only."""
+    return tuple(VARIABLES[variable].get("climo_sources", ()))
+
+
+def supports_climatology(variable: str) -> bool:
+    """Return True when climatology/anomaly/normalized modes are available."""
+    return bool(supported_climo_sources(variable))
 
 
 def variable_level_label(variable: str, level: int) -> str:
