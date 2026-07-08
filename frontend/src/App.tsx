@@ -562,20 +562,21 @@ function getRegionLabel(regionKey: string) {
 }
 
 // Connected horizontal tab strip — pass fullWidth to stretch across the parent
-function TabStrip({ options, value, onChange, fullWidth = false, disabled = false }: {
+function TabStrip({ options, value, onChange, fullWidth = false, disabled = false, className = '' }: {
   options: { value: string; label: string; disabled?: boolean }[]
   value: string
   onChange: (v: string) => void
   fullWidth?: boolean
   disabled?: boolean
+  className?: string
 }) {
   return (
-    <div className={`flex rounded overflow-hidden border border-slate-600 text-xs font-medium ${fullWidth ? 'w-full' : 'w-fit'}`}>
+    <div className={`flex rounded overflow-hidden border border-slate-600 text-xs font-medium ${fullWidth ? 'w-full' : 'w-fit'} ${className}`}>
       {options.map(opt => {
         const optionDisabled = disabled || Boolean(opt.disabled)
         return (
         <button key={opt.value} type="button" onClick={() => onChange(opt.value)} disabled={optionDisabled}
-          className={`${fullWidth ? 'flex-1 text-center' : ''} px-2.5 py-1 transition-colors ${
+          className={`${fullWidth ? 'flex-1 text-center' : ''} inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 transition-colors ${
             optionDisabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'
           } ${
             value === opt.value
@@ -1209,7 +1210,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     return <TabStrip options={subModeOpts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
   }
 
-  function renderTimeScaleControls() {
+  // `header` renders the compact fixed-height variant that lines up with the
+  // other nav-bar controls; the default stretches to fill panel layouts.
+  function renderTimeScaleControls({ header = false }: { header?: boolean } = {}) {
     return (
       <TabStrip
         options={[
@@ -1220,7 +1223,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         ]}
         value={timeScale}
         onChange={v => setTimeScale(v as TimeScale)}
-        fullWidth
+        fullWidth={!header}
+        className={header ? 'h-7 shrink-0' : ''}
       />
     )
   }
@@ -2077,11 +2081,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
         {/* Time scale — far right of header */}
         <div className="ml-auto hidden md:flex items-center gap-3">
-          {renderTimeScaleControls()}
+          {renderTimeScaleControls({ header: true })}
           {authEnabled && (
             <>
               <button type="button" onClick={handleSaveMap} disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition-colors"
                 title={user ? 'Save current map' : 'Sign in to save maps'}>
                 <Save size={14} />
                 {saving ? 'Saving…' : 'Save'}
@@ -2089,7 +2093,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               {user ? (
                 <div className="relative">
                   <button type="button" onClick={() => setAccountMenuOpen(o => !o)}
-                    className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                    className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
                     title="Account">
                     <User size={14} />
                     <span className="max-w-[9rem] truncate">{user.email}</span>
@@ -2124,7 +2128,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 </div>
               ) : (
                 <button type="button" onClick={() => setAuthModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+                  className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
                   title="Sign in">
                   <LogIn size={14} /> Sign in
                 </button>
@@ -2135,7 +2139,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             <button
               type="button"
               onClick={openColorLab}
-              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              className="inline-flex h-7 items-center gap-2 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
               title="Open color lab"
             >
               Color Lab
@@ -2143,14 +2147,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           ) : (
             <Link
               to="/admin"
-              className="inline-flex items-center gap-2 rounded border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              className="inline-flex h-7 items-center gap-2 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
               title="Open color lab"
             >
               Color Lab
             </Link>
           ))}
           <button type="button" onClick={() => setSettingsOpen(o => !o)}
-            className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
             title="Settings">
             <Settings size={17} />
           </button>
