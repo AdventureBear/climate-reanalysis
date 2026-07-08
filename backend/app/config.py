@@ -190,11 +190,25 @@ R2_CLIMO_FIELDS: dict[str, dict] = {
 # Every climatology source wired for standard pressure-level fields.
 _PRESSURE_LEVEL_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily")
 
+# Surface/named-level fields have no monthly-pgb baseline (the monthly pgb
+# files are pressure-level only); their baselines come from R2 single-level
+# files declared per-variable via "r2_climo" specs below.
+_SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
+
 # Keyed by UI name. wind_speed is derived from UGRD+VGRD; all others are direct GRIB fields.
 #
 # climo_sources: climatology baselines wired for this variable. Empty tuple →
 # raw maps only; the API rejects climatology/anomaly/normalized modes and the
 # UI derives mode availability from the same fact (GET / → variable_modes).
+#
+# r2_climo (single-level variables only): which R2 file provides the baseline.
+#   file:    filename stem on THREDDS (e.g. "air.2m" → air.2m.gauss.{year}.nc)
+#   var:     variable name inside the NetCDF file (often differs from the stem)
+#   dataset: THREDDS subdirectory ("surface" 2.5° grid, "gaussian_grid" T62)
+#   derive:  "wind_speed" → fetch u/v specs and compute sqrt(u²+v²) per year;
+#            derived specs carry a "stem" used as the cache filename identifier.
+# Units were verified against CORe obs fields (Pa, kg/m², K, m/s) — no
+# conversions applied at fetch time.
 #
 # normalized_mask_threshold: for normalized anomaly maps, grid points where the
 # observed value is BELOW this threshold are masked (set to NaN before rendering).
@@ -267,7 +281,8 @@ VARIABLES = {
         "grib_name": "TMP",
         "flx_level": "2 m above ground",
         "display_level": "2 m above ground",
-        "climo_sources": (),
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {"file": "air.2m", "var": "air", "dataset": "gaussian_grid"},
         "normalized_mask_threshold": None,
     },
     "wind_10m": {
@@ -277,7 +292,13 @@ VARIABLES = {
         "grib_name": "WIND",
         "flx_level": "10 m above ground",
         "display_level": "10 m above ground",
-        "climo_sources": (),
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {
+            "derive": "wind_speed",
+            "stem": "wind.10m",   # cache filename identifier (no single source file)
+            "u": {"file": "uwnd.10m", "var": "uwnd", "dataset": "gaussian_grid"},
+            "v": {"file": "vwnd.10m", "var": "vwnd", "dataset": "gaussian_grid"},
+        },
         "normalized_mask_threshold": None,
     },
     "surface_pressure": {
@@ -287,7 +308,8 @@ VARIABLES = {
         "grib_name": "PRES",
         "level_name": "mean sea level",
         "display_level": "mean sea level",
-        "climo_sources": (),
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {"file": "mslp", "var": "mslp", "dataset": "surface"},
         "normalized_mask_threshold": None,
     },
     "precipitable_water": {
@@ -297,7 +319,8 @@ VARIABLES = {
         "grib_name": "PWAT",
         "flx_level": "atmos col",
         "display_level": "total column",
-        "climo_sources": (),
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
         "normalized_mask_threshold": None,
     },
 }

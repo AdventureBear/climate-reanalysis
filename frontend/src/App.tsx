@@ -940,9 +940,13 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   }, [searchParams])
 
   useEffect(() => {
-    if (!rawOnlyVariable) return
-    if (displayMode !== 'raw') setDisplayMode('raw')
-    if (timeScale === 'climatology' || (isFlxVariable && timeScale === 'monthly')) setTimeScale('3-hourly')
+    if (rawOnlyVariable) {
+      if (displayMode !== 'raw') setDisplayMode('raw')
+      if (timeScale === 'climatology') setTimeScale('3-hourly')
+    }
+    // Monthly obs composites are not wired for surface/named-level fields,
+    // independent of climatology support.
+    if (isFlxVariable && timeScale === 'monthly') setTimeScale('3-hourly')
   }, [displayMode, rawOnlyVariable, isFlxVariable, timeScale])
 
   useEffect(() => {

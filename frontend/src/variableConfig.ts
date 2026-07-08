@@ -90,7 +90,8 @@ export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 
 // API variables with no wired climatology baseline — raw display mode only.
 // Mirrors backend config.py VARIABLES[*].climo_sources (served at GET / as
 // variable_modes); update both together when a baseline is wired.
-export const RAW_ONLY_API_VARIABLES = new Set([...FLX_VARIABLES, 'humidity'])
+// (Specific humidity: R2 publishes no daily shum file to build a baseline from.)
+export const RAW_ONLY_API_VARIABLES = new Set(['humidity'])
 
 const API_TO_UI_SELECTION = new Map<string, { variable: string; level: string }>()
 for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {

@@ -164,9 +164,11 @@ The planning screenshot in `docs/archive/` is an older UI checkpoint from May 20
   - R2 monthly OPeNDAP fallback for eligible historical months/fields.
   - CORe synoptic computation fallback when monthly archive is missing.
 - Climatology, anomaly, and normalized anomaly modes for supported pressure-level variables.
+- Climatology, anomaly, and normalized anomaly modes for the starter surface/named-level variables (2m temperature, 10m wind speed, MSLP, precipitable water), using R2 single-level baselines (`surface` 2.5° and `gaussian_grid` T62 files) declared per-variable via `r2_climo` specs in `config.VARIABLES`. Specific humidity remains raw-only: R2 publishes no daily shum file to build a baseline from. Caveat for domain review: 3-hourly obs are compared against R2 daily-mean baselines, so sub-monthly surface anomalies include a diurnal-cycle component.
 - Climatology source policy:
   - Sub-monthly anomaly modes are forced to `r2-daily`.
   - Monthly anomaly modes support `monthly-pgb` and `r2-monthly`.
+  - Variables whose registry does not support the resolved source are clamped to an equivalent-cadence supported source (surface fields have no `monthly-pgb` baseline and use `r2-monthly`).
   - `cfsr-daily` is a future source option but is not implemented.
 - R2 daily and monthly climatology support.
 - Wind-speed derivation from U/V components.
@@ -339,7 +341,7 @@ Recommended next step for Color Lab:
 
 ### Phase 4: Surface and Expanded Variable Support
 
-- Add climatology/anomaly support for starter surface/named-level variables.
+- Done (July 2026): climatology/anomaly support for the starter surface/named-level variables via R2 single-level baselines.
 - Wire monthly support for flx/named-level fields where appropriate.
 - Expand variables only through the backend/frontend registries.
 - Keep derived variables explicit in metadata so users know what is raw vs computed.

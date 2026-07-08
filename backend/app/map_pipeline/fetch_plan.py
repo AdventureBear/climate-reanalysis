@@ -9,10 +9,12 @@ import xarray as xr
 from ..climo_r2 import (
     get_r2_daily_climo_field,
     get_r2_daily_climo_relative_humidity,
+    get_r2_daily_climo_single_level,
     get_r2_daily_climo_wind_components,
     get_r2_daily_climo_wind_speed,
     get_r2_monthly_climo_field,
     get_r2_monthly_climo_relative_humidity,
+    get_r2_monthly_climo_single_level,
     get_r2_monthly_climo_wind_components,
     get_r2_monthly_climo_wind_speed,
 )
@@ -181,6 +183,17 @@ WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
 
 
 def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib_name: str):
+    # Single-level variables declare their R2 baseline as an r2_climo spec;
+    # climo_policy guarantees climo_source is one of the two R2 sources here.
+    spec = VARIABLES[req.variable].get("r2_climo")
+    if spec is not None:
+        if climo_source == "r2-monthly":
+            return get_r2_monthly_climo_single_level(spec, month)
+        if climo_source == "r2-daily":
+            return get_r2_daily_climo_single_level(spec, month, day)
+        raise ValueError(
+            f"climo_source {climo_source!r} is not wired for single-level variable {req.variable!r}"
+        )
     key = (climo_source, _variable_fetch_key(req.variable))
     return CLIMO_FETCHERS[key](month, day, req.level, grib_name)
 

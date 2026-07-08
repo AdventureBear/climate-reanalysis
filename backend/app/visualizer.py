@@ -151,6 +151,7 @@ _WIND_COLORS = [
 # 600mb defaults to the 700mb (low) range; try "mid" if winds look clipped.
 # 400mb defaults to the 500mb (mid) range; try "high" if winds look clipped.
 _KT_TO_MS = 0.51444
+_MM_TO_IN = 0.03937007874
 
 _WIND_SCALE_CONFIGS: dict[str, dict] = {
     "surface": {
@@ -557,12 +558,28 @@ _DIV_HEX     = [
 # Per-variable anomaly scale: (max_display_value, natural_step) in display units.
 # color_step from the UI multiplies the natural_step.
 _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
-    "wind_speed":   (20.0, 2.0),    # kt
-    "temp":         (10.0, 1.0),    # °C / °F
-    "height":       (39.0, 3.0),    # dam
-    "rel_humidity": (30.0, 3.0),    # %
-    "humidity":     (0.003, 0.0003),
+    "wind_speed":       (20.0, 2.0),    # kt
+    "wind_10m":         (20.0, 2.0),    # kt
+    "temp":             (10.0, 1.0),    # °C / °F
+    "temp_2m":          (20.0, 2.0),    # °F — 2m temps swing far more than free-air temps
+    "height":           (39.0, 3.0),    # dam
+    "rel_humidity":     (30.0, 3.0),    # %
+    "humidity":         (0.003, 0.0003),
+    "surface_pressure": (20.0, 2.0),    # mb (hPa)
+    "precipitable_water": (20.0, 2.0),  # mm
 }
+
+def _anomaly_scale_in_display_units(
+    variable: str, wind_unit: str, pwat_unit: str
+) -> tuple[float, float]:
+    """(max, step) for the diverging anomaly scale, in the requested display units."""
+    max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
+    if variable in {"wind_speed", "wind_10m"} and wind_unit == "m/s":
+        return max_val * _KT_TO_MS, step * _KT_TO_MS
+    if variable == "precipitable_water" and pwat_unit == "in":
+        return max_val * _MM_TO_IN, step * _MM_TO_IN
+    return max_val, step
+
 
 _WIND_VECTOR_ANOMALY_HEX = [
     "#ffffff", "#d8d5ff", "#1d19ff", "#1d5ae0", "#1aa0b8",
@@ -670,12 +687,9 @@ def _wind_vector_anomaly_native_config(
     }
 
 
-def _anomaly_to_display(values: np.ndarray, variable: str, level: int) -> np.ndarray:
-    """Convert anomaly array from native GRIB units to the variable's display units."""
-    return _anomaly_to_display_with_unit(values, variable, level)
-
-
-def _anomaly_to_display_with_unit(values: np.ndarray, variable: str, level: int, wind_unit: str = "kt") -> np.ndarray:
+def _anomaly_to_display_with_unit(
+    values: np.ndarray, variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm"
+) -> np.ndarray:
     """Convert anomaly array from native units to the requested display units."""
     if variable in {"wind_speed", "wind_10m"}:
         return values * _wind_unit_factor(wind_unit)
@@ -686,6 +700,10 @@ def _anomaly_to_display_with_unit(values: np.ndarray, variable: str, level: int,
         return values                       # ΔK = Δ°C — no offset needed for differences
     if variable == "height":
         return values / 10                  # gpm → dam
+    if variable == "surface_pressure":
+        return values / 100                 # Pa → mb (hPa)
+    if variable == "precipitable_water":
+        return _pwat_to_display(values, pwat_unit)
     return values
 
 
@@ -853,13 +871,13 @@ def describe_color_scale(
             _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
             scale_kind = mode
         else:
-            max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
-            if variable == "wind_speed" and wind_unit == "m/s":
-                max_val *= _KT_TO_MS
-                step *= _KT_TO_MS
+            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
             unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
             plot_values = (
-                np.asarray(_anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit), dtype=float)
+                np.asarray(
+                    _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+                    dtype=float,
+                )
                 if data_array is not None else None
             )
             if variable == "wind_speed":
@@ -1122,12 +1140,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             unit_label = "σ"
             plot_vals  = data_array.values
         else:
-            max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
-            if variable == "wind_speed" and wind_unit == "m/s":
-                max_val *= _KT_TO_MS
-                step *= _KT_TO_MS
+            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
             unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
-            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit)
+            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
         if mode == "anomaly" and variable == "wind_speed":
             native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
             breakpoints = native_cfg["breakpoints"]

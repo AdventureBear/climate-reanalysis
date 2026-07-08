@@ -192,7 +192,9 @@ def get_map(
         raise HTTPException(status_code=422, detail="wind_overlay_mode='anomaly' is only supported for wind anomaly maps")
     # Monthly obs composites are not wired for flx/named-level streams
     # (no ("monthly", "flx") obs fetcher) — a separate gap from climatology.
-    if is_surface_or_named_level(variable) and months:
+    # Climatology mode is exempt: it fetches no observations, and its month
+    # arrives via the months param.
+    if is_surface_or_named_level(variable) and months and mode != "climatology":
         raise HTTPException(
             status_code=422,
             detail="CORe surface/named-level starter fields currently support 3-hourly and daily maps only.",

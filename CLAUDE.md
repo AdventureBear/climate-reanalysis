@@ -124,6 +124,7 @@ Current backend capabilities include:
 - 3-hourly maps, daily composites, and monthly/month-list composites.
 - Climatology, anomaly, and normalized anomaly modes for supported pressure-level variables.
 - R2 daily/monthly climatology support, with sub-monthly anomaly modes forced to `r2-daily`.
+- Climatology/anomaly modes for the starter surface/named-level variables (2m temp, 10m wind, MSLP, PWAT) via R2 single-level baselines declared as `r2_climo` specs in `config.VARIABLES`; specific humidity is raw-only.
 - Wind speed, wind overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
 
 Current frontend capabilities include:
