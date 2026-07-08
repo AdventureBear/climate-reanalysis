@@ -7,6 +7,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+# Load .env before importing app modules: config.CACHE_ROOT (and anything else
+# read at module import time) must see .env values, not just process env.
+load_dotenv()
+
 from .api_options import (
     VALID_CLIMO_SOURCES,
     VALID_MODES,
@@ -19,8 +23,6 @@ from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import DataUnavailableError, VALID_HOURS
 from .visualizer import describe_color_scale
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
