@@ -18,6 +18,9 @@ __pycache__/
 
 .claude/
 
+branding/
+supabase/
+
 backend/.env
 frontend/.env.local.bak
 frontend/.env.production
