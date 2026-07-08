@@ -12,6 +12,8 @@ import numpy as np
 import requests
 import xarray as xr
 
+from .config import CACHE_ROOT
+
 log = logging.getLogger("pyre.retrieval")
 
 
@@ -23,9 +25,7 @@ class DataUnavailableError(RuntimeError):
 # Written as NetCDF via atomic rename — safe for concurrent requests.
 # Key: UGRD_500mb_202601.nc  (~42 KB for a 2.5° pgb record)
 
-_OBS_MONTHLY_CACHE_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "obs_cache", "monthly")
-)
+_OBS_MONTHLY_CACHE_DIR = os.path.join(CACHE_ROOT, "obs_cache", "monthly")
 
 
 def _obs_monthly_path(grib_name: str, level: int, year: int, month: int) -> str:

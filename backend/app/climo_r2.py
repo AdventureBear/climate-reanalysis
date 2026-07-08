@@ -56,6 +56,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import xarray as xr
 
+from .config import CACHE_ROOT
+
 log = logging.getLogger("pyre.climo_r2")
 
 
@@ -111,8 +113,9 @@ _GRIB_TO_R2: dict[str, str] = {
     "VGRD": "vwnd",
 }
 
-# Disk cache: backend/climo_cache/ (one level above app/)
-_CACHE_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "climo_cache"))
+# Disk cache: climo_cache/ under the configurable cache root (see config.py;
+# defaults to backend/, override with PYRE_CACHE_DIR in production).
+_CACHE_DIR = os.path.join(CACHE_ROOT, "climo_cache")
 
 class _PendingFetch:
     """In-flight fetch sentinel. Carries the outcome to waiting threads so a

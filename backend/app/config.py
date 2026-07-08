@@ -1,3 +1,14 @@
+import os
+
+# ── Disk cache root ───────────────────────────────────────────────────────────
+# All persistent disk caches (monthly obs slices in obs_cache/, R2 climatology
+# in climo_cache/) live under this root. Defaults to backend/ — the historical
+# local-dev layout. In production set PYRE_CACHE_DIR to a persistent mount
+# (e.g. a Render disk at /var/data) so caches survive deploys and restarts;
+# without it, Render's ephemeral filesystem drops the cache on every deploy.
+_BACKEND_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+CACHE_ROOT = os.environ.get("PYRE_CACHE_DIR") or _BACKEND_ROOT
+
 REGIONS = {
     "CONUS": {
         # Data fetch bounds — kept larger than the display extent so Albers corners

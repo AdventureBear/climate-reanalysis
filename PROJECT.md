@@ -386,7 +386,7 @@ Many fixed scales exist, but some are practical defaults rather than fully verif
 
 ### Runtime Cache Path
 
-`retrieval.py` currently writes monthly observation cache files under `backend/app/../obs_cache/monthly`. This should become a configurable production path before deployment.
+Resolved 2026-07: all disk caches (monthly obs slices, R2 climatology) live under a root configured by `PYRE_CACHE_DIR` (`config.CACHE_ROOT`), defaulting to `backend/` for local dev. In production, point `PYRE_CACHE_DIR` at a persistent mount (e.g. a Render disk) so caches survive deploys.
 
 ### CORS Defaults
 
