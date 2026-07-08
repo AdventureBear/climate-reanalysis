@@ -2075,7 +2075,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="relative bg-slate-900 border-b border-slate-700 px-5 py-2 flex items-center gap-3">
         <Wind className="text-sky-400 shrink-0" size={20} />
-        <span className="font-bold tracking-tight text-sm">PyRe</span>
+        <span className="font-bold tracking-tight text-sm">PyRe Weather</span>
         <span className="hidden sm:inline text-slate-400 text-sm font-light">Climate Reanalysis</span>
         <span className="hidden sm:inline text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded">CORe / NCEP</span>
 
