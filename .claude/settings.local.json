@@ -3,7 +3,41 @@
     "allow": [
       "Bash(npm install *)",
       "Bash(npx vite *)",
-      "Bash(uv run *)"
+      "Bash(uv run *)",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__get_publishable_keys",
+      "mcp__supabase__get_project_url",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8000/docs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://127.0.0.1:8000/api/scale-meta\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s -X POST __TRACKED_VAR__/auth/v1/signup -H 'apikey: __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"email\":\"pyre.test.a+__TRACKED_VAR__@gmail.com\",\"password\":\"Test-Passw0rd!__TRACKED_VAR__\"}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -X POST __TRACKED_VAR__/auth/v1/signup -H 'apikey: __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"email\":\"pyre.test.b+__TRACKED_VAR__@gmail.com\",\"password\":\"Test-Passw0rd!__TRACKED_VAR__\"}')",
+      "Bash(python3 -c \"import sys,json;d=json.load\\(sys.stdin\\);print\\('user B id:',d.get\\('id'\\)\\)\")",
+      "Bash(export A_EMAIL=\"pyre.test.a+1783433292@gmail.com\")",
+      "Bash(python3 e2e.py)",
+      "Bash(curl -s -o /dev/null -w \"frontend http: %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(python3 verify.py signup)",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -X POST https://txsmjisnopwcgrbpoxfo.supabase.co/auth/v1/signup -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4c21qaXNub3B3Y2dyYnBveGZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDI3MDEsImV4cCI6MjA5ODYxODcwMX0.opIN5p_qBKkR7MZ_of8mkdnFL9p4QKUo0W3MZUY719g' -H 'Content-Type: application/json' -d '{\"email\":\"pyre.priv.c+__CMDSUB_OUTPUT__@gmail.com\",\"password\":\"Priv-Passw0rd!__CMDSUB_OUTPUT__\"}')",
+      "Bash(python3 verify.py check)",
+      "Bash(curl -s -w ' [HTTP %{http_code}]\\\\n' -X POST https://txsmjisnopwcgrbpoxfo.supabase.co/rest/v1/rpc/rls_auto_enable -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4c21qaXNub3B3Y2dyYnBveGZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDI3MDEsImV4cCI6MjA5ODYxODcwMX0.opIN5p_qBKkR7MZ_of8mkdnFL9p4QKUo0W3MZUY719g' -H 'Content-Type: application/json' -d '{}')",
+      "Bash(curl -s -w ' [HTTP %{http_code}]\\\\n' -X POST https://txsmjisnopwcgrbpoxfo.supabase.co/rest/v1/rpc/handle_new_user -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR4c21qaXNub3B3Y2dyYnBveGZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwNDI3MDEsImV4cCI6MjA5ODYxODcwMX0.opIN5p_qBKkR7MZ_of8mkdnFL9p4QKUo0W3MZUY719g' -H 'Content-Type: application/json' -d '{}')",
+      "mcp__supabase__search_docs",
+      "Bash(python3 -c ' *)",
+      "Bash(git check-ignore *)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,2\\)\\)\")",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(Object.keys\\({...p.dependencies,...p.devDependencies}\\).filter\\(d=>/vitest|jest|@testing|playwright|cypress/i.test\\(d\\)\\).join\\('\\\\n'\\)||'\\(none\\)'\\)\")",
+      "Bash(grep -iE '\\\\.\\(test|spec\\)\\\\.[tj]sx?$')",
+      "Bash(awk '/_isImplicitGrantCallback\\\\\\(params\\\\\\) {/{f=1} f{print} f&&/^    }/{exit}' node_modules/@supabase/auth-js/dist/module/GoTrueClient.js)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }

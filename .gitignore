@@ -17,7 +17,7 @@ yarn-error.log*
 __pycache__/
 
 backend/.env
-frontend/.env.local
+frontend/.env.local.bak
 frontend/.env.production
 
 # Runtime/generated backend data
