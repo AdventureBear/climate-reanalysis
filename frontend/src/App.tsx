@@ -749,6 +749,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [isotachsOn, setIsotachsOn] = useState(false)
   const [windShading, setWindShading] = useState(true)
   const [windMaster, setWindMaster] = useState(true)
+  const [hlCenters, setHlCenters] = useState(false)
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
@@ -869,6 +870,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       pwatUnit,
       fillMode,
       tempUnit: temperatureUnit === 'auto' ? undefined : temperatureUnit,
+      centers: hlCenters || undefined,
       colorStep,
     }
   }
@@ -922,6 +924,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
     if (recipe.fillMode) setFillMode(recipe.fillMode)
     if (recipe.tempUnit) setTemperatureUnit(recipe.tempUnit)
+    setHlCenters(Boolean(recipe.centers))
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
     if (recipe.wind) {
@@ -2552,8 +2555,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 </div>
               </div>
             </div>
-              <VariableDisplayControl label="Contours" status="Coming soon">
-                <div className="grid grid-cols-3 gap-1">
+              <VariableDisplayControl label="Contours">
+                <div className="grid grid-cols-2 gap-1">
+                  <ToggleButton active={hlCenters} onClick={() => setHlCenters(o => !o)}>H/L Centers</ToggleButton>
                   <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>
                   <ToggleButton active={false} disabled onClick={() => {}}>Pressure</ToggleButton>
                   <ToggleButton active={false} disabled onClick={() => {}}>Temp</ToggleButton>

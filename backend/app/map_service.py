@@ -11,6 +11,7 @@ from .map_pipeline.fetch_plan import (
     fetch_climo,
     fetch_climo_overlay_wind_components,
     fetch_climo_weighted,
+    fetch_mslp_field_for_selection,
     fetch_daily_climo_for_selection,
     fetch_daily_wind_climo_components_for_selection,
     fetch_obs,
@@ -19,6 +20,7 @@ from .map_pipeline.fetch_plan import (
     fetch_wind_climo_components,
 )
 from .map_pipeline.map_labels import map_date_label, variable_label
+from .climo_r2 import get_r2_monthly_climo_single_level
 from .visualizer import display_unit, has_anomaly_base_contours
 from .map_pipeline.pipeline_steps import (
     compute_normalized_anomaly,
@@ -229,6 +231,23 @@ def create_map_buffer(req: MapRequest):
 
     date_str = map_date_label(req, selection, climo_source, use_vector_wind_anomaly, obs_source, obs)
 
+    # H/L pressure centers: detected from MSLET matching the map's selection.
+    # Climatology mode uses the R2 monthly MSLP mean; MSLP maps reuse their
+    # own obs field; monthly obs selections are skipped (not wired).
+    centers_array = None
+    if req.centers:
+        if req.mode == "climatology":
+            spec = VARIABLES["surface_pressure"]["r2_climo"]
+            centers_full, _ = get_r2_monthly_climo_single_level(spec, selection.obs_month)
+            centers_array = select_region(centers_full, bounds)
+        elif selection.monthly_mode:
+            log.info("CENTERS  monthly obs selections not wired for MSLET — skipping H/L centers")
+        elif req.variable == "surface_pressure":
+            centers_array = obs_subset
+        else:
+            log.info("CENTERS  fetching MSLET for H/L detection")
+            centers_array = select_region(fetch_mslp_field_for_selection(req, selection), bounds)
+
     # Anomaly shading alone is ambiguous — draw the raw field it departs from
     # as labeled contours, and say so in the title block.
     base_array = None
@@ -299,6 +318,7 @@ def create_map_buffer(req: MapRequest):
         u_subset=u_subset,
         v_subset=v_subset,
         base_array=base_array,
+        centers_array=centers_array,
     )
 
     log.info("STEP %d ✓  render complete → streaming PNG", step)

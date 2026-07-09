@@ -33,3 +33,5 @@ class MapRequest:
     # Draw labeled isotach contours from the overlay wind components.
     # Independent of wind_step/wind_type glyphs — styles combine.
     isotachs: int = 0
+    # Stamp H/L MSLP center glyphs (detected from MSLET) on the map.
+    centers: int = 0

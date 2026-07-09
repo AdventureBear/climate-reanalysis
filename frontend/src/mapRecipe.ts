@@ -53,6 +53,8 @@ export type MapRecipe = {
   pwatUnit?: PwatUnit
   fillMode?: FillMode
   tempUnit?: TempUnit
+  // Stamp detected H/L MSLP centers on the map.
+  centers?: boolean
   colorStep?: string
 }
 
@@ -267,6 +269,9 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   if (recipe.tempUnit && (variable === 'temp' || variable === 'temp_2m')) {
     params.temp_unit = recipe.tempUnit
   }
+  if (recipe.centers) {
+    params.centers = '1'
+  }
   if (recipe.climoSource && params.mode && params.mode !== 'raw') {
     params.climo_source = recipe.climoSource
   }
@@ -389,6 +394,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     pwatUnit: pwatUnit(params.get('pwat_unit')),
     fillMode: params.get('fill_mode') === 'shaded' ? 'shaded' : undefined,
     tempUnit: params.get('temp_unit') === 'F' || params.get('temp_unit') === 'C' ? (params.get('temp_unit') as TempUnit) : undefined,
+    centers: params.get('centers') === '1' ? true : undefined,
     colorStep: parsedColorStep ? String(normalizeColorStep(parsedColorStep)) : undefined,
   }
 }

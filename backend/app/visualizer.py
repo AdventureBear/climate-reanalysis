@@ -1414,9 +1414,79 @@ def describe_color_scale(
     }
 
 
+# ── MSLP H/L center detection ─────────────────────────────────────────────────────
+
+_CENTER_WINDOW_DEG = 7.5    # neighborhood a center must dominate
+_CENTER_PROMINENCE_HPA = 2.0  # min depth/height vs the neighborhood
+
+
+def _detect_pressure_centers(mslp_da):
+    """
+    Locate synoptic H/L centers on an MSLP field (Pa).
+    Returns (lows, highs): lists of (lon, lat, value_hpa). A grid point
+    qualifies when it is the extremum of its ~7.5° neighborhood, exceeds a
+    prominence threshold there, and is not within the window of the map edge
+    or of a stronger accepted center.
+    """
+    from scipy.ndimage import maximum_filter, minimum_filter
+
+    hpa = mslp_da.values / 100.0
+    lons = mslp_da.longitude.values
+    lats = mslp_da.latitude.values
+    if len(lons) < 5 or len(lats) < 5:
+        return [], []
+    grid_deg = abs(float(lons[1] - lons[0]))
+    size = max(3, int(round(_CENTER_WINDOW_DEG / grid_deg)) | 1)
+    margin = size // 2
+
+    def pick(mask, prominence_ok, ascending):
+        ys, xs = np.nonzero(mask & prominence_ok)
+        candidates = sorted(
+            ((hpa[y, x], y, x) for y, x in zip(ys, xs)),
+            key=lambda t: t[0], reverse=not ascending,
+        )
+        accepted = []
+        for value, y, x in candidates:
+            if y < margin or x < margin or y >= hpa.shape[0] - margin or x >= hpa.shape[1] - margin:
+                continue
+            if any(abs(y - ay) < size and abs(x - ax) < size for _, ay, ax in accepted):
+                continue
+            accepted.append((value, y, x))
+        return [(float(lons[x]), float(lats[y]), value) for value, y, x in accepted]
+
+    mn = minimum_filter(hpa, size=size, mode="nearest")
+    mx = maximum_filter(hpa, size=size, mode="nearest")
+    lows  = pick(hpa == mn, (mx - hpa) >= _CENTER_PROMINENCE_HPA, ascending=True)
+    highs = pick(hpa == mx, (hpa - mn) >= _CENTER_PROMINENCE_HPA, ascending=False)
+    return lows, highs
+
+
+def _draw_pressure_centers(ax, centers_da) -> None:
+    """Stamp red L / blue H glyphs with values at detected MSLP centers."""
+    import matplotlib.patheffects as pe
+
+    lows, highs = _detect_pressure_centers(centers_da)
+    halo = [pe.withStroke(linewidth=2.5, foreground="white")]
+    for glyph, color, points in (("L", "#d7191c", lows), ("H", "#2166ac", highs)):
+        for lon, lat, value in points:
+            ax.text(
+                lon, lat, glyph,
+                transform=ccrs.PlateCarree(), ha="center", va="center",
+                fontsize=16, fontweight="bold", color=color,
+                path_effects=halo, clip_on=True, zorder=12,
+            )
+            ax.annotate(
+                f"{value:.0f}",
+                xy=(lon, lat), xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+                xytext=(0, -12), textcoords="offset points",
+                ha="center", va="top", fontsize=7.5, fontweight="bold",
+                color=color, path_effects=halo, clip_on=True, zorder=12,
+            )
+
+
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1424,10 +1494,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
+            centers_array=centers_array,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1811,6 +1882,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                     transform=ccrs.PlateCarree(),
                     scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
                 )
+
+    if centers_array is not None:
+        _draw_pressure_centers(ax, centers_array)
 
     lon0, lon1, lat0, lat1 = _REGION_EXTENTS.get(
         region,

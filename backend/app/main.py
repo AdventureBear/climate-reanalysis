@@ -167,6 +167,7 @@ def get_map(
     fill_mode: str = "contours",
     temp_unit: str = "",
     isotachs: int = 0,
+    centers: int = 0,
 ):
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
@@ -252,6 +253,7 @@ def get_map(
                 fill_mode=fill_mode,
                 temp_unit=temp_unit,
                 isotachs=isotachs,
+                centers=centers,
             )
         )
         return StreamingResponse(buf, media_type="image/png")

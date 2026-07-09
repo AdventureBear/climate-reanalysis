@@ -249,6 +249,24 @@ def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int
     return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, day, req.level)
 
 
+def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
+    """
+    MSLP (MSLET) matching the map's time selection, for H/L center detection
+    on any variable's map. Monthly selections are not wired (no monthly obs
+    fetcher for named-level fields).
+    """
+    cfg = VARIABLES["surface_pressure"]
+    grib, level_name = cfg["grib_name"], cfg["level_name"]
+    kind = selection.obs_kind
+    if kind == "single":
+        return fetch_field_by_level_name(selection.date_list[0], req.hour, grib, level_name)
+    if kind == "composite":
+        return fetch_named_level_field_composite(selection.date_list, req.hour, grib, level_name)
+    if kind == "daily":
+        return fetch_named_level_field_daily_composite(selection.date_list, selection.daily_hours, grib, level_name)
+    raise ValueError(f"MSLP centers are not available for {kind!r} selections")
+
+
 def fetch_climo_overlay_wind_components(req: FetchRequest, climo_source: str, month: int):
     """
     Climatological mean (U, V) for barbs/vectors/isotachs on climatology-mode
