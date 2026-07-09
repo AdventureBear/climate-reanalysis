@@ -7,6 +7,10 @@ deep link: open it and the app regenerates the map from the URL recipe.
 the deployed domain when presenting from production.
 
 **Tips**
+- Clicking these links opens your system **default browser** — if that isn't
+  the browser where you're signed in, the app will appear logged out (the
+  session isn't lost; it's just a different browser). Open the links in the
+  browser you use for PyRe, or copy-paste the URL there.
 - The first anomaly map for a given variable/level/calendar-day fetches the
   30-year R2 baseline (~10–40 s), then it is disk-cached and instant.
 - Dates before ~1979 depend on how deep the CORe archive reaches for each
