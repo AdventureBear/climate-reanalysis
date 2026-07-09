@@ -36,6 +36,8 @@ roughly 21z–00z.
   <http://localhost:5173/?variable=precip_rate&level=1000&region=Northeast&date=20250430&date_mode=single&hour=00>
 - **10m wind speed, 00z Apr 30 (surface wind field):**
   <http://localhost:5173/?variable=wind_10m&level=1000&region=Northeast&date=20250430&date_mode=single&hour=00>
+- **Surface-based CAPE, 21z (the instability the line fed on):**
+  <http://localhost:5173/?variable=cape&level=1000&region=Northeast&date=20250429&date_mode=single&hour=21>
 
 ## 2. The June 29, 2012 Mid-Atlantic derecho
 
@@ -82,6 +84,12 @@ the strongest ever sampled) struck Greenfield around 2045z.
   <http://localhost:5173/?variable=precipitable_water&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=18&mode=anomaly>
 - **Precipitation rate, 21z (convective initiation):**
   <http://localhost:5173/?variable=precip_rate&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=21>
+- **Surface-based CAPE, 21z (3000–4000+ J/kg over Iowa):**
+  <http://localhost:5173/?variable=cape&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=21>
+- **2m dewpoint, 21z (the moist axis — upper 60s °F):**
+  <http://localhost:5173/?variable=dewpoint_2m&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=21>
+- **CIN, 18z (the weakening cap before initiation):**
+  <http://localhost:5173/?variable=cin&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=18>
 
 ## 5. The Superstorm — Blizzard of March 13, 1993
 
@@ -99,6 +107,8 @@ records from Florida to New England.
   <http://localhost:5173/?variable=precip_rate&level=1000&region=Eastern%20US&date=19930313&date_mode=single&hour=12>
 - **2m temperature anomaly, 12z Mar 14 (the arctic blast behind it):**
   <http://localhost:5173/?variable=temp_2m&level=1000&region=Eastern%20US&date=19930314&date_mode=single&hour=12&mode=anomaly>
+- **Snow depth, 12z Mar 14 (what it left behind — Appalachians buried):**
+  <http://localhost:5173/?variable=snow_depth&level=1000&region=Eastern%20US&date=19930314&date_mode=single&hour=12>
 
 ## 6. Atmospheric river into California — February 13–14, 2025
 
