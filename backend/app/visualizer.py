@@ -1786,12 +1786,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 )
                 ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%d')
         if wind_step > 0:
-            # Density is defined against the 0.25° obs grid; coarser sources
-            # (2.5° R2 climatology, gaussian grids) shrink the stride so the
-            # same setting yields the same on-map spacing.
+            # Density N = stride N on the native CORe obs grid (T170 gaussian,
+            # ~0.70°), the resolution users calibrated against. Coarser sources
+            # (2.5° R2 climatology) scale the stride to keep the same on-map
+            # spacing for the same setting.
+            CORE_GRID_DEG = 0.703125
             lon_vals = u_array.longitude.values
-            grid_deg = abs(float(lon_vals[1] - lon_vals[0])) if len(lon_vals) > 1 else 0.25
-            s = max(1, round(wind_step * 0.25 / grid_deg))
+            grid_deg = abs(float(lon_vals[1] - lon_vals[0])) if len(lon_vals) > 1 else CORE_GRID_DEG
+            s = max(1, round(wind_step * CORE_GRID_DEG / grid_deg))
             lons = u_array.longitude.values[::s]
             lats = u_array.latitude.values[::s]
             u    = u_array.values[::s, ::s]
