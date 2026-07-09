@@ -1498,7 +1498,11 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
 
     elif variable in {"wind_speed", "wind_10m"}:
         scale_level = _render_level(variable, level)
-        if not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='both'):
+        # fill_mode="none": isotachs/barbs-only wind map — skip the shaded
+        # field and its colorbar; the overlay phase draws the layers.
+        if fill_mode == "none":
+            pass
+        elif not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='both'):
             breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
                 scale_level,
                 step_kt=color_step,

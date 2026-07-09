@@ -747,6 +747,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
   const [windAnomalyOverlay, setWindAnomalyOverlay] = useState<WindAnomalyOverlay>('none')
   const [isotachsOn, setIsotachsOn] = useState(false)
+  const [windShading, setWindShading] = useState(true)
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
@@ -859,6 +860,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             type: windType,
             anomalyOverlay: activeWindAnomaly,
             isotachs: activeWindAnomaly === 'none' && isotachsOn,
+            shading: windShading,
           }
         : undefined,
       windUnit,
@@ -926,6 +928,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       setWindOn(recipe.wind.on)
       setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
       setIsotachsOn(Boolean(recipe.wind.isotachs))
+      setWindShading(recipe.wind.shading !== false)
     }
   }
 
@@ -2310,32 +2313,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
-                {isWindVariable && !canUseWindAnomalyOverlay && (
-                  <VariableDisplayControl label="Wind Style">
-                    <div className="flex flex-col gap-1">
-                      <TabStrip
-                        options={[
-                          { value: 'none', label: 'Shaded only' },
-                          { value: 'barbs', label: '+ Barbs' },
-                          { value: 'vectors', label: '+ Vectors' },
-                        ]}
-                        value={windOn ? (windType === 'vectors' ? 'vectors' : 'barbs') : 'none'}
-                        onChange={v => {
-                          if (v === 'none') {
-                            setWindOn(false)
-                            return
-                          }
-                          setWindOn(true)
-                          setWindType(v as WindOverlayType)
-                        }}
-                        fullWidth
-                      />
-                      <ToggleButton active={isotachsOn} onClick={() => setIsotachsOn(o => !o)}>
-                        + Isotachs
-                      </ToggleButton>
-                    </div>
-                  </VariableDisplayControl>
-                )}
                 {variable === 'temp' && (
                   <VariableDisplayControl label="Temperature Units">
                     <TabStrip
@@ -2511,39 +2488,55 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Label>Overlays</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-            {/* On wind maps the Wind Style control (under Wind Units) drives these
-                layers — the overlay stays visible but disabled so the layout
-                doesn't shift when switching variables. */}
-            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 transition-opacity ${isWindVariable ? 'opacity-30 pointer-events-none' : ''}`}>
-              <Label>Actual Wind</Label>
-              <button type="button" role="switch" aria-checked={windOn} disabled={isWindVariable}
-                onClick={() => {
-                  setWindOn(o => {
-                    const next = !o
-                    if (next) setWindAnomalyOverlay('none')
-                    return next
-                  })
-                }}
-                className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors cursor-pointer ${windOn ? 'bg-sky-600' : 'bg-slate-600'}`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windOn ? 'translate-x-3' : 'translate-x-0'}`} />
-              </button>
-
-              <div className={`flex items-center gap-6 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
-                <div className="flex flex-col gap-0.5">
-                  {(['barbs', 'vectors'] as const).map(t => (
-                      <button key={t} type="button" onClick={() => setWindType(t)}
-                              className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
-                                  windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                              }`}>
-                        {t === 'barbs' ? 'Barbs' : 'Vectors'}
-                      </button>
-                  ))}
+            {/* Unified wind layers: Shading (wind maps only) + Isotachs +
+                Barbs|Vectors combine freely; density strides the glyphs.
+                On a raw wind map at least one layer must stay on. */}
+            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 transition-opacity ${canUseWindAnomalyOverlay && windAnomalyOverlay !== 'none' ? 'opacity-30 pointer-events-none' : ''}`}>
+              <Label>Wind</Label>
+              <div className="flex items-center gap-1 ml-auto">
+                <ToggleButton
+                  active={isWindVariable && windShading}
+                  disabled={!isWindVariable || displayMode !== 'raw'}
+                  onClick={() => {
+                    if (windShading && !isotachsOn && !windOn) return
+                    setWindShading(o => !o)
+                  }}
+                >
+                  Shading
+                </ToggleButton>
+                <ToggleButton
+                  active={isotachsOn}
+                  onClick={() => {
+                    if (isotachsOn && isWindVariable && displayMode === 'raw' && !windShading && !windOn) return
+                    setIsotachsOn(o => !o)
+                  }}
+                >
+                  Isotachs
+                </ToggleButton>
+                {(['barbs', 'vectors'] as const).map(t => (
+                  <ToggleButton
+                    key={t}
+                    active={windOn && windType === t}
+                    onClick={() => {
+                      if (windOn && windType === t) {
+                        if (isWindVariable && displayMode === 'raw' && !windShading && !isotachsOn) return
+                        setWindOn(false)
+                        return
+                      }
+                      setWindOn(true)
+                      setWindType(t)
+                      setWindAnomalyOverlay('none')
+                    }}
+                  >
+                    {t === 'barbs' ? 'Barbs' : 'Vectors'}
+                  </ToggleButton>
+                ))}
+                <div className={`flex items-center gap-2 transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
+                  <Label>Density</Label>
+                  <input type="number" min={1} max={20} value={windStep}
+                    onChange={e => setWindStep(e.target.value)}
+                    className="input w-10 text-center px-1" />
                 </div>
-                <Label>Density</Label>
-                <input type="number" min={1} max={20} value={windStep}
-                  onChange={e => setWindStep(e.target.value)}
-                  className="input w-10 text-center px-1" />
-
               </div>
             </div>
               <VariableDisplayControl label="Contours" status="Coming soon">

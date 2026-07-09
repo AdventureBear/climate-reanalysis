@@ -45,6 +45,9 @@ export type MapRecipe = {
     type: WindOverlayType
     anomalyOverlay: WindAnomalyOverlay
     isotachs?: boolean
+    // Wind-variable maps only: false renders isotachs/glyphs without the
+    // shaded speed field (fill_mode=none).
+    shading?: boolean
   }
   windUnit?: WindUnit
   pwatUnit?: PwatUnit
@@ -243,6 +246,9 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     if (recipe.wind.isotachs && recipe.wind.anomalyOverlay === 'none') {
       params.isotachs = '1'
     }
+    if (recipe.wind.shading === false && (variable === 'wind_speed' || variable === 'wind_10m')) {
+      params.fill_mode = 'none'
+    }
   }
 
   const safeColorStep = normalizeColorStep(recipe.colorStep ?? '1')
@@ -377,6 +383,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
       type: parsedWindType,
       anomalyOverlay: windOverlayMode === 'anomaly' ? parsedWindType : 'none',
       isotachs: params.get('isotachs') === '1',
+      shading: params.get('fill_mode') !== 'none',
     },
     windUnit: windUnit(params.get('wind_unit')),
     pwatUnit: pwatUnit(params.get('pwat_unit')),

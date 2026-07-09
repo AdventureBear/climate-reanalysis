@@ -172,10 +172,21 @@ def get_map(
     if wind_type == "isotachs":
         wind_type, wind_step, isotachs = "vectors", 0, 1
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
-    if fill_mode not in {"contours", "shaded"}:
-        raise HTTPException(status_code=422, detail="fill_mode must be 'contours' or 'shaded'")
+    if fill_mode not in {"contours", "shaded", "none"}:
+        raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")
     if temp_unit not in {"", "F", "C"}:
         raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
+    # A wind map with shading, isotachs, and glyphs all off would be blank.
+    if (
+        variable in {"wind_speed", "wind_10m"}
+        and fill_mode == "none"
+        and not isotachs
+        and wind_step <= 0
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="wind maps need at least one layer: shading, isotachs, or barbs/vectors",
+        )
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
     if hours:
