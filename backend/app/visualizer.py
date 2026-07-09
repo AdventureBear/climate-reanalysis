@@ -789,7 +789,7 @@ _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "wind_speed":       (20.0, 2.0),    # kt
     "wind_10m":         (20.0, 2.0),    # kt
     "temp":             (10.0, 1.0),    # °C / °F
-    "temp_2m":          (20.0, 2.0),    # °F — 2m temps swing far more than free-air temps
+    "temp_2m":          (30.0, 3.0),    # °F — 2m temps swing far more than free-air temps
     "height":           (39.0, 3.0),    # dam
     "rel_humidity":     (30.0, 3.0),    # %
     "humidity":         (0.003, 0.0003),

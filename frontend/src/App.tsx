@@ -2511,12 +2511,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Label>Overlays</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-            {/* Wind maps use the Wind Style control instead — an overlay of the
-                same wind data on itself is redundant. */}
-            {!isWindVariable && (
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
+            {/* On wind maps the Wind Style control (under Wind Units) drives these
+                layers — the overlay stays visible but disabled so the layout
+                doesn't shift when switching variables. */}
+            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 transition-opacity ${isWindVariable ? 'opacity-30 pointer-events-none' : ''}`}>
               <Label>Actual Wind</Label>
-              <button type="button" role="switch" aria-checked={windOn}
+              <button type="button" role="switch" aria-checked={windOn} disabled={isWindVariable}
                 onClick={() => {
                   setWindOn(o => {
                     const next = !o
@@ -2546,7 +2546,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
               </div>
             </div>
-            )}
               <VariableDisplayControl label="Contours" status="Coming soon">
                 <div className="grid grid-cols-3 gap-1">
                   <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>
