@@ -525,21 +525,28 @@ def _height_fill_cfg(level: int) -> dict | None:
 # hurricane-depth lows purple, strong lows medium blue, typical lows light
 # blue, average pressure (~1013) green, moderate highs yellow-orange,
 # record-setting highs red.
+# Anchors are densest through the everyday synoptic band (~992-1032) so a
+# typical H/L spread shows real hue variation; the spectrum's extremes are
+# reserved for genuinely extreme pressure.
 _MSLP_CONTOUR_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
     "domain_min": 920,
     "domain_max": 1060,
-    "anchor_values": [920, 950, 980, 1000, 1013, 1024, 1036, 1048, 1060],
+    "anchor_values": [920, 945, 965, 980, 992, 1000, 1008, 1013, 1018, 1024, 1032, 1042, 1060],
     "anchor_colors": [
         "#2d004b",  # 920  deep purple — major hurricane
-        "#6a51a3",  # 950  purple — intense low
-        "#2b8cbe",  # 980  medium blue — strong low
-        "#a6cee3",  # 1000 light blue — typical low
-        "#74c476",  # 1013 green — average sea-level pressure
-        "#e8e337",  # 1024 yellow — moderate high
-        "#fe9929",  # 1036 orange — strong high
-        "#f03b20",  # 1048 orange-red — intense high
-        "#99000d",  # 1060 red — record-setting high
+        "#54278f",  # 945  purple — intense low
+        "#5e3c99",  # 965  blue-purple
+        "#2c7fb8",  # 980  strong blue — strong low
+        "#3690c0",  # 992  medium blue — lowish low
+        "#89c4e1",  # 1000 light blue — typical low
+        "#66c2a4",  # 1008 seafoam — weak low
+        "#41ab5d",  # 1013 green — average sea-level pressure
+        "#addd8e",  # 1018 yellow-green — weak high
+        "#efe345",  # 1024 yellow — moderate high
+        "#fe9929",  # 1032 orange — strong high
+        "#ef3b2c",  # 1042 orange-red — intense high
+        "#99000d",  # 1060 dark red — record-setting high
     ],
     "key_breakpoints": [1000, 1013, 1024],
     "step": 4,
