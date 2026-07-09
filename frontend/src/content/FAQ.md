@@ -230,11 +230,13 @@ The R2 daily climatology uses 1991–2020. Not every year has Feb 29. PyRe maps 
 
 ## 16. What does the wind overlay show and does it cost extra fetches?
 
-The wind overlay draws vectors or barbs on top of any scalar field. It requires U and V wind components.
+The wind overlay draws vectors, barbs, or isotachs (labeled speed contours) on top of any scalar field. It requires U and V wind components, taken **at the map's own level** — 10m winds for surface/single-level fields — and the map title states which (e.g. "850mb Wind Barbs", "10m Wind Barbs").
 
-**When the mapped variable is already wind speed**: PyRe fetches U and V once, derives wind speed as `sqrt(U²+V²)`, and reuses the same U/V arrays for the overlay — no additional network requests.
+**On composite maps**: the overlay is the **vector-mean wind over the same dates/hours as the composite** — each of U and V is averaged across the selection, then drawn. Where wind direction varies between the composited times, the mean barb is shorter than any single day's wind; that's the correct composite, not a bug.
 
-**When the mapped variable is something else** (e.g., temperature with a wind overlay): U and V are fetched separately as a second step.
+**Fetch accounting**: every (date, synoptic hour) is its own GRIB file. A 3-day daily-mean composite touches 3 × 4 = 12 files — one `.idx` fetch plus byte-range requests for just the needed records per file, run concurrently. When the mapped variable is already wind speed, U and V are fetched once and reused for the overlay — no additional requests. On any other variable, the overlay is a second fetch pass. Sub-monthly records are *not* disk-cached (monthly slices and all climatology are), so repeating one of those days re-fetches it.
+
+**Isotachs**: contour the full-resolution speed field `sqrt(U²+V²)` every 20 kt starting at 30 kt (10 m/s / 15 m/s in metric); the density setting only affects barbs/vectors.
 
 **On Vector Wind Anomaly maps**: the overlay shows anomaly vectors/barbs, `(U_obs − U_climo, V_obs − V_climo)`. The arrows can point opposite the actual wind if the observed flow is weaker than the climatological flow.
 

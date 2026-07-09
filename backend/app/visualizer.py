@@ -1551,24 +1551,41 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
 
     # Phase 2: wind overlay, title, extent, map features
     if wind_step > 0 and u_array is not None and v_array is not None:
-        s = wind_step
-        lons = u_array.longitude.values[::s]
-        lats = u_array.latitude.values[::s]
-        u    = u_array.values[::s, ::s]
-        v    = v_array.values[::s, ::s]
-        if wind_type == "barbs":
-            ax.barbs(
-                lons, lats, u, v,
-                transform=ccrs.PlateCarree(),
-                length=5, linewidth=0.6, color='black', alpha=0.75,
-                barb_increments=dict(half=2.57, full=5.14, flag=25.72),
-            )
+        if wind_type == "isotachs":
+            # Labeled speed contours on the full grid (density stride does not
+            # apply). Interval/threshold in display units: below the threshold
+            # is background flow that would only clutter the map.
+            speed = np.sqrt(u_array.values ** 2 + v_array.values ** 2) * _wind_unit_factor(wind_unit)
+            interval = 20.0 if wind_unit == "kt" else 10.0
+            first = 30.0 if wind_unit == "kt" else 15.0
+            speed_max = float(np.nanmax(speed))
+            if speed_max >= first:
+                iso_levels = np.arange(first, speed_max + interval, interval)
+                cs = ax.contour(
+                    u_array.longitude, u_array.latitude, speed,
+                    levels=iso_levels, colors='#4a1486', linewidths=1.0,
+                    transform=ccrs.PlateCarree(),
+                )
+                ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%d')
         else:
-            ax.quiver(
-                lons, lats, u, v,
-                transform=ccrs.PlateCarree(),
-                scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
-            )
+            s = wind_step
+            lons = u_array.longitude.values[::s]
+            lats = u_array.latitude.values[::s]
+            u    = u_array.values[::s, ::s]
+            v    = v_array.values[::s, ::s]
+            if wind_type == "barbs":
+                ax.barbs(
+                    lons, lats, u, v,
+                    transform=ccrs.PlateCarree(),
+                    length=5, linewidth=0.6, color='black', alpha=0.75,
+                    barb_increments=dict(half=2.57, full=5.14, flag=25.72),
+                )
+            else:
+                ax.quiver(
+                    lons, lats, u, v,
+                    transform=ccrs.PlateCarree(),
+                    scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
+                )
 
     lon0, lon1, lat0, lat1 = _REGION_EXTENTS.get(
         region,

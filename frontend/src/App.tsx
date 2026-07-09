@@ -2493,19 +2493,22 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
               <div className={`flex items-center gap-6 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex flex-col gap-0.5">
-                  {(['barbs', 'vectors'] as const).map(t => (
+                  {(['barbs', 'vectors', 'isotachs'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setWindType(t)}
                               className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
                                   windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                               }`}>
-                        {t === 'barbs' ? 'Barbs' : 'Vectors'}
+                        {t === 'barbs' ? 'Barbs' : t === 'vectors' ? 'Vectors' : 'Isotachs'}
                       </button>
                   ))}
                 </div>
-                <Label>Density</Label>
-                <input type="number" min={1} max={20} value={windStep}
-                  onChange={e => setWindStep(e.target.value)}
-                  className="input w-10 text-center px-1" />
+                {/* Density strides barbs/vectors; isotachs contour the full grid. */}
+                <div className={`flex items-center gap-2 transition-opacity ${windType === 'isotachs' ? 'opacity-30 pointer-events-none' : ''}`}>
+                  <Label>Density</Label>
+                  <input type="number" min={1} max={20} value={windStep}
+                    onChange={e => setWindStep(e.target.value)}
+                    className="input w-10 text-center px-1" />
+                </div>
 
               </div>
             </div>

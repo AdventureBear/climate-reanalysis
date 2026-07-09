@@ -11,7 +11,7 @@ export type SubMode = 'single' | 'range' | 'list'
 export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 export type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
 export type WindUnit = 'kt' | 'm/s'
-export type WindOverlayType = 'vectors' | 'barbs'
+export type WindOverlayType = 'vectors' | 'barbs' | 'isotachs'
 export type WindAnomalyOverlay = 'none' | WindOverlayType
 export type PwatUnit = 'mm' | 'in'
 
@@ -124,7 +124,7 @@ function climoSource(value: string | null): ClimoSource | undefined {
 }
 
 function windType(value: string | null): WindOverlayType | undefined {
-  return value === 'barbs' || value === 'vectors' ? value : undefined
+  return value === 'barbs' || value === 'vectors' || value === 'isotachs' ? value : undefined
 }
 
 function windUnit(value: string | null): WindUnit | undefined {

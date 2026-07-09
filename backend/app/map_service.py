@@ -5,7 +5,7 @@ import logging
 import time
 
 from .api_options import CLIMO_DESC, VAR_NAMES, scale_overrides_from_query
-from .config import REGIONS, VARIABLES
+from .config import REGIONS, VARIABLES, is_surface_or_named_level
 from .map_pipeline.climo_policy import resolve_climo_source
 from .map_pipeline.fetch_plan import (
     fetch_climo,
@@ -240,9 +240,10 @@ def create_map_buffer(req: MapRequest):
     )
     var_label = variable_label(req, use_vector_wind_anomaly)
     if u_subset is not None and v_subset is not None:
-        overlay_label = "Wind Anomaly" if req.wind_overlay_mode == "anomaly" else "Wind"
-        overlay_glyph = "Barbs" if req.wind_type == "barbs" else "Vectors"
-        var_label = f"{var_label}, {overlay_label} {overlay_glyph} ({req.wind_unit})"
+        overlay_level = "10m" if is_surface_or_named_level(req.variable) else f"{req.level}mb"
+        overlay_kind = "Wind Anomaly" if req.wind_overlay_mode == "anomaly" else "Wind"
+        overlay_glyph = {"barbs": "Barbs", "isotachs": "Isotachs"}.get(req.wind_type, "Vectors")
+        var_label = f"{var_label}, {overlay_level} {overlay_kind} {overlay_glyph} ({req.wind_unit})"
 
     step += 1
     log.info("")
