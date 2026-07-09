@@ -482,40 +482,54 @@ _HEIGHT_CONTOUR_SCALE_CONFIG = {
     "step": 4,
 }
 
-# Shaded-height fill windows (dam) per pressure level, bracketing each level's
-# climatological range (standard-atmosphere height ± synoptic variability).
-# Like _TEMP_SCALES, anchors are fixed PER LEVEL: 552 dam at 500mb is always
-# the same color, but colors are reused across levels. Pending scale review.
-_HEIGHT_FILL_RAMP_HEX = ["#5e4fa2", "#3288bd", "#66c2a5", "#e6f598", "#fdae61", "#d53e4f"]
+# Shaded-height fill windows (dam) per pressure level, compressed to the
+# TYPICAL synoptic band (standard-atmosphere height sits at the green anchor,
+# ~2/3 up the window, since below-normal departures run larger than above).
+# Excursions beyond the window render in the extend colors — the same
+# add-on-band approach as the temperature and wind scales. Values are
+# working estimates pending domain review.
 _HEIGHT_FILL_WINDOWS: dict[int, tuple[float, float]] = {
-    1000: (-40, 50),
-    925:  (30, 115),
-    850:  (90, 185),
-    700:  (240, 345),
-    600:  (370, 470),
-    500:  (470, 600),
-    400:  (640, 780),
-    300:  (820, 1000),
-    250:  (950, 1140),
-    200:  (1100, 1300),
-    150:  (1280, 1460),
-    100:  (1530, 1720),
-    70:   (1740, 1950),
-    50:   (1950, 2160),
-    20:   (2530, 2770),
-    10:   (2900, 3220),
+    1000: (-13, 27),
+    925:  (52, 92),
+    850:  (122, 162),
+    700:  (277, 317),
+    600:  (391, 446),
+    500:  (512, 587),
+    400:  (674, 754),
+    300:  (866, 956),
+    250:  (994, 1104),
+    200:  (1123, 1233),
+    150:  (1306, 1416),
+    100:  (1563, 1673),
+    70:   (1789, 1899),
+    50:   (2003, 2113),
+    20:   (2578, 2718),
+    10:   (3006, 3206),
 }
+
+# Same 13-hue ladder as the MSLP spectrum (purple = far below normal, green =
+# normal, red = far above), with the same mid-dense anchor spacing so common
+# departures get most of the hue variation.
+_HEIGHT_FILL_RAMP_HEX = [
+    "#2d004b", "#54278f", "#5e3c99", "#2c7fb8", "#3690c0", "#89c4e1",
+    "#66c2a4", "#41ab5d", "#addd8e", "#efe345", "#fe9929", "#ef3b2c", "#99000d",
+]
+_HEIGHT_RAMP_FRACTIONS = [
+    0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
+    0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0,
+]
 
 
 def _height_fill_cfg(level: int) -> dict | None:
     window = _HEIGHT_FILL_WINDOWS.get(level)
     if window is None:
         return None
+    w0, w1 = window
     return {
         "mapping": "fixed_anchors",
-        "domain_min": window[0],
-        "domain_max": window[1],
-        "anchor_values": _even_anchors(window[0], window[1], _HEIGHT_FILL_RAMP_HEX),
+        "domain_min": w0,
+        "domain_max": w1,
+        "anchor_values": [w0 + f * (w1 - w0) for f in _HEIGHT_RAMP_FRACTIONS],
         "anchor_colors": _HEIGHT_FILL_RAMP_HEX,
         "key_breakpoints": [],
         "step": 4,
