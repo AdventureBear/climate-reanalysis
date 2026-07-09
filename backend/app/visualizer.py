@@ -521,13 +521,27 @@ def _height_fill_cfg(level: int) -> dict | None:
         "step": 4,
     }
 
+# Full synoptic MSLP spectrum with fixed physical anchors:
+# hurricane-depth lows purple, strong lows medium blue, typical lows light
+# blue, average pressure (~1013) green, moderate highs yellow-orange,
+# record-setting highs red.
 _MSLP_CONTOUR_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
-    "domain_min": 940,
-    "domain_max": 1048,
-    "anchor_values": [940, 960, 980, 1000, 1020, 1040, 1048],
-    "anchor_colors": ["#08306b", "#2171b5", "#6baed6", "#f7f7f7", "#fdae6b", "#e6550d", "#7f2704"],
-    "key_breakpoints": [1000, 1020],
+    "domain_min": 920,
+    "domain_max": 1060,
+    "anchor_values": [920, 950, 980, 1000, 1013, 1024, 1036, 1048, 1060],
+    "anchor_colors": [
+        "#2d004b",  # 920  deep purple — major hurricane
+        "#6a51a3",  # 950  purple — intense low
+        "#2b8cbe",  # 980  medium blue — strong low
+        "#a6cee3",  # 1000 light blue — typical low
+        "#74c476",  # 1013 green — average sea-level pressure
+        "#e8e337",  # 1024 yellow — moderate high
+        "#fe9929",  # 1036 orange — strong high
+        "#f03b20",  # 1048 orange-red — intense high
+        "#99000d",  # 1060 red — record-setting high
+    ],
+    "key_breakpoints": [1000, 1013, 1024],
     "step": 4,
 }
 
