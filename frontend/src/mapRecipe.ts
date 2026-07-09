@@ -14,6 +14,8 @@ export type WindUnit = 'kt' | 'm/s'
 export type WindOverlayType = 'vectors' | 'barbs' | 'isotachs'
 export type WindAnomalyOverlay = 'none' | WindOverlayType
 export type PwatUnit = 'mm' | 'in'
+export type FillMode = 'contours' | 'shaded'
+export type TempUnit = 'F' | 'C'
 
 export type ApiDate = { api: string; iso: string; year: string; month: string; day: string }
 export type ApiMonth = { api: string; iso: string; year: string; month: string }
@@ -45,6 +47,8 @@ export type MapRecipe = {
   }
   windUnit?: WindUnit
   pwatUnit?: PwatUnit
+  fillMode?: FillMode
+  tempUnit?: TempUnit
   colorStep?: string
 }
 
@@ -244,6 +248,14 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   if (recipe.pwatUnit && variable === 'precipitable_water') {
     params.pwat_unit = recipe.pwatUnit
   }
+  // Only contour-first variables have a shaded option; default stays contours.
+  if (recipe.fillMode === 'shaded' && (variable === 'surface_pressure' || variable === 'height')) {
+    params.fill_mode = 'shaded'
+  }
+  // Absent temp_unit = auto (each level's native scale unit).
+  if (recipe.tempUnit && (variable === 'temp' || variable === 'temp_2m')) {
+    params.temp_unit = recipe.tempUnit
+  }
   if (recipe.climoSource && params.mode && params.mode !== 'raw') {
     params.climo_source = recipe.climoSource
   }
@@ -362,6 +374,8 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     },
     windUnit: windUnit(params.get('wind_unit')),
     pwatUnit: pwatUnit(params.get('pwat_unit')),
+    fillMode: params.get('fill_mode') === 'shaded' ? 'shaded' : undefined,
+    tempUnit: params.get('temp_unit') === 'F' || params.get('temp_unit') === 'C' ? (params.get('temp_unit') as TempUnit) : undefined,
     colorStep: parsedColorStep ? String(normalizeColorStep(parsedColorStep)) : undefined,
   }
 }

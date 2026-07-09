@@ -123,9 +123,12 @@ def get_scale_meta(
     scale_min: float | None = None,
     scale_max: float | None = None,
     wind_unit: str = "kt",
-    pwat_unit: str = "mm",
+    pwat_unit: str = "in",
+    temp_unit: str = "",
 ):
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
+    if temp_unit not in {"", "F", "C"}:
+        raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
 
     return describe_color_scale(
         variable=variable,
@@ -135,6 +138,7 @@ def get_scale_meta(
         scale_overrides=scale_overrides_from_query(variable, scale_min, scale_max, wind_unit=wind_unit),
         wind_unit=wind_unit,
         pwat_unit=pwat_unit,
+        temp_unit=temp_unit,
     )
 
 
@@ -159,9 +163,15 @@ def get_map(
     mode: str = "raw",
     climo_source: str = "monthly-pgb",
     wind_unit: str = "kt",
-    pwat_unit: str = "mm",
+    pwat_unit: str = "in",
+    fill_mode: str = "contours",
+    temp_unit: str = "",
 ):
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
+    if fill_mode not in {"contours", "shaded"}:
+        raise HTTPException(status_code=422, detail="fill_mode must be 'contours' or 'shaded'")
+    if temp_unit not in {"", "F", "C"}:
+        raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
     if hours:
@@ -224,6 +234,8 @@ def get_map(
                 climo_source=climo_source,
                 wind_unit=wind_unit,
                 pwat_unit=pwat_unit,
+                fill_mode=fill_mode,
+                temp_unit=temp_unit,
             )
         )
         return StreamingResponse(buf, media_type="image/png")

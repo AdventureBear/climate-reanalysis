@@ -10,7 +10,7 @@ import { signedUrl } from './lib/storage'
 import { blobFromObjectUrl } from './lib/images'
 import { suggestedMapName } from './mapName'
 import { SiteFooter } from './SiteFooter'
-import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
+import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type FillMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 import { HOURS, normalizeColorStep } from './sharedOptions'
 import {
@@ -49,8 +49,7 @@ const MONTH_OPTIONS = [
   { value: '12', label: 'December' },
 ]
 
-type TemperatureUnit = 'F' | 'C'
-type HeightDisplay = 'contoured' | 'shaded'
+type TemperatureUnit = 'auto' | 'F' | 'C'
 type ScaleMeta = {
   scale_kind?: string
   group?: string
@@ -748,9 +747,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
   const [windAnomalyOverlay, setWindAnomalyOverlay] = useState<WindAnomalyOverlay>('none')
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
-  const [pwatUnit, setPwatUnit] = useState<PwatUnit>('mm')
-  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('F')
-  const [heightDisplay, setHeightDisplay] = useState<HeightDisplay>('contoured')
+  const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
+  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
+  const [fillMode, setFillMode] = useState<FillMode>('contours')
   const [colorStep, setColorStep] = useState('1')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [colorLabOpen, setColorLabOpen] = useState(false)
@@ -817,6 +816,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isThreeHourly = timeScale === '3-hourly'
   const isFlxVariable = FLX_VARIABLES.has(apiVariable)
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
+  // Wind maps style themselves (shaded/barbs/vectors/isotachs) — a separate
+  // "wind overlay" on a wind map would draw the same data twice.
+  const isWindVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
   const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
   const labFamilies = getScaleFamilies(labVariable, labMode)
   const activeFamily = labFamilies.find(f => f.key === labFamily) ?? labFamilies[0]
@@ -859,6 +861,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         : undefined,
       windUnit,
       pwatUnit,
+      fillMode,
+      tempUnit: temperatureUnit === 'auto' ? undefined : temperatureUnit,
       colorStep,
     }
   }
@@ -910,6 +914,8 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (recipe.climoSource) setClimoSource(recipe.climoSource)
     if (recipe.windUnit) setWindUnit(recipe.windUnit)
     if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
+    if (recipe.fillMode) setFillMode(recipe.fillMode)
+    if (recipe.tempUnit) setTemperatureUnit(recipe.tempUnit)
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
     if (recipe.wind) {
@@ -2302,16 +2308,16 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   </VariableDisplayControl>
                 )}
                 {variable === 'temp' && (
-                  <VariableDisplayControl label="Temperature Units" status="Coming soon">
+                  <VariableDisplayControl label="Temperature Units">
                     <TabStrip
                       options={[
+                        { value: 'auto', label: 'Auto' },
                         { value: 'F', label: '°F' },
                         { value: 'C', label: '°C' },
                       ]}
                       value={temperatureUnit}
                       onChange={v => setTemperatureUnit(v as TemperatureUnit)}
                       fullWidth
-                      disabled
                     />
                   </VariableDisplayControl>
                 )}
@@ -2319,11 +2325,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   <VariableDisplayControl label="Pressure Display">
                     <TabStrip
                       options={[
-                        { value: 'contoured', label: 'Contoured' },
-                        { value: 'shaded', label: 'Shaded', disabled: true },
+                        { value: 'contours', label: 'Contoured' },
+                        { value: 'shaded', label: 'Shaded' },
                       ]}
-                      value="contoured"
-                      onChange={() => {}}
+                      value={fillMode}
+                      onChange={v => setFillMode(v as FillMode)}
                       fullWidth
                     />
                   </VariableDisplayControl>
@@ -2342,16 +2348,15 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                   </VariableDisplayControl>
                 )}
                 {variable === 'height' && (
-                  <VariableDisplayControl label="Height Display" status="Coming soon">
+                  <VariableDisplayControl label="Height Display">
                     <TabStrip
                       options={[
-                        { value: 'contoured', label: 'Contoured' },
+                        { value: 'contours', label: 'Contoured' },
                         { value: 'shaded', label: 'Shaded' },
                       ]}
-                      value={heightDisplay}
-                      onChange={v => setHeightDisplay(v as HeightDisplay)}
+                      value={fillMode}
+                      onChange={v => setFillMode(v as FillMode)}
                       fullWidth
-                      disabled
                     />
                   </VariableDisplayControl>
                 )}
@@ -2454,6 +2459,30 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 </VariableDisplayControl>
               </CardRow>
             )}
+            {isWindVariable && !canUseWindAnomalyOverlay && (
+              <CardRow>
+                <VariableDisplayControl label="Wind Style">
+                  <TabStrip
+                    options={[
+                      { value: 'shaded', label: 'Shaded' },
+                      { value: 'barbs', label: '+ Barbs' },
+                      { value: 'vectors', label: '+ Vectors' },
+                      { value: 'isotachs', label: '+ Isotachs' },
+                    ]}
+                    value={windOn ? windType : 'shaded'}
+                    onChange={v => {
+                      if (v === 'shaded') {
+                        setWindOn(false)
+                        return
+                      }
+                      setWindOn(true)
+                      setWindType(v as WindOverlayType)
+                    }}
+                    fullWidth
+                  />
+                </VariableDisplayControl>
+              </CardRow>
+            )}
             <CardRow>
             <VariableDisplayControl label="Render">
             <button type="submit" disabled={loading}
@@ -2477,6 +2506,9 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Label>Overlays</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
+            {/* Wind maps use the Wind Style control instead — an overlay of the
+                same wind data on itself is redundant. */}
+            {!isWindVariable && (
             <div className="flex items-center gap-2 pt-2 border-t border-slate-700/40">
               <Label>Actual Wind</Label>
               <button type="button" role="switch" aria-checked={windOn}
@@ -2493,25 +2525,23 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
               <div className={`flex items-center gap-6 ml-auto transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex flex-col gap-0.5">
-                  {(['barbs', 'vectors', 'isotachs'] as const).map(t => (
+                  {(['barbs', 'vectors'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setWindType(t)}
                               className={`text-xs px-2 py-0.5 rounded cursor-pointer transition-colors leading-tight ${
                                   windType === t ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
                               }`}>
-                        {t === 'barbs' ? 'Barbs' : t === 'vectors' ? 'Vectors' : 'Isotachs'}
+                        {t === 'barbs' ? 'Barbs' : 'Vectors'}
                       </button>
                   ))}
                 </div>
-                {/* Density strides barbs/vectors; isotachs contour the full grid. */}
-                <div className={`flex items-center gap-2 transition-opacity ${windType === 'isotachs' ? 'opacity-30 pointer-events-none' : ''}`}>
-                  <Label>Density</Label>
-                  <input type="number" min={1} max={20} value={windStep}
-                    onChange={e => setWindStep(e.target.value)}
-                    className="input w-10 text-center px-1" />
-                </div>
+                <Label>Density</Label>
+                <input type="number" min={1} max={20} value={windStep}
+                  onChange={e => setWindStep(e.target.value)}
+                  className="input w-10 text-center px-1" />
 
               </div>
             </div>
+            )}
               <VariableDisplayControl label="Contours" status="Coming soon">
                 <div className="grid grid-cols-3 gap-1">
                   <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>

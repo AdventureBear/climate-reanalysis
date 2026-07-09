@@ -20,6 +20,8 @@ class RenderRequest(Protocol):
     pwat_unit: str
     wind_step: int
     wind_type: str
+    fill_mode: str
+    temp_unit: str
 
 
 def render_map_product(
@@ -33,6 +35,7 @@ def render_map_product(
     use_vector_wind_anomaly: bool,
     u_subset=None,
     v_subset=None,
+    base_array=None,
 ):
     if req.mode == "anomaly" and use_vector_wind_anomaly:
         log.info("  colormap : positive sequential (vector anomaly magnitude)")
@@ -48,6 +51,7 @@ def render_map_product(
         scale_overrides=scale_overrides,
         wind_unit=req.wind_unit,
         pwat_unit=req.pwat_unit,
+        temp_unit=req.temp_unit,
     )
     log_scale_diag(scale_diag)
 
@@ -69,4 +73,7 @@ def render_map_product(
         scale_overrides=scale_overrides,
         wind_unit=req.wind_unit,
         pwat_unit=req.pwat_unit,
+        fill_mode=req.fill_mode,
+        temp_unit=req.temp_unit,
+        base_array=base_array,
     )

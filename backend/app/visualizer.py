@@ -402,7 +402,15 @@ def _render_level(variable: str, level: int) -> int:
     return level
 
 
-def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm") -> str:
+def _temp_display_unit(variable: str, level: int, temp_unit: str = "") -> str:
+    """'F' or 'C': the explicit override, else the level's native scale unit."""
+    if temp_unit in ("F", "C"):
+        return temp_unit
+    cfg = _TEMP_SCALES.get(_render_level(variable, level))
+    return cfg["unit"] if cfg else "C"
+
+
+def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm", temp_unit: str = "") -> str:
     """
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
@@ -410,8 +418,7 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
     if variable in {"wind_speed", "wind_10m"}:
         return _wind_unit_label(wind_unit)
     if variable in {"temp", "temp_2m"}:
-        cfg = _TEMP_SCALES.get(_render_level(variable, level))
-        return f"°{cfg['unit']}" if cfg else "K"
+        return f"°{_temp_display_unit(variable, level, temp_unit)}"
     if variable == "rel_humidity":
         return "%"
     if variable == "height":
@@ -470,10 +477,49 @@ _HEIGHT_CONTOUR_SCALE_CONFIG = {
     "domain_min": 0,
     "domain_max": 600,
     "anchor_values": [0, 120, 240, 360, 480, 600],
-    "anchor_colors": ["#f7f7f7", "#d9d9d9", "#bdbdbd", "#969696", "#636363", "#252525"],
+    "anchor_colors": ["#5e4fa2", "#3288bd", "#66c2a5", "#e6f598", "#fdae61", "#d53e4f"],
     "key_breakpoints": [],
     "step": 4,
 }
+
+# Shaded-height fill windows (dam) per pressure level, bracketing each level's
+# climatological range (standard-atmosphere height ± synoptic variability).
+# Like _TEMP_SCALES, anchors are fixed PER LEVEL: 552 dam at 500mb is always
+# the same color, but colors are reused across levels. Pending scale review.
+_HEIGHT_FILL_RAMP_HEX = ["#5e4fa2", "#3288bd", "#66c2a5", "#e6f598", "#fdae61", "#d53e4f"]
+_HEIGHT_FILL_WINDOWS: dict[int, tuple[float, float]] = {
+    1000: (-40, 50),
+    925:  (30, 115),
+    850:  (90, 185),
+    700:  (240, 345),
+    600:  (370, 470),
+    500:  (470, 600),
+    400:  (640, 780),
+    300:  (820, 1000),
+    250:  (950, 1140),
+    200:  (1100, 1300),
+    150:  (1280, 1460),
+    100:  (1530, 1720),
+    70:   (1740, 1950),
+    50:   (1950, 2160),
+    20:   (2530, 2770),
+    10:   (2900, 3220),
+}
+
+
+def _height_fill_cfg(level: int) -> dict | None:
+    window = _HEIGHT_FILL_WINDOWS.get(level)
+    if window is None:
+        return None
+    return {
+        "mapping": "fixed_anchors",
+        "domain_min": window[0],
+        "domain_max": window[1],
+        "anchor_values": _even_anchors(window[0], window[1], _HEIGHT_FILL_RAMP_HEX),
+        "anchor_colors": _HEIGHT_FILL_RAMP_HEX,
+        "key_breakpoints": [],
+        "step": 4,
+    }
 
 _MSLP_CONTOUR_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
@@ -683,6 +729,38 @@ def _make_specific_humidity_scale(step_multiplier: int = 1) -> tuple[list[float]
     return steps, colors, _SPECIFIC_HUMIDITY_SCALE_CONFIG
 
 
+def _draw_anchored_fill(ax, display_values, data_array, levels, cfg: dict, ylabel: str):
+    """
+    Filled contours between the map's own contour levels, colored by the
+    fixed-anchor mapping in cfg — the same physical value gets the same color
+    on every map, while the colorbar spans only the plotted range.
+    Returns (plot_obj, cbar_cfg); (None, None) if too few levels to fill.
+    """
+    boundaries = [float(v) for v in levels]
+    if len(boundaries) < 2:
+        return None, None
+    colors = _interpolate_interval_colors(boundaries, _resolve_anchor_values(cfg), cfg["anchor_colors"])
+    cmap = mcolors.ListedColormap(colors)
+    cmap.set_under(colors[0])
+    cmap.set_over(colors[-1])
+    norm = mcolors.BoundaryNorm(boundaries, ncolors=len(colors))
+    plot_obj = ax.contourf(
+        data_array.longitude, data_array.latitude, display_values,
+        levels=boundaries, cmap=cmap, norm=norm,
+        transform=ccrs.PlateCarree(), extend='both',
+    )
+    stride = max(1, round((len(boundaries) - 1) / 8))
+    ticks = boundaries[::stride]
+    cbar_cfg = {
+        'ticks': ticks,
+        'ticklabels': [_format_scale_value(v) for v in ticks],
+        'ylabel': ylabel,
+        'extend': 'both',
+        'colors': colors, 'boundaries': boundaries,
+    }
+    return plot_obj, cbar_cfg
+
+
 def _make_fixed_display_scale(cfg: dict, step: float | None = None) -> tuple[list[float], list[tuple], dict]:
     scale_step = float(step if step is not None else cfg["step"])
     domain_min = float(cfg["domain_min"])
@@ -732,6 +810,39 @@ def _anomaly_scale_in_display_units(
     if variable == "precipitable_water" and pwat_unit == "in":
         return max_val * _MM_TO_IN, step * _MM_TO_IN
     return max_val, step
+
+
+def _base_contour_plan(variable, level, values, wind_unit="kt", pwat_unit="mm", temp_unit=""):
+    """
+    (display_values, contour_interval) for drawing the raw field as labeled
+    line contours on top of anomaly/normalized shading — so the reader sees
+    the actual pattern the departures refer to. None → variable not covered.
+    """
+    if variable == "height":
+        return values / 10.0, 6.0                       # dam
+    if variable == "surface_pressure":
+        return values / 100.0, 4.0                      # mb
+    if variable in {"temp", "temp_2m"}:
+        unit = _temp_display_unit(variable, level, temp_unit)
+        disp = _k_to_f(values) if unit == "F" else values - 273.15
+        return disp, 10.0 if unit == "F" else 5.0
+    if variable in {"wind_speed", "wind_10m"}:
+        return values * _wind_unit_factor(wind_unit), 20.0 if wind_unit == "kt" else 10.0
+    if variable == "rel_humidity":
+        return values, 20.0                             # %
+    if variable == "precipitable_water":
+        disp = _pwat_to_display(values, pwat_unit)
+        return disp, 0.5 if pwat_unit == "in" else 10.0
+    if variable == "olr":
+        return values, 30.0                             # W/m²
+    if variable == "omega":
+        return values, 0.5                              # Pa/s
+    return None
+
+
+def has_anomaly_base_contours(variable: str) -> bool:
+    """Whether anomaly maps for this variable draw raw-field contours."""
+    return _base_contour_plan(variable, 850, np.zeros((2, 2))) is not None
 
 
 _WIND_VECTOR_ANOMALY_HEX = [
@@ -841,14 +952,13 @@ def _wind_vector_anomaly_native_config(
 
 
 def _anomaly_to_display_with_unit(
-    values: np.ndarray, variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm"
+    values: np.ndarray, variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm", temp_unit: str = ""
 ) -> np.ndarray:
     """Convert anomaly array from native units to the requested display units."""
     if variable in {"wind_speed", "wind_10m"}:
         return values * _wind_unit_factor(wind_unit)
     if variable in {"temp", "temp_2m"}:
-        cfg = _TEMP_SCALES.get(_render_level(variable, level))
-        if cfg and cfg["unit"] == "F":
+        if _temp_display_unit(variable, level, temp_unit) == "F":
             return values * 9 / 5          # ΔK = Δ°C → Δ°F
         return values                       # ΔK = Δ°C — no offset needed for differences
     if variable == "height":
@@ -946,6 +1056,7 @@ def _custom_scale_from_spec(
     mode: str,
     wind_unit: str,
     pwat_unit: str,
+    temp_unit: str = "",
 ) -> dict[str, object] | None:
     if not scale_spec:
         return None
@@ -972,8 +1083,7 @@ def _custom_scale_from_spec(
         if variable in {"wind_speed", "wind_10m"}:
             return value * _KT_TO_MS if wind_unit == "kt" else value
         if variable in {"temp", "temp_2m"}:
-            cfg = _TEMP_SCALES.get(_render_level(variable, level))
-            if cfg and cfg["unit"] == "F":
+            if _temp_display_unit(variable, level, temp_unit) == "F":
                 return (value - 32.0) * 5.0 / 9.0 + 273.15
             return value + 273.15
         return value
@@ -990,7 +1100,7 @@ def _custom_scale_from_spec(
         "colors": colors,
         "ticks": [native_boundaries[idx] for idx in tick_idx],
         "ticklabels": [label_value(boundaries[idx]) for idx in tick_idx],
-        "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+        "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit),
     }
 
 
@@ -1009,6 +1119,7 @@ def describe_color_scale(
     scale_overrides: dict[str, float] | None = None,
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
+    temp_unit: str = "",
 ) -> dict[str, object]:
     """
     Return render-time scale diagnostics in display units so backend logs can
@@ -1027,10 +1138,10 @@ def describe_color_scale(
             scale_kind = mode
         else:
             max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
-            unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
+            unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
             plot_values = (
                 np.asarray(
-                    _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+                    _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit),
                     dtype=float,
                 )
                 if data_array is not None else None
@@ -1256,17 +1367,18 @@ def describe_color_scale(
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
             region=region, u_array=u_array, v_array=v_array, wind_step=wind_step,
             wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
+            fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm"):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1286,6 +1398,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         mode=mode,
         wind_unit=wind_unit,
         pwat_unit=pwat_unit,
+        temp_unit=temp_unit,
     )
 
     def draw_custom_filled(plot_values, *, ylabel: str, extend: str = "both"):
@@ -1321,8 +1434,8 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             plot_vals  = data_array.values
         else:
             max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
-            unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
-            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
+            unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
+            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
         if mode == "anomaly" and variable == "wind_speed":
             native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
             breakpoints = native_cfg["breakpoints"]
@@ -1405,7 +1518,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
 
     elif variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
         cfg = _TEMP_SCALES[_render_level(variable, level)]
-        temp_label = "2m Temperature" if variable == "temp_2m" else f"Temperature ({cfg['unit']})"
+        shown_unit = _temp_display_unit(variable, level, temp_unit)
+        name = "2m Temperature" if variable == "temp_2m" else "Temperature"
+        temp_label = f"{name} (°{shown_unit})"
         if not draw_custom_filled(data_array.values, ylabel=temp_label, extend='both'):
             breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step)
             cmap = mcolors.ListedColormap(interval_colors)
@@ -1417,10 +1532,23 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 levels=breakpoints_k, cmap=cmap, norm=norm,
                 transform=ccrs.PlateCarree(), extend='both',
             )
-            tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
-            tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
+            if shown_unit == cfg["unit"]:
+                # Native unit: round ticks straight from the scale config.
+                tick_step = color_step if color_step >= 10 else max(color_step * round(10 / color_step), color_step)
+                tick_vals = list(range(cfg["t_min"], cfg["t_max"] + 1, tick_step))
+                tick_positions_k = [to_k(t) for t in tick_vals]
+            else:
+                # Unit override: boundaries stay physically anchored; ticks land
+                # on round values of the chosen unit within the same K range.
+                from_k = _k_to_f if shown_unit == "F" else (lambda v: v - 273.15)
+                back_to_k = _f_to_k if shown_unit == "F" else _c_to_k
+                tick_step = 10 if shown_unit == "F" else 5
+                u_min = int(np.ceil(from_k(breakpoints_k[0]) / tick_step) * tick_step)
+                u_max = int(np.floor(from_k(breakpoints_k[-1]) / tick_step) * tick_step)
+                tick_vals = list(range(u_min, u_max + 1, tick_step))
+                tick_positions_k = [back_to_k(t) for t in tick_vals]
             cbar_cfg = {
-                'ticks':      [to_k(t) for t in tick_vals],
+                'ticks':      tick_positions_k,
                 'ticklabels': [str(t) for t in tick_vals],
                 'ylabel':     temp_label,
                 'extend':     'both',
@@ -1433,13 +1561,19 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         v0 = float(np.floor(dam.values.min() / interval) * interval)
         v1 = float(np.ceil( dam.values.max() / interval) * interval)
         levels = np.arange(v0, v1 + interval / 2, interval)
+        if fill_mode == "shaded":
+            fill_cfg = _height_fill_cfg(level) or _HEIGHT_CONTOUR_SCALE_CONFIG
+            plot_obj, cbar_cfg = _draw_anchored_fill(
+                ax, dam.values, data_array, levels,
+                fill_cfg, 'Geopotential Height (dam)',
+            )
         cs = ax.contour(
             data_array.longitude, data_array.latitude, dam.values,
             levels=levels, colors='black', linewidths=0.8,
             transform=ccrs.PlateCarree(),
         )
         ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
-        # height uses contour lines only — no colorbar
+        # contours-only mode has no colorbar
 
     elif variable == "surface_pressure":
         hpa = data_array / 100.0
@@ -1447,13 +1581,18 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         v0 = float(np.floor(hpa.values.min() / interval) * interval)
         v1 = float(np.ceil( hpa.values.max() / interval) * interval)
         levels = np.arange(v0, v1 + interval / 2, interval)
+        if fill_mode == "shaded":
+            plot_obj, cbar_cfg = _draw_anchored_fill(
+                ax, hpa.values, data_array, levels,
+                _MSLP_CONTOUR_SCALE_CONFIG, 'Mean Sea Level Pressure (mb)',
+            )
         cs = ax.contour(
             data_array.longitude, data_array.latitude, hpa.values,
             levels=levels, colors='black', linewidths=0.8,
             transform=ccrs.PlateCarree(),
         )
         ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
-        # MSLP uses standard 4 hPa / mb isobars only — no colorbar
+        # standard 4 mb isobars; contours-only mode has no colorbar
 
     elif variable == "rel_humidity":
         if not draw_custom_filled(data_array.values, ylabel='Relative Humidity (%)', extend='both'):
@@ -1548,6 +1687,23 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
 
     else:
         raise ValueError(f"No fixed rendering scale configured for variable: {variable}")
+
+    # Raw-field context contours on anomaly/normalized maps: departures only
+    # make sense against the actual pattern they depart from.
+    if mode in ("anomaly", "normalized") and base_array is not None:
+        plan = _base_contour_plan(variable, level, base_array.values, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
+        if plan is not None:
+            base_disp, base_interval = plan
+            b0 = float(np.floor(np.nanmin(base_disp) / base_interval) * base_interval)
+            b1 = float(np.ceil(np.nanmax(base_disp) / base_interval) * base_interval)
+            base_levels = np.arange(b0, b1 + base_interval / 2, base_interval)
+            if len(base_levels) >= 2:
+                cs = ax.contour(
+                    base_array.longitude, base_array.latitude, base_disp,
+                    levels=base_levels, colors='black', linewidths=0.7, alpha=0.85,
+                    transform=ccrs.PlateCarree(),
+                )
+                ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%g')
 
     # Phase 2: wind overlay, title, extent, map features
     if wind_step > 0 and u_array is not None and v_array is not None:

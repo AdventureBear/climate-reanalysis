@@ -24,4 +24,9 @@ class MapRequest:
     mode: str = "raw"
     climo_source: str = "monthly-pgb"
     wind_unit: str = "kt"
-    pwat_unit: str = "mm"
+    pwat_unit: str = "in"
+    # "contours" (default) or "shaded" — how contour-first variables
+    # (MSLP, geopotential height) render their raw field.
+    fill_mode: str = "contours"
+    # "" (auto: each level's native scale unit), "F", or "C".
+    temp_unit: str = ""

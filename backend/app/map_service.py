@@ -18,6 +18,7 @@ from .map_pipeline.fetch_plan import (
     fetch_wind_climo_components,
 )
 from .map_pipeline.map_labels import map_date_label, variable_label
+from .visualizer import display_unit, has_anomaly_base_contours
 from .map_pipeline.pipeline_steps import (
     compute_normalized_anomaly,
     compute_vector_anomaly,
@@ -227,6 +228,14 @@ def create_map_buffer(req: MapRequest):
 
     date_str = map_date_label(req, selection, climo_source, use_vector_wind_anomaly, obs_source, obs)
 
+    # Anomaly shading alone is ambiguous — draw the raw field it departs from
+    # as labeled contours, and say so in the title block.
+    base_array = None
+    if req.mode in ("anomaly", "normalized") and has_anomaly_base_contours(req.variable):
+        base_array = obs_subset
+        base_unit = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit, temp_unit=req.temp_unit)
+        date_str = f"{date_str}\nContours: raw field ({base_unit})"
+
     u_subset, v_subset, step = prepare_wind_overlay(
         req,
         selection,
@@ -268,6 +277,7 @@ def create_map_buffer(req: MapRequest):
         use_vector_wind_anomaly=use_vector_wind_anomaly,
         u_subset=u_subset,
         v_subset=v_subset,
+        base_array=base_array,
     )
 
     log.info("STEP %d ✓  render complete → streaming PNG", step)

@@ -17,6 +17,7 @@ class LabelRequest(Protocol):
     level: int
     wind_unit: str
     pwat_unit: str
+    temp_unit: str
 
 
 def map_date_label(
@@ -120,7 +121,7 @@ def map_date_label(
 
 
 def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
-    units = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit)
+    units = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit, temp_unit=req.temp_unit)
     if is_surface_or_named_level(req.variable):
         return f"{VARIABLES[req.variable]['name']} ({units})"
     if use_vector_wind_anomaly:
