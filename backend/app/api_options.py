@@ -18,6 +18,11 @@ VAR_NAMES = {
     "omega": "Omega (Vertical Velocity)",
     "precip_rate": "Precipitation Rate",
     "olr": "Outgoing Longwave Radiation",
+    "cape": "CAPE (Surface-Based)",
+    "cin": "CIN (Surface-Based)",
+    "dewpoint_2m": "2m Dewpoint",
+    "absv": "Absolute Vorticity",
+    "snow_depth": "Snow Depth",
 }
 
 MODE_NAMES = {

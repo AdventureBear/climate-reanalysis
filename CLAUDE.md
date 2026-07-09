@@ -126,6 +126,7 @@ Current backend capabilities include:
 - R2 daily/monthly climatology support, with sub-monthly anomaly modes forced to `r2-daily`.
 - Climatology/anomaly modes for the starter surface/named-level variables (2m temp, 10m wind, MSLP, PWAT) via R2 single-level baselines declared as `r2_climo` specs in `config.VARIABLES`; specific humidity is raw-only.
 - Omega (VVEL, 100–1000 mb via per-variable `levels` lists), precipitation rate (mm/day display), and OLR (ULWRF at TOA), all with full climatology/anomaly support; PRATE/ULWRF are 0–3h average forecast fields.
+- Raw-only case-study variables: surface-based CAPE/CIN, 2m dewpoint (°F), absolute vorticity (10⁻⁵/s), snow depth (in) — empty `climo_sources` gates them to raw mode everywhere.
 - Wind speed, wind overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
 
 Current frontend capabilities include:

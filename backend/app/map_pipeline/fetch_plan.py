@@ -44,7 +44,7 @@ from ..retrieval import (
     get_climatology_relative_humidity,
     get_climatology_wind_speed,
 )
-from ..config import VARIABLES
+from ..config import VARIABLES, is_surface_or_named_level
 from .time_selection import TimeSelection
 
 
@@ -63,7 +63,8 @@ def _variable_fetch_key(variable: str) -> str:
 
 
 def _uses_10m_wind_overlay(variable: str) -> bool:
-    return VARIABLES[variable].get("stream") == "flx" or variable == "surface_pressure"
+    """Surface/named-level fields pair with 10m winds, not pressure-level winds."""
+    return is_surface_or_named_level(variable)
 
 
 def _flx_field(req: FetchRequest, date: str, hour: str):

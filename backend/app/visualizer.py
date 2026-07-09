@@ -428,6 +428,14 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
         return "mm/day"
     if variable == "olr":
         return "W/m²"
+    if variable in {"cape", "cin"}:
+        return "J/kg"
+    if variable == "dewpoint_2m":
+        return "°F"
+    if variable == "absv":
+        return "10⁻⁵/s"
+    if variable == "snow_depth":
+        return "in"
     return ""
 
 
@@ -537,13 +545,97 @@ _OLR_SCALE_CONFIG = {
 }
 
 _PRATE_TO_MM_DAY = 86400.0   # kg/m²/s → mm/day (1 kg/m² = 1 mm of water)
+_M_TO_IN = 39.3701
+
+# CAPE in J/kg. White below convective relevance, then the familiar
+# yellow → orange → red → magenta severity ramp.
+_CAPE_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 5000.0,
+    "anchor_values": [0.0, 250.0, 500.0, 1000.0, 2000.0, 3000.0, 4000.0, 5000.0],
+    "anchor_colors": [
+        "#ffffff", "#fff7bc", "#fee391", "#fe9929",
+        "#ec7014", "#d7301f", "#b30000", "#7a0177",
+    ],
+    "key_breakpoints": [1000.0, 2500.0],
+    "step": 100.0,
+}
+
+# CIN in J/kg (negative = inhibition). White near zero, deepening blues/purples
+# as the cap strengthens.
+_CIN_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -500.0,
+    "domain_max": 0.0,
+    "anchor_values": [-500.0, -300.0, -200.0, -100.0, -50.0, -25.0, 0.0],
+    "anchor_colors": ["#3f007d", "#54278f", "#6a51a3", "#9e9ac8", "#cbc9e2", "#f2f0f7", "#ffffff"],
+    "key_breakpoints": [-100.0, -25.0],
+    "step": 10.0,
+}
+
+# 2m dewpoint in °F (native K). Browns dry → cream → greens moist → blue-green
+# tropical; the 55–65 °F band is the severe-weather moisture benchmark.
+_DEWPOINT_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -20.0,
+    "domain_max": 85.0,
+    "anchor_values": [-20.0, 0.0, 20.0, 40.0, 55.0, 65.0, 75.0, 85.0],
+    "anchor_colors": [
+        "#8c510a", "#bf812d", "#dfc27d", "#f6e8c3",
+        "#a1d99b", "#41ab5d", "#006d2c", "#00441b",
+    ],
+    "key_breakpoints": [55.0, 65.0],
+    "step": 1.0,
+}
+
+# Absolute vorticity in 10⁻⁵ s⁻¹ (native 1/s). Diverging so Southern-Hemisphere
+# (negative) values render sensibly; NH cyclonic maxima in oranges/reds.
+_ABSV_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -30.0,
+    "domain_max": 30.0,
+    "anchor_values": [-30.0, -16.0, -8.0, 0.0, 8.0, 16.0, 30.0],
+    "anchor_colors": ["#08306b", "#4292c6", "#c6dbef", "#f7f7f7", "#fdae6b", "#e6550d", "#7f2704"],
+    "key_breakpoints": [-8.0, 8.0],
+    "step": 1.0,
+}
+
+# Snow depth in inches (native m). White → blues → purples.
+_SNOW_DEPTH_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 60.0,
+    "anchor_values": [0.0, 1.0, 4.0, 8.0, 12.0, 24.0, 36.0, 60.0],
+    "anchor_colors": [
+        "#ffffff", "#deebf7", "#9ecae1", "#4292c6",
+        "#08519c", "#54278f", "#7a0177", "#49006a",
+    ],
+    "key_breakpoints": [4.0, 12.0],
+    "step": 1.0,
+}
+
+
+def _k_to_f(values):
+    return values * 9.0 / 5.0 - 459.67
+
 
 # Variables rendered as generic filled contours from a fixed-anchor config.
-# Colorbar ticks land on every "tick_every" display units.
+# to_display converts native GRIB units → the config's display units;
+# colorbar ticks land on every "tick_every" display units.
 _FIXED_SCALE_CONFIGS: dict[str, dict] = {
-    "omega":       {**_OMEGA_SCALE_CONFIG,       "tick_every": 0.5,  "label": "Omega",              "extend": "both"},
-    "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0, "label": "Precipitation Rate", "extend": "max"},
-    "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0, "label": "OLR",                "extend": "both"},
+    "omega":       {**_OMEGA_SCALE_CONFIG,       "tick_every": 0.5,   "label": "Omega",              "extend": "both"},
+    "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0,  "label": "Precipitation Rate", "extend": "max",
+                    "to_display": lambda v: v * _PRATE_TO_MM_DAY},
+    "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
+    "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
+    "cin":         {**_CIN_SCALE_CONFIG,         "tick_every": 50.0,  "label": "CIN",                "extend": "min"},
+    "dewpoint_2m": {**_DEWPOINT_SCALE_CONFIG,    "tick_every": 10.0,  "label": "2m Dewpoint",        "extend": "both",
+                    "to_display": _k_to_f},
+    "absv":        {**_ABSV_SCALE_CONFIG,        "tick_every": 10.0,  "label": "Absolute Vorticity", "extend": "both",
+                    "to_display": lambda v: v * 1e5},
+    "snow_depth":  {**_SNOW_DEPTH_SCALE_CONFIG,  "tick_every": 6.0,   "label": "Snow Depth",         "extend": "max",
+                    "to_display": lambda v: v * _M_TO_IN},
 }
 
 
@@ -1130,9 +1222,9 @@ def describe_color_scale(
         cfg_base = _FIXED_SCALE_CONFIGS[variable]
         step = max(color_step, 1) * cfg_base["step"]
         boundaries, interval_colors, cfg = _make_fixed_display_scale(cfg_base, step=step)
-        to_display = _PRATE_TO_MM_DAY if variable == "precip_rate" else 1.0
+        to_display = cfg_base.get("to_display", lambda v: v)
         data_vals = (
-            np.asarray(data_array.values * to_display, dtype=float)
+            np.asarray(to_display(data_array.values), dtype=float)
             if data_array is not None else None
         )
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1425,8 +1517,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
 
     elif variable in _FIXED_SCALE_CONFIGS:
         cfg_base = _FIXED_SCALE_CONFIGS[variable]
-        to_display = _PRATE_TO_MM_DAY if variable == "precip_rate" else 1.0
-        plot_values = data_array.values * to_display
+        plot_values = cfg_base.get("to_display", lambda v: v)(data_array.values)
         unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
         ylabel = f"{cfg_base['label']} ({unit})"
         if not draw_custom_filled(plot_values, ylabel=ylabel, extend=cfg_base["extend"]):

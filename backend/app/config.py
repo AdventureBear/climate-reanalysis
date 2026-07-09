@@ -357,6 +357,56 @@ VARIABLES = {
         "r2_climo": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "gaussian_grid"},
         "normalized_mask_threshold": None,
     },
+    # ── Raw-only case-study fields ─────────────────────────────────────────
+    # No R2 baseline exists (or none is wired yet), so climo_sources is empty
+    # and the API/UI offer raw maps only.
+    "cape": {
+        "name": "CAPE (Surface-Based)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CAPE",
+        "level_name": "surface",
+        "display_level": "surface-based",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "cin": {
+        "name": "CIN (Surface-Based)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CIN",
+        "level_name": "surface",
+        "display_level": "surface-based",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "dewpoint_2m": {
+        "name": "2m Dewpoint",
+        "units": "K",
+        "stream": "pgb_named_level",
+        "grib_name": "DPT",
+        "level_name": "2 m above ground",
+        "display_level": "2 m above ground",
+        "climo_sources": (),   # R2 has no 2m dewpoint; derivable later from shum/pres
+        "normalized_mask_threshold": None,
+    },
+    "absv": {
+        "name": "Absolute Vorticity",
+        "units": "1/s",
+        "grib_name": "ABSV",
+        "climo_sources": (),   # no R2 vorticity files; derivable later from uwnd/vwnd
+        "normalized_mask_threshold": None,
+    },
+    "snow_depth": {
+        "name": "Snow Depth",
+        "units": "m",
+        "stream": "flx",
+        "grib_name": "SNOD",
+        "flx_level": "surface",
+        "display_level": "surface",
+        "climo_sources": (),   # R2 has weasd (water equivalent), not depth — decide later
+        "normalized_mask_threshold": None,
+    },
 }
 
 PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
