@@ -316,4 +316,18 @@ Labels state the layer depths explicitly so maps are honest about which definiti
 
 ---
 
-*Last updated: 2026-07-08 — add new Q&A pairs at the appropriate level as they arise.*
+## 22. Why does PyRe's MSLP look weaker than GFS maps over the Rockies in summer?
+
+"Sea-level pressure" over high terrain is an extrapolation, and different reduction methods disagree most under strong surface heating. A concrete comparison for July 7 2026 18z (the Colorado thermal low):
+
+| Field | Heat-low minimum |
+|---|---|
+| CORe `PRES:mean sea level` | 1011 mb |
+| CORe `MSLET:mean sea level` (Eta/membrane reduction — **what PyRe plots**) | 1007.5 mb |
+| GFS PRMSL (Shuell reduction — what Tropical Tidbits/Pivotal plot) | ~1002 mb |
+
+PyRe plots MSLET, the closest GFS-comparable reduction CORe publishes (CORe has no PRMSL). Two residual differences remain: PRMSL's Shuell reduction is known to deepen (arguably exaggerate) summer heat lows over elevated terrain, and CORe is an **ensemble mean** at T170 (~0.7°) while the GFS analysis is a single 0.25° field — averaging members smooths extremes. Expect PyRe heat lows to run a few mb weaker than PRMSL-based maps; highs and oceanic lows agree closely.
+
+---
+
+*Last updated: 2026-07-09 — add new Q&A pairs at the appropriate level as they arise.*

@@ -315,7 +315,12 @@ VARIABLES = {
         "name": "Mean Sea Level Pressure",
         "units": "Pa",
         "stream": "pgb_named_level",
-        "grib_name": "PRES",
+        # MSLET (Eta/membrane reduction), not PRES:mean sea level: the PRES
+        # field nearly erases summer thermal lows over elevated terrain
+        # (Jul 7 2026 18z CO heat low: PRES 1011 mb vs MSLET 1007.5 mb vs
+        # GFS PRMSL ~1002 mb). MSLET is the closest GFS-comparable reduction
+        # CORe publishes and is consistent with the 10m wind field.
+        "grib_name": "MSLET",
         "level_name": "mean sea level",
         "display_level": "mean sea level",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
