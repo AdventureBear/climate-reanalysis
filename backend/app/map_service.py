@@ -241,8 +241,6 @@ def create_map_buffer(req: MapRequest):
             spec = VARIABLES["surface_pressure"]["r2_climo"]
             centers_full, _ = get_r2_monthly_climo_single_level(spec, selection.obs_month)
             centers_array = select_region(centers_full, bounds)
-        elif selection.monthly_mode:
-            log.info("CENTERS  monthly obs selections not wired for MSLET — skipping H/L centers")
         elif req.variable == "surface_pressure":
             centers_array = obs_subset
         else:

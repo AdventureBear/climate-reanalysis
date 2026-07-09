@@ -323,6 +323,11 @@ VARIABLES = {
         "grib_name": "MSLET",
         "level_name": "mean sea level",
         "display_level": "mean sea level",
+        # Monthly archive carries only the PRES reduction (level string "MSL",
+        # no MSLET). Fine for monthly/seasonal composites and anomalies —
+        # the PRES-vs-MSLET disagreement is a heated-terrain effect.
+        "monthly_grib_name": "PRES",
+        "monthly_level_name": "MSL",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "mslp", "var": "mslp", "dataset": "surface"},
         "normalized_mask_threshold": None,

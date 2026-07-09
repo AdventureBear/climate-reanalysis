@@ -562,6 +562,64 @@ def _fetch_r2m_field(year: int, month: int, grib_name: str, level: int) -> xr.Da
     return da
 
 
+def _named_level_obs_path(grib_name: str, level_name: str, year: int, month: int) -> str:
+    tag = level_name.replace(" ", "-")
+    return os.path.join(_OBS_MONTHLY_CACHE_DIR, f"{grib_name}_{tag}_{year}{month:02d}.nc")
+
+
+def fetch_monthly_named_level_field(year: int, month: int, grib_name: str, level_name: str) -> xr.DataArray:
+    """
+    Monthly-mean named-level field (e.g. PRES:MSL) with a two-tier hierarchy:
+      1. CORe monthly pgb archive — note its level strings differ from the
+         3-hourly files ("MSL", not "mean sea level") and it carries the PRES
+         reduction only (no MSLET).
+      2. R2 monthly mslp OPeNDAP (MSL pressure only, 1979–2021).
+    No synoptic fallback: that is the 124-fetch pattern monthly mode avoids.
+    """
+    path = _named_level_obs_path(grib_name, level_name, year, month)
+    cached = _load_obs_monthly(path)
+    if cached is not None:
+        return cached
+
+    records = _fetch_monthly_index_if_present(year, month)
+    if records is not None:
+        try:
+            da = _fetch_record_by_level(_pgb_monthly_url(year, month), records, grib_name, level_name)
+            da.attrs["_pyre_obs_source"] = "CORe-pgb"
+            _save_obs_monthly(da, path)
+            return da
+        except ValueError as exc:
+            if "not found in index" not in str(exc):
+                raise
+            log.info(
+                "OBS      CORe-pgb: %s:%s missing for %s %d → next tier",
+                grib_name, level_name, _cal.month_abbr[month], year,
+            )
+
+    if (grib_name, level_name) == ("PRES", "MSL") and R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
+        log.info("OBS      %s %d  %s:%s  → R2-monthly (mslp)", _cal.month_abbr[month], year, grib_name, level_name)
+        url = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/surface/mslp.mon.mean.nc"
+        ds = xr.open_dataset(url, engine="netcdf4")
+        da = ds["mslp"].sel(time=f"{year}-{month:02d}-01", method="nearest").load()
+        ds.close()
+        da = da.where(np.abs(da) < 1e30)
+        da = da.rename({"lat": "latitude", "lon": "longitude"})
+        da.attrs["_pyre_obs_source"] = "R2-monthly"
+        _save_obs_monthly(da, path)
+        return da
+
+    raise DataUnavailableError(
+        f"No monthly {grib_name}:{level_name} data for {year}-{month:02d} — "
+        "the CORe monthly archive has not published this month yet."
+    )
+
+
+def fetch_monthly_named_level_composite(
+    year_months: list[tuple[int, int]], grib_name: str, level_name: str
+) -> xr.DataArray:
+    return _mean_of_monthly(fetch_monthly_named_level_field, year_months, grib_name, level_name)
+
+
 def _pgb_monthly_url(year: int, month: int) -> str:
     return f"{CLIMO_PGB_BASE}/pgb.f00{year:04d}{month:02d}"
 

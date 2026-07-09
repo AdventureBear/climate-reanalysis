@@ -156,8 +156,14 @@ export const SURFACE_LEVELS = new Set([
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
   'surface_2m_dpt', 'surface_snod',
 ])
-// Surface/named-level API variables: no monthly obs composites (backend gate),
-// and wind overlays use 10m winds.
+// Surface/named-level API variables whose monthly obs composites are NOT
+// wired (MSLP has a monthly archive record and is exempt). Mirrors the
+// backend gate keyed on monthly_grib_name in config.py.
+export const MONTHLY_UNAVAILABLE_API_VARIABLES = new Set([
+  'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'olr',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
+])
+// Surface/named-level API variables: wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',

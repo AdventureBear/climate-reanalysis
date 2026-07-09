@@ -20,6 +20,7 @@ from ..climo_r2 import (
 )
 from ..retrieval import (
     fetch_field,
+    fetch_monthly_named_level_composite,
     fetch_field_by_level_name,
     fetch_field_composite,
     fetch_field_daily_composite,
@@ -139,6 +140,11 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("monthly", "wind_speed"): lambda req, sel, _grib: fetch_monthly_wind_speed_composite(sel.year_months, req.level),
     ("monthly", "rel_humidity"): lambda req, sel, _grib: fetch_monthly_relative_humidity_composite(sel.year_months, req.level),
     ("monthly", "field"): lambda req, sel, grib: fetch_monthly_field_composite(sel.year_months, grib, req.level),
+    ("monthly", "pgb_named_level"): lambda req, sel, _grib: fetch_monthly_named_level_composite(
+        sel.year_months,
+        VARIABLES[req.variable]["monthly_grib_name"],
+        VARIABLES[req.variable]["monthly_level_name"],
+    ),
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level),
     ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level),
@@ -264,7 +270,10 @@ def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
         return fetch_named_level_field_composite(selection.date_list, req.hour, grib, level_name)
     if kind == "daily":
         return fetch_named_level_field_daily_composite(selection.date_list, selection.daily_hours, grib, level_name)
-    raise ValueError(f"MSLP centers are not available for {kind!r} selections")
+    # Monthly selections use the monthly archive (PRES:MSL reduction).
+    return fetch_monthly_named_level_composite(
+        selection.year_months, cfg["monthly_grib_name"], cfg["monthly_level_name"]
+    )
 
 
 def _mean_named_flx_pairs(date_hour_pairs: list[tuple[str, str]], grib: str, level_name: str) -> xr.DataArray:
@@ -298,8 +307,6 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
         if mode == "climatology":
             spec = VARIABLES["surface_pressure"]["r2_climo"]
             return get_r2_monthly_climo_single_level(spec, month)[0], meta
-        if selection.monthly_mode:
-            return None, "monthly obs not wired for MSLET"
         return fetch_mslp_field_for_selection(req, selection), meta
 
     if kind == "height":

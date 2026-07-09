@@ -69,18 +69,24 @@ def _silence_hdf5_errors() -> None:
     request. H5Eset_auto2(H5E_DEFAULT=0, NULL, NULL) disables the printer;
     Python exceptions from netCDF4 still propagate normally.
     """
+    candidates: list[str] = []
+    # The HDF5 actually loaded in-process is usually the wheel-bundled copy
+    # next to netCDF4 (macOS: .dylibs/, Linux: ../netCDF4.libs/) — system
+    # lookups miss it entirely, which left the spam on.
+    try:
+        import glob
+        import netCDF4
+        pkg = os.path.dirname(netCDF4.__file__)
+        for pattern in (".dylibs/libhdf5*.dylib", "../netCDF4.libs/libhdf5*.so*"):
+            candidates.extend(sorted(glob.glob(os.path.join(pkg, pattern))))
+    except Exception:
+        pass
     for name in ("hdf5", "hdf5_serial", "hdf5_openmpi"):
         path = ctypes.util.find_library(name)
-        if not path:
-            continue
-        try:
-            lib = ctypes.CDLL(path)
-            lib.H5Eset_auto2(0, None, None)
-            return
-        except Exception:
-            continue
-    # Direct name fallback (macOS / Linux)
-    for path in ("libhdf5.dylib", "libhdf5.so"):
+        if path:
+            candidates.append(path)
+    candidates.extend(("libhdf5.dylib", "libhdf5.so"))
+    for path in candidates:
         try:
             ctypes.CDLL(path).H5Eset_auto2(0, None, None)
             return

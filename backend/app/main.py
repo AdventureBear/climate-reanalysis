@@ -225,7 +225,12 @@ def get_map(
     # (no ("monthly", "flx") obs fetcher) — a separate gap from climatology.
     # Climatology mode is exempt: it fetches no observations, and its month
     # arrives via the months param.
-    if is_surface_or_named_level(variable) and months and mode != "climatology":
+    if (
+        is_surface_or_named_level(variable)
+        and months
+        and mode != "climatology"
+        and not VARIABLES.get(variable, {}).get("monthly_grib_name")
+    ):
         raise HTTPException(
             status_code=422,
             detail="CORe surface/named-level starter fields currently support 3-hourly and daily maps only.",

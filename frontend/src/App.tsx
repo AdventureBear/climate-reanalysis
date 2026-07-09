@@ -16,7 +16,7 @@ import { HOURS, normalizeColorStep } from './sharedOptions'
 import {
   COLOR_LAB_SINGLE_LEVEL_VARIABLES,
   COLOR_LAB_VARIABLES,
-  FLX_VARIABLES,
+  MONTHLY_UNAVAILABLE_API_VARIABLES,
   PRESSURE_LEVELS,
   RAW_ONLY_API_VARIABLES,
   SURFACE_LEVELS,
@@ -819,7 +819,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
   const isThreeHourly = timeScale === '3-hourly'
-  const isFlxVariable = FLX_VARIABLES.has(apiVariable)
+  const monthlyUnavailable = MONTHLY_UNAVAILABLE_API_VARIABLES.has(apiVariable)
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
   // Wind maps style themselves (shaded/barbs/vectors/isotachs) — a separate
   // "wind overlay" on a wind map would draw the same data twice.
@@ -965,10 +965,10 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       if (displayMode !== 'raw') setDisplayMode('raw')
       if (timeScale === 'climatology') setTimeScale('3-hourly')
     }
-    // Monthly obs composites are not wired for surface/named-level fields,
-    // independent of climatology support.
-    if (isFlxVariable && timeScale === 'monthly') setTimeScale('3-hourly')
-  }, [displayMode, rawOnlyVariable, isFlxVariable, timeScale])
+    // Monthly obs composites are not wired for most surface/named-level
+    // fields (MSLP is exempt — its monthly archive record is wired).
+    if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
+  }, [displayMode, rawOnlyVariable, monthlyUnavailable, timeScale])
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {
@@ -1243,7 +1243,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
         options={[
           { value: '3-hourly',    label: '3-Hourly' },
           { value: 'daily',       label: 'Daily' },
-          { value: 'monthly',     label: 'Monthly', disabled: isFlxVariable },
+          { value: 'monthly',     label: 'Monthly', disabled: monthlyUnavailable },
           { value: 'climatology', label: 'Climatology', disabled: rawOnlyVariable },
         ]}
         value={timeScale}

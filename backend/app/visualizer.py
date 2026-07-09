@@ -1504,17 +1504,19 @@ def _draw_contour_overlay(ax, overlay: dict, temp_unit: str = "") -> None:
     isobars solid dark gray at 4 mb, heights solid black at 6 dam,
     isotherms dashed red at 10°F / 5°C.
     """
+    import matplotlib.patheffects as pe
+
     kind = overlay["kind"]
     da = overlay["data"]
     if kind == "pressure":
-        disp, interval, color, ls = da.values / 100.0, 4.0, "#3d3d3d", "solid"
+        disp, interval, color, ls, lw = da.values / 100.0, 4.0, "#2b2b2b", "solid", 1.0
     elif kind == "height":
-        disp, interval, color, ls = da.values / 10.0, 6.0, "black", "solid"
+        disp, interval, color, ls, lw = da.values / 10.0, 6.0, "black", "solid", 1.0
     else:
         variable = "temp_2m" if overlay.get("is_2m") else "temp"
         unit = _temp_display_unit(variable, overlay["level"], temp_unit)
         disp = _k_to_f(da.values) if unit == "F" else da.values - 273.15
-        interval, color, ls = (10.0 if unit == "F" else 5.0), "#c0392b", "dashed"
+        interval, color, ls, lw = (10.0 if unit == "F" else 5.0), "#e8112d", "dashed", 1.2
     v0 = float(np.floor(np.nanmin(disp) / interval) * interval)
     v1 = float(np.ceil(np.nanmax(disp) / interval) * interval)
     levels = np.arange(v0, v1 + interval / 2, interval)
@@ -1522,10 +1524,16 @@ def _draw_contour_overlay(ax, overlay: dict, temp_unit: str = "") -> None:
         return
     cs = ax.contour(
         da.longitude, da.latitude, disp,
-        levels=levels, colors=color, linewidths=0.9, linestyles=ls,
+        levels=levels, colors=color, linewidths=lw, linestyles=ls,
         transform=ccrs.PlateCarree(), zorder=10,
     )
-    ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%g')
+    # White halo under lines and labels so overlays stay legible over
+    # saturated shading.
+    halo_lines = [pe.withStroke(linewidth=lw + 1.6, foreground="white", alpha=0.85)]
+    cs.set_path_effects(halo_lines)
+    labels = ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%g')
+    for label in labels or []:
+        label.set_path_effects([pe.withStroke(linewidth=2.2, foreground="white")])
 
 
 def _draw_pressure_centers(ax, centers_da) -> None:
@@ -1949,6 +1957,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                     transform=ccrs.PlateCarree(),
                     scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
                 )
+
+    if contour_overlays and plot_obj is not None:
+        # Overlay-contrast rule: wash the fill slightly so line overlays read
+        # on top of saturated shading.
+        try:
+            plot_obj.set_alpha(0.85)
+        except (AttributeError, TypeError):
+            pass
 
     for overlay in (contour_overlays or []):
         _draw_contour_overlay(ax, overlay, temp_unit)
