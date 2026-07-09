@@ -30,3 +30,6 @@ class MapRequest:
     fill_mode: str = "contours"
     # "" (auto: each level's native scale unit), "F", or "C".
     temp_unit: str = ""
+    # Draw labeled isotach contours from the overlay wind components.
+    # Independent of wind_step/wind_type glyphs — styles combine.
+    isotachs: int = 0

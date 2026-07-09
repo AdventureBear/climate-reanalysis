@@ -44,6 +44,7 @@ export type MapRecipe = {
     step: string
     type: WindOverlayType
     anomalyOverlay: WindAnomalyOverlay
+    isotachs?: boolean
   }
   windUnit?: WindUnit
   pwatUnit?: PwatUnit
@@ -238,6 +239,10 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
       params.wind_type = recipe.wind.type
       params.wind_overlay_mode = 'actual'
     }
+    // Isotachs combine with (or replace) glyphs; not offered on anomaly overlays.
+    if (recipe.wind.isotachs && recipe.wind.anomalyOverlay === 'none') {
+      params.isotachs = '1'
+    }
   }
 
   const safeColorStep = normalizeColorStep(recipe.colorStep ?? '1')
@@ -366,11 +371,12 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     displayMode: displayMode(params.get('mode')),
     climoSource: climoSource(params.get('climo_source')),
     time: timeRecipeFromUrl(params),
-    wind: windStep === null ? undefined : {
-      on: windOverlayMode !== 'anomaly' && Number(windStep) > 0,
-      step: windStep,
+    wind: windStep === null && params.get('isotachs') !== '1' ? undefined : {
+      on: windOverlayMode !== 'anomaly' && Number(windStep ?? 0) > 0,
+      step: windStep ?? '2',
       type: parsedWindType,
       anomalyOverlay: windOverlayMode === 'anomaly' ? parsedWindType : 'none',
+      isotachs: params.get('isotachs') === '1',
     },
     windUnit: windUnit(params.get('wind_unit')),
     pwatUnit: pwatUnit(params.get('pwat_unit')),

@@ -16,6 +16,7 @@ class WindOverlayRequest(Protocol):
     wind_overlay_mode: str
     mode: str
     level: int
+    isotachs: int
 
 
 def prepare_wind_overlay(
@@ -30,7 +31,9 @@ def prepare_wind_overlay(
     cached_u=None,
     cached_v=None,
 ):
-    if req.wind_step <= 0 or req.mode == "climatology":
+    # Climatology mode is handled by the caller (overlay winds come from the
+    # climatology, not observations).
+    if (req.wind_step <= 0 and not req.isotachs) or req.mode == "climatology":
         return None, None, step
 
     step += 1

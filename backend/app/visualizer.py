@@ -1367,18 +1367,18 @@ def describe_color_scale(
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
             region=region, u_array=u_array, v_array=v_array, wind_step=wind_step,
             wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
-            fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array,
+            fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1705,9 +1705,10 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 )
                 ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%g')
 
-    # Phase 2: wind overlay, title, extent, map features
-    if wind_step > 0 and u_array is not None and v_array is not None:
-        if wind_type == "isotachs":
+    # Phase 2: wind overlay, title, extent, map features.
+    # Isotachs and glyphs are independent layers over the same components.
+    if u_array is not None and v_array is not None:
+        if isotachs:
             # Labeled speed contours on the full grid (density stride does not
             # apply). Interval/threshold in display units: below the threshold
             # is background flow that would only clutter the map.
@@ -1723,8 +1724,13 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                     transform=ccrs.PlateCarree(),
                 )
                 ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%d')
-        else:
-            s = wind_step
+        if wind_step > 0:
+            # Density is defined against the 0.25° obs grid; coarser sources
+            # (2.5° R2 climatology, gaussian grids) shrink the stride so the
+            # same setting yields the same on-map spacing.
+            lon_vals = u_array.longitude.values
+            grid_deg = abs(float(lon_vals[1] - lon_vals[0])) if len(lon_vals) > 1 else 0.25
+            s = max(1, round(wind_step * 0.25 / grid_deg))
             lons = u_array.longitude.values[::s]
             lats = u_array.latitude.values[::s]
             u    = u_array.values[::s, ::s]

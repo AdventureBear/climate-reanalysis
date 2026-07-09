@@ -249,6 +249,20 @@ def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int
     return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, day, req.level)
 
 
+def fetch_climo_overlay_wind_components(req: FetchRequest, climo_source: str, month: int):
+    """
+    Climatological mean (U, V) for barbs/vectors/isotachs on climatology-mode
+    maps: 10m components for surface/named-level fields, otherwise the map's
+    pressure level. Climatology mode always resolves to a monthly source.
+    """
+    if _uses_10m_wind_overlay(req.variable):
+        spec = VARIABLES["wind_10m"]["r2_climo"]
+        u_mean, _ = get_r2_monthly_climo_single_level(spec["u"], month)
+        v_mean, _ = get_r2_monthly_climo_single_level(spec["v"], month)
+        return u_mean, v_mean
+    return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, 15, req.level)
+
+
 def fetch_weighted_wind_climo_components(req: FetchRequest, climo_source: str, selection: TimeSelection):
     month_weights = _selection_month_weights(selection)
     if len(month_weights) == 1:

@@ -166,7 +166,11 @@ def get_map(
     pwat_unit: str = "in",
     fill_mode: str = "contours",
     temp_unit: str = "",
+    isotachs: int = 0,
 ):
+    # Back-compat: isotachs was briefly a wind_type value.
+    if wind_type == "isotachs":
+        wind_type, wind_step, isotachs = "vectors", 0, 1
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours' or 'shaded'")
@@ -236,6 +240,7 @@ def get_map(
                 pwat_unit=pwat_unit,
                 fill_mode=fill_mode,
                 temp_unit=temp_unit,
+                isotachs=isotachs,
             )
         )
         return StreamingResponse(buf, media_type="image/png")

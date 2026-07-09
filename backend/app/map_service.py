@@ -9,6 +9,7 @@ from .config import REGIONS, VARIABLES, is_surface_or_named_level
 from .map_pipeline.climo_policy import resolve_climo_source
 from .map_pipeline.fetch_plan import (
     fetch_climo,
+    fetch_climo_overlay_wind_components,
     fetch_climo_weighted,
     fetch_daily_climo_for_selection,
     fetch_daily_wind_climo_components_for_selection,
@@ -133,7 +134,7 @@ def create_map_buffer(req: MapRequest):
         step += 1
         obs_what, obs_method = obs_description(req, selection)
         log.info("")
-        if req.variable == "wind_speed" and (req.wind_step > 0 or use_vector_wind_anomaly):
+        if req.variable == "wind_speed" and (req.wind_step > 0 or req.isotachs or use_vector_wind_anomaly):
             purpose = "wind speed + overlay" if req.wind_step > 0 else "wind vector anomaly"
             log.info("STEP %d  Fetch U + V components @ %dmb  (%s — single fetch)", step, req.level, purpose)
             log.info("  Method  : %s", obs_method)
@@ -236,23 +237,43 @@ def create_map_buffer(req: MapRequest):
         base_unit = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit, temp_unit=req.temp_unit)
         date_str = f"{date_str}\nContours: raw field ({base_unit})"
 
-    u_subset, v_subset, step = prepare_wind_overlay(
-        req,
-        selection,
-        bounds,
-        step,
-        use_vector_wind_anomaly=use_vector_wind_anomaly,
-        anomaly_u_subset=anomaly_u_subset,
-        anomaly_v_subset=anomaly_v_subset,
-        cached_u=cached_u,
-        cached_v=cached_v,
-    )
+    if req.mode == "climatology" and (req.wind_step > 0 or req.isotachs):
+        # Overlay winds on a climatology map are the climatological means —
+        # there are no observations to draw.
+        step += 1
+        log.info("")
+        log.info("STEP %d  Fetch climatological wind for overlay", step)
+        climo_u, climo_v = fetch_climo_overlay_wind_components(req, climo_source, selection.obs_month)
+        u_subset = select_region(climo_u, bounds)
+        v_subset = select_region(climo_v, bounds)
+        log.info("STEP %d ✓  overlay winds ready (climatological mean)", step)
+    else:
+        u_subset, v_subset, step = prepare_wind_overlay(
+            req,
+            selection,
+            bounds,
+            step,
+            use_vector_wind_anomaly=use_vector_wind_anomaly,
+            anomaly_u_subset=anomaly_u_subset,
+            anomaly_v_subset=anomaly_v_subset,
+            cached_u=cached_u,
+            cached_v=cached_v,
+        )
     var_label = variable_label(req, use_vector_wind_anomaly)
     if u_subset is not None and v_subset is not None:
         overlay_level = "10m" if is_surface_or_named_level(req.variable) else f"{req.level}mb"
-        overlay_kind = "Wind Anomaly" if req.wind_overlay_mode == "anomaly" else "Wind"
-        overlay_glyph = {"barbs": "Barbs", "isotachs": "Isotachs"}.get(req.wind_type, "Vectors")
-        var_label = f"{var_label}, {overlay_level} {overlay_kind} {overlay_glyph} ({req.wind_unit})"
+        overlay_kind = (
+            "Climatological Wind" if req.mode == "climatology"
+            else "Wind Anomaly" if req.wind_overlay_mode == "anomaly"
+            else "Wind"
+        )
+        parts = []
+        if req.wind_step > 0:
+            parts.append("Barbs" if req.wind_type == "barbs" else "Vectors")
+        if req.isotachs:
+            parts.append("Isotachs")
+        if parts:
+            var_label = f"{var_label}, {overlay_level} {overlay_kind} {' + '.join(parts)} ({req.wind_unit})"
 
     step += 1
     log.info("")

@@ -746,6 +746,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windStep,  setWindStep]  = useState('2')
   const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
   const [windAnomalyOverlay, setWindAnomalyOverlay] = useState<WindAnomalyOverlay>('none')
+  const [isotachsOn, setIsotachsOn] = useState(false)
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
@@ -857,6 +858,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
             step: windStep,
             type: windType,
             anomalyOverlay: activeWindAnomaly,
+            isotachs: activeWindAnomaly === 'none' && isotachsOn,
           }
         : undefined,
       windUnit,
@@ -923,6 +925,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       setWindType(recipe.wind.type)
       setWindOn(recipe.wind.on)
       setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
+      setIsotachsOn(Boolean(recipe.wind.isotachs))
     }
   }
 
@@ -2307,6 +2310,32 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
+                {isWindVariable && !canUseWindAnomalyOverlay && (
+                  <VariableDisplayControl label="Wind Style">
+                    <div className="flex flex-col gap-1">
+                      <TabStrip
+                        options={[
+                          { value: 'none', label: 'Shaded only' },
+                          { value: 'barbs', label: '+ Barbs' },
+                          { value: 'vectors', label: '+ Vectors' },
+                        ]}
+                        value={windOn ? (windType === 'vectors' ? 'vectors' : 'barbs') : 'none'}
+                        onChange={v => {
+                          if (v === 'none') {
+                            setWindOn(false)
+                            return
+                          }
+                          setWindOn(true)
+                          setWindType(v as WindOverlayType)
+                        }}
+                        fullWidth
+                      />
+                      <ToggleButton active={isotachsOn} onClick={() => setIsotachsOn(o => !o)}>
+                        + Isotachs
+                      </ToggleButton>
+                    </div>
+                  </VariableDisplayControl>
+                )}
                 {variable === 'temp' && (
                   <VariableDisplayControl label="Temperature Units">
                     <TabStrip
@@ -2453,30 +2482,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                       const next = v as WindAnomalyOverlay
                       setWindAnomalyOverlay(next)
                       if (next !== 'none') setWindOn(false)
-                    }}
-                    fullWidth
-                  />
-                </VariableDisplayControl>
-              </CardRow>
-            )}
-            {isWindVariable && !canUseWindAnomalyOverlay && (
-              <CardRow>
-                <VariableDisplayControl label="Wind Style">
-                  <TabStrip
-                    options={[
-                      { value: 'shaded', label: 'Shaded' },
-                      { value: 'barbs', label: '+ Barbs' },
-                      { value: 'vectors', label: '+ Vectors' },
-                      { value: 'isotachs', label: '+ Isotachs' },
-                    ]}
-                    value={windOn ? windType : 'shaded'}
-                    onChange={v => {
-                      if (v === 'shaded') {
-                        setWindOn(false)
-                        return
-                      }
-                      setWindOn(true)
-                      setWindType(v as WindOverlayType)
                     }}
                     fullWidth
                   />

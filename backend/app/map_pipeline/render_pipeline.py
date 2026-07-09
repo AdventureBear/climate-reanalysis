@@ -22,6 +22,7 @@ class RenderRequest(Protocol):
     wind_type: str
     fill_mode: str
     temp_unit: str
+    isotachs: int
 
 
 def render_map_product(
@@ -76,4 +77,5 @@ def render_map_product(
         fill_mode=req.fill_mode,
         temp_unit=req.temp_unit,
         base_array=base_array,
+        isotachs=bool(req.isotachs),
     )
