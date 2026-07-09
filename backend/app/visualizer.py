@@ -576,6 +576,8 @@ _PRECIP_RATE_SCALE_CONFIG = {
     ],
     "key_breakpoints": [5.0, 20.0],
     "step": 1.0,
+    # First division above zero stays pure white — trace rates are not "rain".
+    "white_below": 1.0,
 }
 
 # OLR in W/m². Low OLR = cold cloud tops / deep convection (cool purples and
@@ -771,6 +773,15 @@ def _make_fixed_display_scale(cfg: dict, step: float | None = None) -> tuple[lis
     if abs(steps[-1] - domain_max) > 1e-9:
         steps.append(domain_max)
     colors = _interpolate_interval_colors(steps, _resolve_anchor_values(cfg), cfg["anchor_colors"])
+    # Optional pure-white floor: intervals at/below this display value render
+    # white instead of interpolated tints (e.g. trace precipitation).
+    white_below = cfg.get("white_below")
+    if white_below is not None:
+        mids = _interval_midpoints(steps)
+        colors = [
+            (1.0, 1.0, 1.0) if mid <= white_below + 1e-9 else color
+            for mid, color in zip(mids, colors)
+        ]
     return steps, colors, cfg
 
 
