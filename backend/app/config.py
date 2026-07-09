@@ -360,6 +360,9 @@ VARIABLES = {
     # ── Raw-only case-study fields ─────────────────────────────────────────
     # No R2 baseline exists (or none is wired yet), so climo_sources is empty
     # and the API/UI offer raw maps only.
+    # CAPE/CIN parcel variants. NCEP layer definitions: the 180-0 mb layer is
+    # the mixed-layer parcel (note: SPC mesoanalysis uses 100 mb) and the
+    # 255-0 mb layer is the "best" parcel — the conventional MUCAPE proxy.
     "cape": {
         "name": "CAPE (Surface-Based)",
         "units": "J/kg",
@@ -370,6 +373,26 @@ VARIABLES = {
         "climo_sources": (),
         "normalized_mask_threshold": None,
     },
+    "cape_ml": {
+        "name": "CAPE (180-0 mb Mixed-Layer)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CAPE",
+        "level_name": "180-0 mb above ground",
+        "display_level": "180-0 mb mixed layer",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "cape_mu": {
+        "name": "CAPE (255-0 mb Most-Unstable)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CAPE",
+        "level_name": "255-0 mb above ground",
+        "display_level": "255-0 mb most-unstable",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
     "cin": {
         "name": "CIN (Surface-Based)",
         "units": "J/kg",
@@ -377,6 +400,26 @@ VARIABLES = {
         "grib_name": "CIN",
         "level_name": "surface",
         "display_level": "surface-based",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "cin_ml": {
+        "name": "CIN (180-0 mb Mixed-Layer)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CIN",
+        "level_name": "180-0 mb above ground",
+        "display_level": "180-0 mb mixed layer",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "cin_mu": {
+        "name": "CIN (255-0 mb Most-Unstable)",
+        "units": "J/kg",
+        "stream": "pgb_named_level",
+        "grib_name": "CIN",
+        "level_name": "255-0 mb above ground",
+        "display_level": "255-0 mb most-unstable",
         "climo_sources": (),
         "normalized_mask_threshold": None,
     },

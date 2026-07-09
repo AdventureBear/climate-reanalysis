@@ -56,15 +56,33 @@ R2 is used as a **climatology baseline** — the reference against which we meas
 
 ## 6. What variables are available?
 
-| Variable | Description | Derived? |
-|---|---|---|
-| Wind Speed | Magnitude of horizontal wind | Yes — computed from U + V components |
-| Temperature | Air temperature | No |
-| Geopotential Height | Height of a pressure surface | No |
-| Relative Humidity | RH (%) | Yes — derived from Specific Humidity + Temperature via Bolton formula |
-| Specific Humidity | Water vapor mixing ratio | No |
+**Pressure-level variables** (16 standard levels: 1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10 mb unless noted):
 
-All variables are available at 16 standard pressure levels: 1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10 mb.
+| Variable | Description | Notes |
+|---|---|---|
+| Wind Speed | Magnitude of horizontal wind | Derived from U + V components |
+| Temperature | Air temperature | |
+| Geopotential Height | Height of a pressure surface | |
+| Relative Humidity | RH (%) | Derived from Specific Humidity + Temperature via Bolton formula |
+| Specific Humidity | Water vapor mixing ratio | Raw maps only (no R2 baseline) |
+| Omega | Vertical velocity (Pa/s) | 100–1000 mb only — CORe publishes no stratospheric omega |
+| Absolute Vorticity | 10⁻⁵ s⁻¹ | Raw maps only |
+
+**Surface and single-level variables:**
+
+| Variable | Description | Notes |
+|---|---|---|
+| 2m Temperature | Air temperature at 2 m | |
+| 10m Wind Speed | Wind speed at 10 m | Climatology derived from R2 u/v per sample |
+| Mean Sea Level Pressure | MSLP | |
+| Precipitable Water | Total-column water vapor | |
+| Precipitation Rate | Displayed mm/day | 0–3 h average forecast field, not instantaneous |
+| Outgoing Longwave Radiation | ULWRF at top of atmosphere | 0–3 h average forecast field |
+| CAPE / CIN | Three parcel variants each — see Q21 | Raw maps only |
+| 2m Dewpoint | Displayed °F | Raw maps only |
+| Snow Depth | Displayed inches | Raw maps only |
+
+"Raw maps only" means no climatology/anomaly modes are wired yet — either R2 has no matching baseline file, or the derivation is deferred (see `climo_sources` in `backend/app/config.py`).
 
 ---
 
@@ -284,4 +302,16 @@ The 5-day window is how PSL computed their own LTM values. It is strictly better
 
 ---
 
-*Last updated: 2026-05-10 — add new Q&A pairs at the appropriate level as they arise.*
+## 21. What do the CAPE/CIN parcel options mean, and how do they compare to SPC's?
+
+CORe publishes three CAPE records (and matching CIN), exposed in the Level selector:
+
+- **Surface-based** — the parcel lifted from the surface (SBCAPE).
+- **Mixed-layer (180-0 mb)** — the parcel built from the lowest 180 mb of the atmosphere. Note that SPC mesoanalysis mixed-layer products use a **100 mb** layer, so values are not directly comparable.
+- **Most-unstable (255-0 mb)** — NCEP's "best" CAPE, drawn from the lowest 255 mb; this is the conventional MUCAPE proxy in NCEP products and captures elevated instability that surface-based CAPE misses (e.g. north of a warm front).
+
+Labels state the layer depths explicitly so maps are honest about which definition is plotted.
+
+---
+
+*Last updated: 2026-07-08 — add new Q&A pairs at the appropriate level as they arise.*

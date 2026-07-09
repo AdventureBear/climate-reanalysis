@@ -90,12 +90,16 @@ const VARIABLE_CONFIG = {
     label: 'CAPE',
     levels: [
       { value: 'surface_cape', label: 'Surface-based', apiVariable: 'cape', apiLevel: '1000' },
+      { value: 'ml_cape', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cape_ml', apiLevel: '1000' },
+      { value: 'mu_cape', label: 'Most-unstable (255-0 mb)', apiVariable: 'cape_mu', apiLevel: '1000' },
     ],
   },
   cin: {
     label: 'CIN',
     levels: [
       { value: 'surface_cin', label: 'Surface-based', apiVariable: 'cin', apiLevel: '1000' },
+      { value: 'ml_cin', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cin_ml', apiLevel: '1000' },
+      { value: 'mu_cin', label: 'Most-unstable (255-0 mb)', apiVariable: 'cin_mu', apiLevel: '1000' },
     ],
   },
   dewpoint_2m: {
@@ -136,8 +140,12 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'omega', label: 'Omega (Vertical Velocity)' },
   { value: 'precip_rate', label: 'Precipitation Rate' },
   { value: 'olr', label: 'Outgoing Longwave Radiation' },
-  { value: 'cape', label: 'CAPE' },
-  { value: 'cin', label: 'CIN' },
+  { value: 'cape', label: 'CAPE (Surface-Based)' },
+  { value: 'cape_ml', label: 'CAPE (Mixed-Layer)' },
+  { value: 'cape_mu', label: 'CAPE (Most-Unstable)' },
+  { value: 'cin', label: 'CIN (Surface-Based)' },
+  { value: 'cin_ml', label: 'CIN (Mixed-Layer)' },
+  { value: 'cin_mu', label: 'CIN (Most-Unstable)' },
   { value: 'dewpoint_2m', label: '2m Dewpoint' },
   { value: 'absv', label: 'Absolute Vorticity' },
   { value: 'snow_depth', label: 'Snow Depth' },
@@ -145,17 +153,18 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
 
 export const SURFACE_LEVELS = new Set([
   'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'toa_olr',
-  'surface_cape', 'surface_cin', 'surface_2m_dpt', 'surface_snod',
+  'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
+  'surface_2m_dpt', 'surface_snod',
 ])
 // Surface/named-level API variables: no monthly obs composites (backend gate),
 // and wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
-  'cape', 'cin', 'dewpoint_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
-  'cape', 'cin', 'dewpoint_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
 ])
 
 // API variables with no wired climatology baseline — raw display mode only.
@@ -163,7 +172,10 @@ export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
 // variable_modes); update both together when a baseline is wired.
 // (humidity: no daily R2 shum file; cape/cin/dewpoint/absv/snow_depth: no
 // R2 source, or derivation deferred — see config.py comments.)
-export const RAW_ONLY_API_VARIABLES = new Set(['humidity', 'cape', 'cin', 'dewpoint_2m', 'absv', 'snow_depth'])
+export const RAW_ONLY_API_VARIABLES = new Set([
+  'humidity', 'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
+  'dewpoint_2m', 'absv', 'snow_depth',
+])
 
 const API_TO_UI_SELECTION = new Map<string, { variable: string; level: string }>()
 for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {

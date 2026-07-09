@@ -2269,7 +2269,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                 wrapperClassName="flex flex-col gap-1 flex-1 min-w-0"
               />
               <SelectField
-                label={levelOptions.length === 1 && SURFACE_LEVELS.has(levelOptions[0].value) ? 'Level' : 'Level (mb)'}
+                label={levelOptions.every(opt => SURFACE_LEVELS.has(opt.value)) ? 'Level' : 'Level (mb)'}
                 value={level}
                 options={levelOptions}
                 onChange={nextLevel => {

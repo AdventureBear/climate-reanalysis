@@ -428,7 +428,7 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
         return "mm/day"
     if variable == "olr":
         return "W/m²"
-    if variable in {"cape", "cin"}:
+    if variable in {"cape", "cape_ml", "cape_mu", "cin", "cin_ml", "cin_mu"}:
         return "J/kg"
     if variable == "dewpoint_2m":
         return "°F"
@@ -629,7 +629,11 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
                     "to_display": lambda v: v * _PRATE_TO_MM_DAY},
     "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
     "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
+    "cape_ml":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
+    "cape_mu":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
     "cin":         {**_CIN_SCALE_CONFIG,         "tick_every": 50.0,  "label": "CIN",                "extend": "min"},
+    "cin_ml":      {**_CIN_SCALE_CONFIG,         "tick_every": 50.0,  "label": "CIN",                "extend": "min"},
+    "cin_mu":      {**_CIN_SCALE_CONFIG,         "tick_every": 50.0,  "label": "CIN",                "extend": "min"},
     "dewpoint_2m": {**_DEWPOINT_SCALE_CONFIG,    "tick_every": 10.0,  "label": "2m Dewpoint",        "extend": "both",
                     "to_display": _k_to_f},
     "absv":        {**_ABSV_SCALE_CONFIG,        "tick_every": 10.0,  "label": "Absolute Vorticity", "extend": "both",
