@@ -799,8 +799,6 @@ _DIV_HEX     = [
 _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "wind_speed":       (20.0, 2.0),    # kt
     "wind_10m":         (20.0, 2.0),    # kt
-    "temp":             (10.0, 1.0),    # °C / °F
-    "temp_2m":          (30.0, 3.0),    # °F — 2m temps swing far more than free-air temps
     "height":           (39.0, 3.0),    # dam
     "rel_humidity":     (30.0, 3.0),    # %
     "humidity":         (0.003, 0.0003),
@@ -810,6 +808,41 @@ _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "precip_rate":      (20.0, 2.0),    # mm/day
     "olr":              (60.0, 5.0),    # W/m²
 }
+
+# Temperature anomaly scale (Pivotal Weather-style), in display units.
+# ±40 °F (±20 °C): ±1 white; warm side ramps to red by +20, deep burgundy to
+# +30, rolling over to light gray at +40; cold side through royal blue (−15)
+# and deep purple (−20) to burgundy (−30), rolling over to light blue at −40.
+# Compresses the view for ordinary days while keeping extremes readable.
+_TEMP_ANOMALY_ANCHORS_F = [-40, -30, -20, -15, -10, -5, -1, 1, 5, 10, 15, 20, 30, 40]
+_TEMP_ANOMALY_HEX = [
+    "#a6cee3",  # -40  light blue (rollover)
+    "#67001f",  # -30  deep burgundy
+    "#3f007d",  # -20  deep purple
+    "#4169e1",  # -15  royal blue
+    "#74a9cf",  # -10  medium blue
+    "#cfe8f3",  # -5   pale blue
+    "#ffffff",  # -1
+    "#ffffff",  # +1
+    "#fee391",  # +5   pale orange
+    "#fe9929",  # +10  orange
+    "#f03b20",  # +15  orange-red
+    "#cb181d",  # +20  red
+    "#67001f",  # +30  deep burgundy
+    "#d9d9d9",  # +40  light gray (rollover)
+]
+
+
+def _temp_anomaly_scale(unit_letter: str, color_step: int):
+    """(max_val, step, breakpoints, colors) for temp anomalies in °F or °C."""
+    scale = 1.0 if unit_letter == "F" else 0.5   # °C axis is half the °F axis
+    max_val = 40.0 * scale
+    step = (2.0 if unit_letter == "F" else 1.0) * max(color_step, 1)
+    breakpoints = [round(v, 6) for v in np.arange(-max_val, max_val + step / 2, step)]
+    anchors = [a * scale for a in _TEMP_ANOMALY_ANCHORS_F]
+    colors = _interpolate_interval_colors(breakpoints, anchors, _TEMP_ANOMALY_HEX)
+    return max_val, step, breakpoints, colors
+
 
 def _anomaly_scale_in_display_units(
     variable: str, wind_unit: str, pwat_unit: str
@@ -833,10 +866,8 @@ def _base_contour_plan(variable, level, values, wind_unit="kt", pwat_unit="mm", 
         return values / 10.0, 6.0                       # dam
     if variable == "surface_pressure":
         return values / 100.0, 4.0                      # mb
-    if variable in {"temp", "temp_2m"}:
-        unit = _temp_display_unit(variable, level, temp_unit)
-        disp = _k_to_f(values) if unit == "F" else values - 273.15
-        return disp, 10.0 if unit == "F" else 5.0
+    # Temperature deliberately excluded: isotherms over temp-anomaly shading
+    # read as clutter rather than context.
     if variable in {"wind_speed", "wind_10m"}:
         return values * _wind_unit_factor(wind_unit), 20.0 if wind_unit == "kt" else 10.0
     if variable == "rel_humidity":
@@ -1164,6 +1195,13 @@ def describe_color_scale(
                 anchor_values = breakpoints[:-1]
                 anchor_hex = [_rgb_to_hex(c) for c in interval_colors]
                 scale_kind = "vector-anomaly-magnitude"
+            elif variable in {"temp", "temp_2m"}:
+                unit_letter = _temp_display_unit(variable, level, temp_unit)
+                max_val, step, breakpoints, interval_colors = _temp_anomaly_scale(unit_letter, color_step)
+                unit_scale = 1.0 if unit_letter == "F" else 0.5
+                anchor_values = [a * unit_scale for a in _TEMP_ANOMALY_ANCHORS_F]
+                anchor_hex = _TEMP_ANOMALY_HEX
+                scale_kind = mode
             else:
                 breakpoints, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
                 anchor_values = _DIV_ANCHORS
@@ -1468,8 +1506,13 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 'colors': colors, 'boundaries': breakpoints,
             }
         else:
-            white_steps = 1
-            breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=white_steps)
+            if mode == "anomaly" and variable in {"temp", "temp_2m"}:
+                unit_letter = _temp_display_unit(variable, level, temp_unit)
+                max_val, step, breakpoints, colors = _temp_anomaly_scale(unit_letter, color_step)
+                tick_every = 10.0 if unit_letter == "F" else 5.0
+            else:
+                breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=1)
+                tick_every = None
             cmap = mcolors.ListedColormap(colors)
             cmap.set_under(colors[0])
             cmap.set_over(colors[-1])
@@ -1479,11 +1522,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 levels=breakpoints, cmap=cmap, norm=norm,
                 transform=ccrs.PlateCarree(), extend='both',
             )
-            n_steps = round(max_val / step)
-            stride  = max(1, round(n_steps / 5))
-            tick_vals = [round(i * step * stride, 9)
-                         for i in range(-(n_steps // stride), n_steps // stride + 1)
-                         if abs(i * step * stride) <= max_val + 1e-6]
+            if tick_every is not None:
+                tick_vals = [round(v, 9) for v in np.arange(-max_val, max_val + tick_every / 2, tick_every)]
+            else:
+                n_steps = round(max_val / step)
+                stride  = max(1, round(n_steps / 5))
+                tick_vals = [round(i * step * stride, 9)
+                             for i in range(-(n_steps // stride), n_steps // stride + 1)
+                             if abs(i * step * stride) <= max_val + 1e-6]
             mode_label = "Anomaly" if mode == "anomaly" else "Normalized Anomaly"
             cbar_cfg = {
                 'ticks':      tick_vals,
