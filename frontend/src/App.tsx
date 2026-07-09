@@ -2298,8 +2298,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity' || variable === 'precipitable_water') && (
-              <CardRow>
+            <CardRow>
                 {variable === 'wind_speed' && (
                   <VariableDisplayControl label="Wind Units">
                     <TabStrip
@@ -2379,8 +2378,58 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                     />
                   </VariableDisplayControl>
                 )}
+                <VariableDisplayControl label="Wind Overlay">
+                  <div className={`flex flex-col gap-1 transition-opacity ${canUseWindAnomalyOverlay && windAnomalyOverlay !== 'none' ? 'opacity-30 pointer-events-none' : ''}`}>
+                    <div className="grid grid-cols-3 gap-1">
+                      <ToggleButton
+                        active={isWindVariable && windShading}
+                        disabled={!isWindVariable || displayMode !== 'raw'}
+                        onClick={() => {
+                          if (windShading && !isotachsOn && !windOn) return
+                          setWindShading(o => !o)
+                        }}
+                      >
+                        Shading
+                      </ToggleButton>
+                      {(['barbs', 'vectors'] as const).map(t => (
+                        <ToggleButton
+                          key={t}
+                          active={windOn && windType === t}
+                          onClick={() => {
+                            if (windOn && windType === t) {
+                              if (isWindVariable && displayMode === 'raw' && !windShading && !isotachsOn) return
+                              setWindOn(false)
+                              return
+                            }
+                            setWindOn(true)
+                            setWindType(t)
+                            setWindAnomalyOverlay('none')
+                          }}
+                        >
+                          {t === 'barbs' ? 'Barbs' : 'Vectors'}
+                        </ToggleButton>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 items-center">
+                      <ToggleButton
+                        active={isotachsOn}
+                        onClick={() => {
+                          if (isotachsOn && isWindVariable && displayMode === 'raw' && !windShading && !windOn) return
+                          setIsotachsOn(o => !o)
+                        }}
+                      >
+                        Isotachs
+                      </ToggleButton>
+                      <div className={`col-span-2 flex items-center gap-1.5 transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Density</span>
+                        <input type="number" min={1} max={20} value={windStep}
+                          onChange={e => setWindStep(e.target.value)}
+                          className="input w-14 text-center px-1" />
+                      </div>
+                    </div>
+                  </div>
+                </VariableDisplayControl>
               </CardRow>
-            )}
           </Section>
 
           {/* 2 · Temporal Range */}
@@ -2488,57 +2537,6 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <Label>Overlays</Label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-            {/* Unified wind layers: Shading (wind maps only) + Isotachs +
-                Barbs|Vectors combine freely; density strides the glyphs.
-                On a raw wind map at least one layer must stay on. */}
-            <div className={`flex items-center gap-2 pt-2 border-t border-slate-700/40 transition-opacity ${canUseWindAnomalyOverlay && windAnomalyOverlay !== 'none' ? 'opacity-30 pointer-events-none' : ''}`}>
-              <Label>Wind</Label>
-              <div className="flex items-center gap-1 ml-auto">
-                <ToggleButton
-                  active={isWindVariable && windShading}
-                  disabled={!isWindVariable || displayMode !== 'raw'}
-                  onClick={() => {
-                    if (windShading && !isotachsOn && !windOn) return
-                    setWindShading(o => !o)
-                  }}
-                >
-                  Shading
-                </ToggleButton>
-                <ToggleButton
-                  active={isotachsOn}
-                  onClick={() => {
-                    if (isotachsOn && isWindVariable && displayMode === 'raw' && !windShading && !windOn) return
-                    setIsotachsOn(o => !o)
-                  }}
-                >
-                  Isotachs
-                </ToggleButton>
-                {(['barbs', 'vectors'] as const).map(t => (
-                  <ToggleButton
-                    key={t}
-                    active={windOn && windType === t}
-                    onClick={() => {
-                      if (windOn && windType === t) {
-                        if (isWindVariable && displayMode === 'raw' && !windShading && !isotachsOn) return
-                        setWindOn(false)
-                        return
-                      }
-                      setWindOn(true)
-                      setWindType(t)
-                      setWindAnomalyOverlay('none')
-                    }}
-                  >
-                    {t === 'barbs' ? 'Barbs' : 'Vectors'}
-                  </ToggleButton>
-                ))}
-                <div className={`flex items-center gap-2 transition-opacity ${windOn ? '' : 'opacity-30 pointer-events-none'}`}>
-                  <Label>Density</Label>
-                  <input type="number" min={1} max={20} value={windStep}
-                    onChange={e => setWindStep(e.target.value)}
-                    className="input w-10 text-center px-1" />
-                </div>
-              </div>
-            </div>
               <VariableDisplayControl label="Contours" status="Coming soon">
                 <div className="grid grid-cols-3 gap-1">
                   <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>
