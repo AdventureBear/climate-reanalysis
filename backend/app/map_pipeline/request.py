@@ -35,3 +35,5 @@ class MapRequest:
     isotachs: int = 0
     # Stamp H/L MSLP center glyphs (detected from MSLET) on the map.
     centers: int = 0
+    # Comma-separated contour overlays: any of "pressure", "height", "temp".
+    contours: str = ""

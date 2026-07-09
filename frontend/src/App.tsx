@@ -750,6 +750,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [windShading, setWindShading] = useState(true)
   const [windMaster, setWindMaster] = useState(true)
   const [hlCenters, setHlCenters] = useState(false)
+  const [contourOverlays, setContourOverlays] = useState<string[]>([])
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
@@ -871,6 +872,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       fillMode,
       tempUnit: temperatureUnit === 'auto' ? undefined : temperatureUnit,
       centers: hlCenters || undefined,
+      contours: contourOverlays.length ? contourOverlays : undefined,
       colorStep,
     }
   }
@@ -925,6 +927,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     if (recipe.fillMode) setFillMode(recipe.fillMode)
     if (recipe.tempUnit) setTemperatureUnit(recipe.tempUnit)
     setHlCenters(Boolean(recipe.centers))
+    setContourOverlays(recipe.contours ?? [])
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
     if (recipe.wind) {
@@ -2558,9 +2561,21 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
               <VariableDisplayControl label="Contours">
                 <div className="grid grid-cols-2 gap-1">
                   <ToggleButton active={hlCenters} onClick={() => setHlCenters(o => !o)}>H/L Centers</ToggleButton>
-                  <ToggleButton active={false} disabled onClick={() => {}}>Height</ToggleButton>
-                  <ToggleButton active={false} disabled onClick={() => {}}>Pressure</ToggleButton>
-                  <ToggleButton active={false} disabled onClick={() => {}}>Temp</ToggleButton>
+                  {([
+                    { key: 'pressure', label: 'Pressure', redundant: apiVariable === 'surface_pressure' },
+                    { key: 'height', label: 'Height', redundant: apiVariable === 'height' },
+                    { key: 'temp', label: 'Temp', redundant: apiVariable === 'temp' || apiVariable === 'temp_2m' },
+                  ] as const).map(({ key, label, redundant }) => (
+                    <ToggleButton
+                      key={key}
+                      active={contourOverlays.includes(key)}
+                      disabled={redundant}
+                      onClick={() => setContourOverlays(prev =>
+                        prev.includes(key) ? prev.filter(c => c !== key) : [...prev, key])}
+                    >
+                      {label}
+                    </ToggleButton>
+                  ))}
                 </div>
               </VariableDisplayControl>
             </div>

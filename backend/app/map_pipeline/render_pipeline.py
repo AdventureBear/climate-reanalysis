@@ -24,6 +24,7 @@ class RenderRequest(Protocol):
     temp_unit: str
     isotachs: int
     centers: int
+    contours: str
 
 
 def render_map_product(
@@ -39,6 +40,7 @@ def render_map_product(
     v_subset=None,
     base_array=None,
     centers_array=None,
+    contour_overlays=None,
 ):
     if req.mode == "anomaly" and use_vector_wind_anomaly:
         log.info("  colormap : positive sequential (vector anomaly magnitude)")
@@ -81,4 +83,5 @@ def render_map_product(
         base_array=base_array,
         isotachs=bool(req.isotachs),
         centers_array=centers_array,
+        contour_overlays=contour_overlays,
     )

@@ -168,6 +168,7 @@ def get_map(
     temp_unit: str = "",
     isotachs: int = 0,
     centers: int = 0,
+    contours: str = "",
 ):
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
@@ -177,6 +178,9 @@ def get_map(
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")
     if temp_unit not in {"", "F", "C"}:
         raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
+    parsed_contours = {c.strip() for c in contours.split(",") if c.strip()}
+    if not parsed_contours <= {"pressure", "height", "temp"}:
+        raise HTTPException(status_code=422, detail="contours accepts a comma-separated subset of: pressure, height, temp")
     # A wind map with shading, isotachs, and glyphs all off would be blank.
     if (
         variable in {"wind_speed", "wind_10m"}
@@ -254,6 +258,7 @@ def get_map(
                 temp_unit=temp_unit,
                 isotachs=isotachs,
                 centers=centers,
+                contours=contours,
             )
         )
         return StreamingResponse(buf, media_type="image/png")

@@ -11,6 +11,7 @@ from .map_pipeline.fetch_plan import (
     fetch_climo,
     fetch_climo_overlay_wind_components,
     fetch_climo_weighted,
+    fetch_contour_overlay_field,
     fetch_mslp_field_for_selection,
     fetch_daily_climo_for_selection,
     fetch_daily_wind_climo_components_for_selection,
@@ -248,6 +249,24 @@ def create_map_buffer(req: MapRequest):
             log.info("CENTERS  fetching MSLET for H/L detection")
             centers_array = select_region(fetch_mslp_field_for_selection(req, selection), bounds)
 
+    # Contour overlays (isobars / height contours / isotherms) on any map.
+    contour_overlays = []
+    contour_suffixes = []
+    for kind in [c.strip() for c in req.contours.split(",") if c.strip()]:
+        field, meta = fetch_contour_overlay_field(kind, req, selection, req.mode, selection.obs_month)
+        if field is None:
+            log.info("CONTOURS %s overlay skipped: %s", kind, meta)
+            continue
+        contour_overlays.append({**meta, "data": select_region(field, bounds)})
+        if kind == "pressure":
+            contour_suffixes.append("Isobars (mb)")
+        elif kind == "height":
+            contour_suffixes.append(f"{meta['level']}mb Heights (dam)")
+        else:
+            t_unit = display_unit("temp_2m" if meta.get("is_2m") else "temp", meta["level"], temp_unit=req.temp_unit)
+            t_label = "2m Isotherms" if meta.get("is_2m") else f"{meta['level']}mb Isotherms"
+            contour_suffixes.append(f"{t_label} ({t_unit})")
+
     # Anomaly shading alone is ambiguous — draw the raw field it departs from
     # as labeled contours, and say so in the title block.
     base_array = None
@@ -293,6 +312,8 @@ def create_map_buffer(req: MapRequest):
             parts.append("Isotachs")
         if parts:
             var_label = f"{var_label}, {overlay_level} {overlay_kind} {' + '.join(parts)} ({req.wind_unit})"
+    if contour_suffixes:
+        var_label = f"{var_label}, {', '.join(contour_suffixes)}"
 
     step += 1
     log.info("")
@@ -319,6 +340,7 @@ def create_map_buffer(req: MapRequest):
         v_subset=v_subset,
         base_array=base_array,
         centers_array=centers_array,
+        contour_overlays=contour_overlays,
     )
 
     log.info("STEP %d ✓  render complete → streaming PNG", step)

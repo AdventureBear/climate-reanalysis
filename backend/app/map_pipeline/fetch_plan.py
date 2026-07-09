@@ -267,6 +267,89 @@ def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
     raise ValueError(f"MSLP centers are not available for {kind!r} selections")
 
 
+def _mean_named_flx_pairs(date_hour_pairs: list[tuple[str, str]], grib: str, level_name: str) -> xr.DataArray:
+    """Composite mean of one named flx field across (date, hour) pairs."""
+    with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
+        futures = [pool.submit(fetch_flx_field, d, h, grib, level_name) for d, h in date_hour_pairs]
+        arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in futures]
+    stacked = xr.concat(arrays, dim="composite_step")
+    mean = stacked.mean(dim="composite_step")
+    mean.attrs = arrays[0].attrs
+    return mean
+
+
+def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSelection, mode: str, month: int):
+    """
+    Field for a contour overlay ("pressure" isobars, "height" contours,
+    "temp" isotherms) matching the map's time selection.
+
+    Returns (DataArray, meta) or (None, reason). Level rule: pressure-level
+    maps overlay at their own level; surface/named-level maps use 500 mb
+    heights and 2 m isotherms. Climatology mode contours the R2 monthly
+    means; monthly obs selections support pressure-level overlays only.
+    """
+    surface_map = is_surface_or_named_level(req.variable)
+    kind_key = selection.obs_kind
+
+    if kind == "pressure":
+        if req.variable == "surface_pressure":
+            return None, "map already draws isobars"
+        meta = {"kind": "pressure"}
+        if mode == "climatology":
+            spec = VARIABLES["surface_pressure"]["r2_climo"]
+            return get_r2_monthly_climo_single_level(spec, month)[0], meta
+        if selection.monthly_mode:
+            return None, "monthly obs not wired for MSLET"
+        return fetch_mslp_field_for_selection(req, selection), meta
+
+    if kind == "height":
+        level = 500 if surface_map else req.level
+        if req.variable == "height":
+            return None, "map already draws height contours"
+        meta = {"kind": "height", "level": level}
+        if mode == "climatology":
+            return get_r2_monthly_climo_field(month, "HGT", level)[0], meta
+        if selection.monthly_mode:
+            return fetch_monthly_field_composite(selection.year_months, "HGT", level), meta
+        if kind_key == "single":
+            return fetch_field(selection.date_list[0], req.hour, "HGT", level), meta
+        if kind_key == "composite":
+            return fetch_field_composite(selection.date_list, req.hour, "HGT", level), meta
+        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "HGT", level), meta
+
+    if kind == "temp":
+        if req.variable in {"temp", "temp_2m"}:
+            return None, "map already shades temperature"
+        if surface_map:
+            meta = {"kind": "temp", "level": 1000, "is_2m": True}
+            if mode == "climatology":
+                spec = VARIABLES["temp_2m"]["r2_climo"]
+                return get_r2_monthly_climo_single_level(spec, month)[0], meta
+            if selection.monthly_mode:
+                return None, "monthly obs not wired for 2m temperature"
+            cfg = VARIABLES["temp_2m"]
+            if kind_key == "single":
+                return fetch_flx_field(selection.date_list[0], req.hour, cfg["grib_name"], cfg["flx_level"]), meta
+            if kind_key == "composite":
+                return _mean_named_flx_pairs([(d, req.hour) for d in selection.date_list], cfg["grib_name"], cfg["flx_level"]), meta
+            return _mean_named_flx_pairs(
+                [(d, h) for d in selection.date_list for h in selection.daily_hours], cfg["grib_name"], cfg["flx_level"]
+            ), meta
+        level = req.level
+        meta = {"kind": "temp", "level": level, "is_2m": False}
+        if mode == "climatology":
+            return get_r2_monthly_climo_field(month, "TMP", level)[0], meta
+        if selection.monthly_mode:
+            return fetch_monthly_field_composite(selection.year_months, "TMP", level), meta
+        if kind_key == "single":
+            return fetch_field(selection.date_list[0], req.hour, "TMP", level), meta
+        if kind_key == "composite":
+            return fetch_field_composite(selection.date_list, req.hour, "TMP", level), meta
+        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "TMP", level), meta
+
+    return None, f"unknown contour kind {kind!r}"
+
+
 def fetch_climo_overlay_wind_components(req: FetchRequest, climo_source: str, month: int):
     """
     Climatological mean (U, V) for barbs/vectors/isotachs on climatology-mode

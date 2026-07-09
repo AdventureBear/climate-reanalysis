@@ -1475,6 +1475,36 @@ def _detect_pressure_centers(mslp_da):
     return lows, highs
 
 
+def _draw_contour_overlay(ax, overlay: dict, temp_unit: str = "") -> None:
+    """
+    Labeled line contours over the shaded field. Styling per kind:
+    isobars solid dark gray at 4 mb, heights solid black at 6 dam,
+    isotherms dashed red at 10°F / 5°C.
+    """
+    kind = overlay["kind"]
+    da = overlay["data"]
+    if kind == "pressure":
+        disp, interval, color, ls = da.values / 100.0, 4.0, "#3d3d3d", "solid"
+    elif kind == "height":
+        disp, interval, color, ls = da.values / 10.0, 6.0, "black", "solid"
+    else:
+        variable = "temp_2m" if overlay.get("is_2m") else "temp"
+        unit = _temp_display_unit(variable, overlay["level"], temp_unit)
+        disp = _k_to_f(da.values) if unit == "F" else da.values - 273.15
+        interval, color, ls = (10.0 if unit == "F" else 5.0), "#c0392b", "dashed"
+    v0 = float(np.floor(np.nanmin(disp) / interval) * interval)
+    v1 = float(np.ceil(np.nanmax(disp) / interval) * interval)
+    levels = np.arange(v0, v1 + interval / 2, interval)
+    if len(levels) < 2:
+        return
+    cs = ax.contour(
+        da.longitude, da.latitude, disp,
+        levels=levels, colors=color, linewidths=0.9, linestyles=ls,
+        transform=ccrs.PlateCarree(), zorder=10,
+    )
+    ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%g')
+
+
 def _draw_pressure_centers(ax, centers_da) -> None:
     """Stamp red L / blue H glyphs with values at detected MSLP centers."""
     import matplotlib.patheffects as pe
@@ -1500,7 +1530,7 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1508,11 +1538,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
-            centers_array=centers_array,
+            centers_array=centers_array, contour_overlays=contour_overlays,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1896,6 +1926,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                     transform=ccrs.PlateCarree(),
                     scale=_quiver_scale(level), width=0.001, color='black', alpha=0.75,
                 )
+
+    for overlay in (contour_overlays or []):
+        _draw_contour_overlay(ax, overlay, temp_unit)
 
     if centers_array is not None:
         _draw_pressure_centers(ax, centers_array)

@@ -55,6 +55,8 @@ export type MapRecipe = {
   tempUnit?: TempUnit
   // Stamp detected H/L MSLP centers on the map.
   centers?: boolean
+  // Contour overlays: subset of 'pressure' | 'height' | 'temp'.
+  contours?: string[]
   colorStep?: string
 }
 
@@ -272,6 +274,9 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   if (recipe.centers) {
     params.centers = '1'
   }
+  if (recipe.contours?.length) {
+    params.contours = recipe.contours.join(',')
+  }
   if (recipe.climoSource && params.mode && params.mode !== 'raw') {
     params.climo_source = recipe.climoSource
   }
@@ -395,6 +400,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     fillMode: params.get('fill_mode') === 'shaded' ? 'shaded' : undefined,
     tempUnit: params.get('temp_unit') === 'F' || params.get('temp_unit') === 'C' ? (params.get('temp_unit') as TempUnit) : undefined,
     centers: params.get('centers') === '1' ? true : undefined,
+    contours: params.get('contours') ? params.get('contours')!.split(',').filter(c => ['pressure', 'height', 'temp'].includes(c)) : undefined,
     colorStep: parsedColorStep ? String(normalizeColorStep(parsedColorStep)) : undefined,
   }
 }
