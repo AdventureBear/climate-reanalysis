@@ -511,8 +511,8 @@ _HEIGHT_FILL_WINDOWS: dict[int, tuple[float, float]] = {
 # normal, red = far above), with the same mid-dense anchor spacing so common
 # departures get most of the hue variation.
 _HEIGHT_FILL_RAMP_HEX = [
-    "#2d004b", "#54278f", "#5e3c99", "#2c7fb8", "#3690c0", "#89c4e1",
-    "#66c2a4", "#41ab5d", "#addd8e", "#efe345", "#fe9929", "#ef3b2c", "#99000d",
+    "#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
+    "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600", "#e60000",
 ]
 _HEIGHT_RAMP_FRACTIONS = [
     0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
@@ -548,19 +548,21 @@ _MSLP_CONTOUR_SCALE_CONFIG = {
     "domain_max": 1060,
     "anchor_values": [920, 945, 965, 980, 992, 1000, 1008, 1013, 1018, 1024, 1032, 1042, 1060],
     "anchor_colors": [
-        "#2d004b",  # 920  deep purple — major hurricane
-        "#54278f",  # 945  purple — intense low
-        "#5e3c99",  # 965  blue-purple
-        "#2c7fb8",  # 980  strong blue — strong low
-        "#3690c0",  # 992  medium blue — lowish low
-        "#89c4e1",  # 1000 light blue — typical low
-        "#66c2a4",  # 1008 seafoam — weak low
-        "#41ab5d",  # 1013 green — average sea-level pressure
-        "#addd8e",  # 1018 yellow-green — weak high
-        "#efe345",  # 1024 yellow — moderate high
-        "#fe9929",  # 1032 orange — strong high
-        "#ef3b2c",  # 1042 orange-red — intense high
-        "#99000d",  # 1060 dark red — record-setting high
+        # Meteocentre/CMC-style saturated rainbow: a distinct hue per band
+        # scans fast, and saturated fills survive washed-out projectors.
+        "#f2ecf9",  # 920  near-white lavender — major hurricane core
+        "#b366ff",  # 945  purple — intense low
+        "#6600cc",  # 965  deep purple
+        "#0d33cc",  # 980  indigo — strong low
+        "#0066ff",  # 992  blue — lowish low
+        "#00aaff",  # 1000 light blue — typical low
+        "#00e0e0",  # 1008 cyan — weak low
+        "#33cc66",  # 1013 green — average sea-level pressure
+        "#99e600",  # 1018 yellow-green — weak high
+        "#ffee00",  # 1024 yellow — moderate high
+        "#ffaa00",  # 1032 orange-yellow — strong high
+        "#ff6600",  # 1042 orange — intense high
+        "#e60000",  # 1060 red — record-setting high
     ],
     "key_breakpoints": [1000, 1013, 1024],
     "step": 4,
