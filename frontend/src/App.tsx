@@ -467,7 +467,7 @@ function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFamily[] {
     return [
       {
         key: 'surface',
-        label: variable === 'precipitable_water' ? 'Column' : 'Surface',
+        label: variable === 'precipitable_water' ? 'Column' : variable === 'olr' ? 'TOA' : 'Surface',
         levels: [1000],
         description: 'This field has one fixed vertical coordinate in CORe.',
       },

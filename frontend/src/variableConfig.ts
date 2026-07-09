@@ -23,6 +23,9 @@ function pressureLevels(apiVariable: string): VariableLevelConfig[] {
   }))
 }
 
+// CORe publishes VVEL on 100–1000 mb only — mirrors config.py VARIABLES["omega"]["levels"].
+const OMEGA_PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100] as const
+
 const VARIABLE_CONFIG = {
   wind_speed: {
     label: 'Wind Speed',
@@ -62,6 +65,27 @@ const VARIABLE_CONFIG = {
       { value: 'total_column', label: 'Total column', apiVariable: 'precipitable_water', apiLevel: '1000' },
     ],
   },
+  omega: {
+    label: 'Omega (Vertical Velocity)',
+    levels: OMEGA_PRESSURE_LEVELS.map(level => ({
+      value: String(level),
+      label: String(level),
+      apiVariable: 'omega',
+      apiLevel: String(level),
+    })),
+  },
+  precip_rate: {
+    label: 'Precipitation Rate',
+    levels: [
+      { value: 'surface_prate', label: 'Surface', apiVariable: 'precip_rate', apiLevel: '1000' },
+    ],
+  },
+  olr: {
+    label: 'Outgoing Longwave Radiation',
+    levels: [
+      { value: 'toa_olr', label: 'Top of atmosphere', apiVariable: 'olr', apiLevel: '1000' },
+    ],
+  },
 } as const satisfies Record<string, VariableConfig>
 
 export type UiVariableKey = keyof typeof VARIABLE_CONFIG
@@ -81,11 +105,14 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'rel_humidity', label: 'Relative Humidity' },
   { value: 'humidity', label: 'Specific Humidity' },
   { value: 'precipitable_water', label: 'Precipitable Water' },
+  { value: 'omega', label: 'Omega (Vertical Velocity)' },
+  { value: 'precip_rate', label: 'Precipitation Rate' },
+  { value: 'olr', label: 'Outgoing Longwave Radiation' },
 ]
 
-export const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp', 'total_column'])
-export const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
-export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water'])
+export const SURFACE_LEVELS = new Set(['surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'toa_olr'])
+export const FLX_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr'])
+export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set(['temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr'])
 
 // API variables with no wired climatology baseline — raw display mode only.
 // Mirrors backend config.py VARIABLES[*].climo_sources (served at GET / as

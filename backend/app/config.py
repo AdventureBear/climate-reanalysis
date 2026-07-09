@@ -178,11 +178,12 @@ REGIONS = {
 #            "pressure" files carry a level dimension; "surface" and
 #            "gaussian_grid" files are single-level.
 R2_CLIMO_FIELDS: dict[str, dict] = {
-    "TMP":  {"var": "air",  "dataset": "pressure"},
-    "HGT":  {"var": "hgt",  "dataset": "pressure"},
-    "UGRD": {"var": "uwnd", "dataset": "pressure"},
-    "VGRD": {"var": "vwnd", "dataset": "pressure"},
-    "RH":   {"var": "rhum", "dataset": "pressure"},
+    "TMP":  {"var": "air",   "dataset": "pressure"},
+    "HGT":  {"var": "hgt",   "dataset": "pressure"},
+    "UGRD": {"var": "uwnd",  "dataset": "pressure"},
+    "VGRD": {"var": "vwnd",  "dataset": "pressure"},
+    "RH":   {"var": "rhum",  "dataset": "pressure"},
+    "VVEL": {"var": "omega", "dataset": "pressure"},
     # No daily SPFH: R2 publishes no daily shum file, so specific humidity has
     # no sub-monthly baseline and stays raw-only until one is wired.
 }
@@ -274,6 +275,15 @@ VARIABLES = {
         "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,
     },
+    "omega": {
+        "name": "Omega (Vertical Velocity)",
+        "units": "Pa/s",
+        "grib_name": "VVEL",
+        # CORe publishes VVEL on 100–1000 mb only (no stratospheric levels).
+        "levels": [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100],
+        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
+        "normalized_mask_threshold": None,
+    },
     "temp_2m": {
         "name": "2m Temperature",
         "units": "K",
@@ -323,6 +333,30 @@ VARIABLES = {
         "r2_climo": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
         "normalized_mask_threshold": None,
     },
+    "precip_rate": {
+        "name": "Precipitation Rate",
+        "units": "kg/m²/s",
+        "stream": "flx",
+        "grib_name": "PRATE",   # 0-3 hour average forecast field, not instantaneous
+        "flx_level": "surface",
+        "display_level": "surface",
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {"file": "prate.sfc", "var": "prate", "dataset": "gaussian_grid"},
+        # ~1 mm/day in native units: a high-σ precip anomaly over an
+        # essentially dry background is noise, not signal.
+        "normalized_mask_threshold": 1.16e-5,
+    },
+    "olr": {
+        "name": "Outgoing Longwave Radiation",
+        "units": "W/m²",
+        "stream": "flx",
+        "grib_name": "ULWRF",   # 0-3 hour average forecast field
+        "flx_level": "top of atmosphere",
+        "display_level": "top of atmosphere",
+        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "r2_climo": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "gaussian_grid"},
+        "normalized_mask_threshold": None,
+    },
 }
 
 PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10]
@@ -331,6 +365,11 @@ PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 
 def is_surface_or_named_level(variable: str) -> bool:
     """Return True for fields that are not selected by pressure level."""
     return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level"}
+
+
+def valid_levels(variable: str) -> list[int]:
+    """Pressure levels available for this variable (some CORe fields are truncated)."""
+    return VARIABLES[variable].get("levels", PRESSURE_LEVELS)
 
 
 def supported_climo_sources(variable: str) -> tuple[str, ...]:

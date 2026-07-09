@@ -422,6 +422,12 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
         return "mb"
     if variable == "precipitable_water":
         return _pwat_unit_label(pwat_unit)
+    if variable == "omega":
+        return "Pa/s"
+    if variable == "precip_rate":
+        return "mm/day"
+    if variable == "olr":
+        return "W/m²"
     return ""
 
 
@@ -490,6 +496,54 @@ _SPECIFIC_HUMIDITY_SCALE_CONFIG = {
     "anchor_values": [0.0, 0.002, 0.006, 0.010, 0.014, 0.018, 0.024],
     "anchor_colors": ["#f7fcf0", "#e0f3db", "#a8ddb5", "#7bccc4", "#43a2ca", "#0868ac", "#084081"],
     "key_breakpoints": [0.010, 0.018],
+}
+
+# Omega in Pa/s. Meteorological convention: negative = ascent (storminess,
+# blues), positive = descent/subsidence (warm browns). Zero-centered white.
+_OMEGA_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -2.0,
+    "domain_max": 2.0,
+    "anchor_values": [-2.0, -1.0, -0.3, 0.0, 0.3, 1.0, 2.0],
+    "anchor_colors": ["#08306b", "#4292c6", "#c6dbef", "#f7f7f7", "#fdd0a2", "#e6550d", "#7f2704"],
+    "key_breakpoints": [-0.3, 0.3],
+    "step": 0.1,
+}
+
+# Precipitation rate in display units (mm/day; native kg/m²/s × 86400).
+_PRECIP_RATE_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 60.0,
+    "anchor_values": [0.0, 1.0, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0],
+    "anchor_colors": [
+        "#ffffff", "#c7e9c0", "#74c476", "#238b45",
+        "#2b8cbe", "#08519c", "#54278f", "#7a0177",
+    ],
+    "key_breakpoints": [5.0, 20.0],
+    "step": 1.0,
+}
+
+# OLR in W/m². Low OLR = cold cloud tops / deep convection (cool purples and
+# blues); high OLR = warm clear-sky surfaces (oranges).
+_OLR_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 100.0,
+    "domain_max": 320.0,
+    "anchor_values": [100.0, 140.0, 180.0, 220.0, 260.0, 300.0, 320.0],
+    "anchor_colors": ["#54278f", "#2b8cbe", "#7bccc4", "#e5f5e0", "#fee391", "#fe9929", "#cc4c02"],
+    "key_breakpoints": [180.0, 240.0],
+    "step": 5.0,
+}
+
+_PRATE_TO_MM_DAY = 86400.0   # kg/m²/s → mm/day (1 kg/m² = 1 mm of water)
+
+# Variables rendered as generic filled contours from a fixed-anchor config.
+# Colorbar ticks land on every "tick_every" display units.
+_FIXED_SCALE_CONFIGS: dict[str, dict] = {
+    "omega":       {**_OMEGA_SCALE_CONFIG,       "tick_every": 0.5,  "label": "Omega",              "extend": "both"},
+    "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0, "label": "Precipitation Rate", "extend": "max"},
+    "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0, "label": "OLR",                "extend": "both"},
 }
 
 
@@ -567,6 +621,9 @@ _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "humidity":         (0.003, 0.0003),
     "surface_pressure": (20.0, 2.0),    # mb (hPa)
     "precipitable_water": (20.0, 2.0),  # mm
+    "omega":            (1.0, 0.1),     # Pa/s
+    "precip_rate":      (20.0, 2.0),    # mm/day
+    "olr":              (60.0, 5.0),    # W/m²
 }
 
 def _anomaly_scale_in_display_units(
@@ -704,6 +761,8 @@ def _anomaly_to_display_with_unit(
         return values / 100                 # Pa → mb (hPa)
     if variable == "precipitable_water":
         return _pwat_to_display(values, pwat_unit)
+    if variable == "precip_rate":
+        return values * _PRATE_TO_MM_DAY
     return values
 
 
@@ -1067,6 +1126,31 @@ def describe_color_scale(
             **stats,
         }
 
+    if variable in _FIXED_SCALE_CONFIGS:
+        cfg_base = _FIXED_SCALE_CONFIGS[variable]
+        step = max(color_step, 1) * cfg_base["step"]
+        boundaries, interval_colors, cfg = _make_fixed_display_scale(cfg_base, step=step)
+        to_display = _PRATE_TO_MM_DAY if variable == "precip_rate" else 1.0
+        data_vals = (
+            np.asarray(data_array.values * to_display, dtype=float)
+            if data_array is not None else None
+        )
+        stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
+        return {
+            "scale_kind": f"fixed-{variable.replace('_', '-')}",
+            "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+            "step": step,
+            "boundaries": boundaries,
+            "interval_mids": _interval_midpoints(boundaries),
+            "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
+            "anchor_values": cfg["anchor_values"],
+            "anchor_hex": cfg["anchor_colors"],
+            "key_breakpoints": cfg["key_breakpoints"],
+            "domain_min": cfg["domain_min"],
+            "domain_max": cfg["domain_max"],
+            **stats,
+        }
+
     return {
         "scale_kind": "fixed-scale-missing",
         "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
@@ -1336,6 +1420,34 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 'ticklabels': [f"{v:.3f}".rstrip("0").rstrip(".") for v in ticks],
                 'ylabel':     'Specific Humidity (kg/kg)',
                 'extend':     'both',
+                'colors': interval_colors, 'boundaries': steps,
+            }
+
+    elif variable in _FIXED_SCALE_CONFIGS:
+        cfg_base = _FIXED_SCALE_CONFIGS[variable]
+        to_display = _PRATE_TO_MM_DAY if variable == "precip_rate" else 1.0
+        plot_values = data_array.values * to_display
+        unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
+        ylabel = f"{cfg_base['label']} ({unit})"
+        if not draw_custom_filled(plot_values, ylabel=ylabel, extend=cfg_base["extend"]):
+            step = max(color_step, 1) * cfg_base["step"]
+            steps, interval_colors, _ = _make_fixed_display_scale(cfg_base, step=step)
+            cmap = mcolors.ListedColormap(interval_colors)
+            cmap.set_under(interval_colors[0])
+            cmap.set_over(interval_colors[-1])
+            norm = mcolors.BoundaryNorm(steps, ncolors=len(interval_colors))
+            plot_obj = ax.contourf(
+                data_array.longitude, data_array.latitude, plot_values,
+                levels=steps, cmap=cmap, norm=norm,
+                transform=ccrs.PlateCarree(), extend=cfg_base["extend"],
+            )
+            tick_every = cfg_base["tick_every"]
+            ticks = np.arange(steps[0], steps[-1] + tick_every / 2, tick_every)
+            cbar_cfg = {
+                'ticks':      ticks.tolist(),
+                'ticklabels': [f"{v:g}" for v in ticks],
+                'ylabel':     ylabel,
+                'extend':     cfg_base["extend"],
                 'colors': interval_colors, 'boundaries': steps,
             }
 

@@ -19,7 +19,7 @@ from .api_options import (
     scale_overrides_from_query,
     supported_modes,
 )
-from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology
+from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology, valid_levels
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import DataUnavailableError, VALID_HOURS
@@ -73,9 +73,10 @@ def _validate_common(
     scale_max: float | None,
     color_step: int,
 ) -> None:
+    variable_levels = valid_levels(variable) if variable in VARIABLES else PRESSURE_LEVELS
     checks = (
         (variable in VARIABLES, f"variable must be one of {list(VARIABLES.keys())}"),
-        (level in PRESSURE_LEVELS, f"level must be one of {PRESSURE_LEVELS}"),
+        (level in variable_levels, f"level must be one of {variable_levels} for {variable}"),
         (mode in VALID_MODES, f"mode must be one of {list(VALID_MODES)}"),
         (wind_unit in VALID_WIND_UNITS, f"wind_unit must be one of {list(VALID_WIND_UNITS)}"),
         (pwat_unit in VALID_PWAT_UNITS, f"pwat_unit must be one of {list(VALID_PWAT_UNITS)}"),

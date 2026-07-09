@@ -15,6 +15,9 @@ VAR_NAMES = {
     "wind_10m": "10m Wind Speed",
     "surface_pressure": "Mean Sea Level Pressure",
     "precipitable_water": "Precipitable Water",
+    "omega": "Omega (Vertical Velocity)",
+    "precip_rate": "Precipitation Rate",
+    "olr": "Outgoing Longwave Radiation",
 }
 
 MODE_NAMES = {
