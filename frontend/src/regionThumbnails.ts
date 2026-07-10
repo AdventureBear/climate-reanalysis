@@ -21,6 +21,7 @@ export const REGION_THUMBNAILS: Record<string, string> = {
   'Middle East': '/region-thumbnails/middle-east.png',
   'East Asia': '/region-thumbnails/east-asia.png',
   'Australia': '/region-thumbnails/australia.png',
+  'New Zealand': '/region-thumbnails/new-zealand.png',
   'Southeast Canada': '/region-thumbnails/southeast-canada.png',
   'Western Canada': '/region-thumbnails/western-canada.png',
   'Canada': '/region-thumbnails/canada.png',

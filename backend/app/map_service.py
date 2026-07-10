@@ -339,6 +339,7 @@ def create_map_buffer(req: MapRequest):
         base_array=base_array,
         centers_array=centers_array,
         contour_overlays=contour_overlays,
+        monthly_anomaly=selection.monthly_mode and req.mode in ("anomaly", "normalized"),
     )
 
     log.info("STEP %d ✓  render complete → streaming PNG", step)

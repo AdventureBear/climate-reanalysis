@@ -163,6 +163,7 @@ const REGION_SECTIONS: RegionSection[] = [
         { key: 'Asia',      label: 'Asia',      available: true },
         { key: 'East Asia', label: 'East Asia', available: true },
         { key: 'Australia', label: 'Australia', available: true },
+        { key: 'New Zealand', label: 'New Zealand', available: true },
       ],
       [
         { key: 'Northern Africa', label: 'Northern Africa', available: true },

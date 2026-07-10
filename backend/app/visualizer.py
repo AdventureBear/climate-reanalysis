@@ -61,6 +61,7 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "Middle East": ccrs.PlateCarree(),
     "East Asia": ccrs.PlateCarree(),
     "Australia": ccrs.PlateCarree(),
+    "New Zealand": ccrs.PlateCarree(central_longitude=180),
     "Southeast Canada": ccrs.AlbersEqualArea(central_longitude=-70, central_latitude=55, standard_parallels=(42, 65)),
     "Western Canada": ccrs.AlbersEqualArea(central_longitude=-115, central_latitude=58, standard_parallels=(45, 70)),
     "Canada": ccrs.AlbersEqualArea(central_longitude=-100, central_latitude=58, standard_parallels=(45, 70)),
@@ -102,6 +103,7 @@ _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "Middle East": (22.5, 77.5, 2.5, 44.5),
     "East Asia": (92.5, 157.5, 7.5, 57.5),
     "Australia": (107.5, 162.5, -47.5, -5.5),
+    "New Zealand": (152.5, 197.5, -54.5, -25.5),
     "Southeast Canada": (-102.5, -37.5, 37.5, 70.5),
     "Western Canada": (-142.5, -82.5, 42.5, 77.5),
     "Canada": (-142.5, -37.5, 39.5, 84.5),
@@ -126,7 +128,7 @@ _POLAR_HEMISPHERE_REGIONS = {"Northern Hemisphere", "Southern Hemisphere"}
 # expressed above in true longitude, but set_extent on a central_longitude=0 CRS
 # wraps values past ±180 into a broken globe-wide strip. For these regions the
 # extent is converted to offsets from 180° and applied in a dateline-centred CRS.
-_DATELINE_EXTENT_REGIONS = {"North Pacific", "Western Pacific", "Southwest Pacific"}
+_DATELINE_EXTENT_REGIONS = {"North Pacific", "Western Pacific", "Southwest Pacific", "New Zealand"}
 
 
 def _apply_polar_boundary(ax) -> None:
@@ -870,11 +872,13 @@ _TEMP_ANOMALY_HEX = [
 ]
 
 
-def _temp_anomaly_scale(unit_letter: str, color_step: int):
+def _temp_anomaly_scale(unit_letter: str, color_step: int, monthly: bool = False):
     """(max_val, step, breakpoints, colors) for temp anomalies in °F or °C."""
     scale = 1.0 if unit_letter == "F" else 0.5   # °C axis is half the °F axis
+    if monthly:
+        scale *= 0.5   # monthly-mean departures run about half the daily range
     max_val = 40.0 * scale
-    step = (2.0 if unit_letter == "F" else 1.0) * max(color_step, 1)
+    step = (2.0 if unit_letter == "F" else 1.0) * (0.5 if monthly else 1.0) * max(color_step, 1)
     breakpoints = [round(v, 6) for v in np.arange(-max_val, max_val + step / 2, step)]
     anchors = [a * scale for a in _TEMP_ANOMALY_ANCHORS_F]
     colors = _interpolate_interval_colors(breakpoints, anchors, _TEMP_ANOMALY_HEX)
@@ -882,10 +886,14 @@ def _temp_anomaly_scale(unit_letter: str, color_step: int):
 
 
 def _anomaly_scale_in_display_units(
-    variable: str, wind_unit: str, pwat_unit: str
+    variable: str, wind_unit: str, pwat_unit: str, monthly: bool = False
 ) -> tuple[float, float]:
     """(max, step) for the diverging anomaly scale, in the requested display units."""
     max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
+    if monthly:
+        # Monthly/seasonal mean anomalies are ~half the daily amplitude —
+        # the daily ladder washes a ±3 mb seasonal signal to near-white.
+        max_val, step = max_val * 0.5, step * 0.5
     if variable in {"wind_speed", "wind_10m"} and wind_unit == "m/s":
         return max_val * _KT_TO_MS, step * _KT_TO_MS
     if variable == "precipitable_water" and pwat_unit == "in":
@@ -1199,6 +1207,7 @@ def describe_color_scale(
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
     temp_unit: str = "",
+    monthly_anomaly: bool = False,
 ) -> dict[str, object]:
     """
     Return render-time scale diagnostics in display units so backend logs can
@@ -1216,7 +1225,7 @@ def describe_color_scale(
             _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
             scale_kind = mode
         else:
-            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
+            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
             unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
             plot_values = (
                 np.asarray(
@@ -1234,8 +1243,8 @@ def describe_color_scale(
                 scale_kind = "vector-anomaly-magnitude"
             elif variable in {"temp", "temp_2m"}:
                 unit_letter = _temp_display_unit(variable, level, temp_unit)
-                max_val, step, breakpoints, interval_colors = _temp_anomaly_scale(unit_letter, color_step)
-                unit_scale = 1.0 if unit_letter == "F" else 0.5
+                max_val, step, breakpoints, interval_colors = _temp_anomaly_scale(unit_letter, color_step, monthly=monthly_anomaly)
+                unit_scale = (1.0 if unit_letter == "F" else 0.5) * (0.5 if monthly_anomaly else 1.0)
                 anchor_values = [a * unit_scale for a in _TEMP_ANOMALY_ANCHORS_F]
                 anchor_hex = _TEMP_ANOMALY_HEX
                 scale_kind = mode
@@ -1453,8 +1462,9 @@ def describe_color_scale(
 
 # ── MSLP H/L center detection ─────────────────────────────────────────────────────
 
-_CENTER_WINDOW_DEG = 7.5    # neighborhood a center must dominate
-_CENTER_PROMINENCE_HPA = 2.0  # min depth/height vs the neighborhood
+_CENTER_WINDOW_DEG = 7.5            # neighborhood a center must dominate
+_CENTER_PROMINENCE_WINDOW_DEG = 15.0  # neighborhood prominence is measured over
+_CENTER_PROMINENCE_HPA = 2.5        # min depth/height vs that wider neighborhood
 
 
 def _detect_pressure_centers(mslp_da):
@@ -1474,6 +1484,10 @@ def _detect_pressure_centers(mslp_da):
         return [], []
     grid_deg = abs(float(lons[1] - lons[0]))
     size = max(3, int(round(_CENTER_WINDOW_DEG / grid_deg)) | 1)
+    # Prominence over a wider window than the extremum test: seasonal-mean
+    # centers are broad, so their local relief is tiny even when they stand
+    # several mb above/below their surroundings.
+    prom_size = max(size, int(round(_CENTER_PROMINENCE_WINDOW_DEG / grid_deg)) | 1)
     margin = size // 2
 
     def pick(mask, prominence_ok, ascending):
@@ -1493,8 +1507,10 @@ def _detect_pressure_centers(mslp_da):
 
     mn = minimum_filter(hpa, size=size, mode="nearest")
     mx = maximum_filter(hpa, size=size, mode="nearest")
-    lows  = pick(hpa == mn, (mx - hpa) >= _CENTER_PROMINENCE_HPA, ascending=True)
-    highs = pick(hpa == mx, (hpa - mn) >= _CENTER_PROMINENCE_HPA, ascending=False)
+    mn_wide = minimum_filter(hpa, size=prom_size, mode="nearest")
+    mx_wide = maximum_filter(hpa, size=prom_size, mode="nearest")
+    lows  = pick(hpa == mn, (mx_wide - hpa) >= _CENTER_PROMINENCE_HPA, ascending=True)
+    highs = pick(hpa == mx, (hpa - mn_wide) >= _CENTER_PROMINENCE_HPA, ascending=False)
     return lows, highs
 
 
@@ -1561,7 +1577,7 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1570,10 +1586,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
             centers_array=centers_array, contour_overlays=contour_overlays,
+            monthly_anomaly=monthly_anomaly,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1628,7 +1645,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             unit_label = "σ"
             plot_vals  = data_array.values
         else:
-            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit)
+            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
             unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
             plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
         if mode == "anomaly" and variable == "wind_speed":
@@ -1654,7 +1671,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         else:
             if mode == "anomaly" and variable in {"temp", "temp_2m"}:
                 unit_letter = _temp_display_unit(variable, level, temp_unit)
-                max_val, step, breakpoints, colors = _temp_anomaly_scale(unit_letter, color_step)
+                max_val, step, breakpoints, colors = _temp_anomaly_scale(unit_letter, color_step, monthly=monthly_anomaly)
                 tick_every = 10.0 if unit_letter == "F" else 5.0
             else:
                 breakpoints, colors = _make_diverging_scale(max_val, step, white_steps=1)

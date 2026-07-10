@@ -102,6 +102,12 @@ REGIONS = {
         "lat": (-47.5, -2.5),
         "lon": (102.5, 167.5),
     },
+    "New Zealand": {
+        # NIWA-style frame: reaches 55S for the full storm-track story and
+        # crosses the dateline to 160W.
+        "lat": (-57.5, -22.5),
+        "lon": (147.5, 202.5),
+    },
     "Southeast Canada": {
         "lat": (37.5, 72.5),
         "lon": (257.5, 322.5),

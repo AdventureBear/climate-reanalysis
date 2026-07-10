@@ -608,10 +608,33 @@ def fetch_monthly_named_level_field(year: int, month: int, grib_name: str, level
         _save_obs_monthly(da, path)
         return da
 
-    raise DataUnavailableError(
-        f"No monthly {grib_name}:{level_name} data for {year}-{month:02d} — "
-        "the CORe monthly archive has not published this month yet."
+    # Tier 3: compute the monthly mean from 3-hourly synoptic analyses —
+    # the same fallback pressure-level fields use for unpublished months.
+    # Note the synoptic files carry MSLET (not PRES:MSL), so a composite
+    # mixing archive and synoptic months mixes reductions; negligible away
+    # from heated terrain, and the alternative is failing outright.
+    syn_cfg = _NAMED_LEVEL_SYNOPTIC.get((grib_name, level_name))
+    if syn_cfg is None:
+        raise DataUnavailableError(
+            f"No monthly {grib_name}:{level_name} data for {year}-{month:02d} — "
+            "the CORe monthly archive has not published this month yet."
+        )
+    syn_grib, syn_level = syn_cfg
+    log.info(
+        "OBS      %s %d  %s:%s  → CORe-synoptic (%s:%s)",
+        _cal.month_abbr[month], year, grib_name, level_name, syn_grib, syn_level,
     )
+    da = _compute_monthly_from_synoptic(year, month, fetch_field_by_level_name, syn_grib, syn_level)
+    da.attrs["_pyre_obs_source"] = "CORe-synoptic"
+    _save_obs_monthly(da, path)
+    return da
+
+
+# Monthly-archive record → equivalent record in the 3-hourly synoptic files
+# (naming and reductions differ between the two archives).
+_NAMED_LEVEL_SYNOPTIC: dict[tuple[str, str], tuple[str, str]] = {
+    ("PRES", "MSL"): ("MSLET", "mean sea level"),
+}
 
 
 def fetch_monthly_named_level_composite(

@@ -54,10 +54,22 @@ def map_date_label(
             return date_list_label()
         return f"{fmt(selection.date_list[0])} – {fmt(selection.date_list[-1])}  ({len(selection.date_list)} dates)"
 
+    def selection_months_label() -> str:
+        seen: list[int] = []
+        for _, m in selection.year_months:
+            if m not in seen:
+                seen.append(m)
+        if len(seen) == 1:
+            return cal.month_abbr[seen[0]]
+        contiguous = all(seen[i + 1] == seen[i] % 12 + 1 for i in range(len(seen) - 1))
+        if contiguous:
+            return f"{cal.month_abbr[seen[0]]}–{cal.month_abbr[seen[-1]]}"
+        return ", ".join(cal.month_abbr[m] for m in seen)
+
     def climo_ref() -> str:
         source = climo_source_labels.get(climo_source, climo_source)
         if selection.monthly_mode:
-            return f"Baseline: {month_abbr} · {source} {climo_period}"
+            return f"Baseline: {selection_months_label()} · {source} {climo_period}"
         if len(selection.date_list) > 1:
             if req.date_mode == "range":
                 return f"Baseline: matching calendar days · {source} {climo_period}"
