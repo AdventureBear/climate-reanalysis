@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2, Save, FolderOpen, LogIn, LogOut, User } from 'lucide-react'
+import { BarChart3, Settings, X, Plus, Minus, Eye, EyeOff, Pencil, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, PanelLeft, LayoutGrid, CircleHelp, SlidersHorizontal, GalleryHorizontalEnd, Menu, Trash2, Save, FolderOpen, LogIn, LogOut, User } from 'lucide-react'
 import { useAuth } from './auth/authContext'
 import { AuthModal } from './auth/AuthModal'
 import { LibraryModal } from './projects/LibraryModal'
@@ -11,6 +11,7 @@ import { blobFromObjectUrl } from './lib/images'
 import { suggestedMapName } from './mapName'
 import { SiteFooter } from './SiteFooter'
 import { dateRange, mapRecipeFromUrl, mapRecipeToParams, monthRange, type ClimoSource, type DisplayMode, type FillMode, type MapRecipe, type PwatUnit, type SubMode, type TimeRecipe, type TimeScale, type WindAnomalyOverlay, type WindOverlayType, type WindUnit } from './mapRecipe'
+import AdminStatsPanel from './admin/AdminStatsPanel'
 import { REGION_THUMBNAILS } from './regionThumbnails'
 import { HOURS, normalizeColorStep } from './sharedOptions'
 import {
@@ -806,6 +807,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [adminStatsOpen, setAdminStatsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -2133,6 +2135,12 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
                           className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                           <FolderOpen size={14} /> My Maps
                         </button>
+                        {isAdmin && (
+                          <button type="button" onClick={() => { setAccountMenuOpen(false); setAdminStatsOpen(true) }}
+                            className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                            <BarChart3 size={14} /> Admin Stats
+                          </button>
+                        )}
                         {colorLabVisible && (adminMode ? (
                           <button type="button" onClick={() => { setAccountMenuOpen(false); openColorLab() }}
                             className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
@@ -2803,6 +2811,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       )}
 
       {authEnabled && authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      {authEnabled && adminStatsOpen && isAdmin && <AdminStatsPanel onClose={() => setAdminStatsOpen(false)} />}
       {authEnabled && libraryOpen && user && (
         <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={handleLoadMap} />
       )}
