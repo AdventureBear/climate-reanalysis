@@ -65,7 +65,7 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 
 ### React / Frontend Guardrails
 
-- Treat `App.tsx` as overgrown legacy surface area. Do not add large new workflows, drawers, panels, or data orchestration there unless the change is a small bridge toward extraction.
+- `App.tsx` is a thin composition root (July 2026 refactor): state lives in `builder/useCompositeRecipe.ts` and `builder/useMapGeneration.ts`, UI in focused panel components. Do not add workflows, drawers, panels, or data orchestration back into `App.tsx` — extend the matching hook or panel, or add a new focused module.
 - Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
 - Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
 - Prefer derived values from render state (`useMemo` only when it avoids real work or stabilizes references), event handlers, reducers, or explicit state machines over effect chains that copy state into more state.
@@ -130,7 +130,7 @@ Current backend capabilities include:
 - Wind speed, wind overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
 
 Current frontend capabilities include:
-- A Composite Builder in `App.tsx`.
+- A Composite Builder composed in `App.tsx` from focused panels (`builder/`), header/settings chrome (`chrome/`), Color Lab modules (`colorLab/`), and shared primitives (`ui/controls.tsx`).
 - Typed recipe serialization in `mapRecipe.ts`.
 - Frontend variable/level API mapping in `variableConfig.ts`.
 - Region browser/thumbnails, settings controls, rendered PNG display, and admin-only Color Lab.
@@ -145,7 +145,11 @@ Current frontend capabilities include:
 
 ### Frontend (`frontend/src/`)
 
-- **`App.tsx`** — current Composite Builder: time mode selector, variable/level/region controls, date/month inputs, display modes, settings, Color Lab, and an `<img>` showing the streamed backend PNG.
+- **`App.tsx`** — composition root (~285 lines): wires the recipe/generation/designer hooks, URL sync, save/load glue, and modal visibility; renders the panels below.
+- **`builder/`** — Composite Builder domain: `useCompositeRecipe.ts` (all recipe state + MapRecipe conversion + guard effects), `useMapGeneration.ts` (request lifecycle, blob URL handling), panel components (`VariableLevelPanel`, `TemporalPanel`, `AnalysisPanel`, `OverlaysPanel`, `TimeScaleControls`, `MapPanel`, `RegionsModal`, `PanelsSection`), and the region catalogue (`regionCatalog.ts`, `RegionThumbnail.tsx`).
+- **`chrome/`** — `AppHeader.tsx` (brand, save, account/mobile menus) and `SettingsDrawer.tsx`.
+- **`colorLab/`** — `scaleModel.ts` (pure scale math + types), `useScaleDesigner.ts` (designer state + scale-meta fetch + generate-time `scale_spec`), `ColorLabPanel.tsx` (modal UI).
+- **`ui/controls.tsx`** — shared presentational primitives (TabStrip, SelectField, ToggleButton, Section, etc.).
 - Styled with **Tailwind CSS v4** (installed via `@tailwindcss/vite` plugin). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
 
 ---

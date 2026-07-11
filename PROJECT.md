@@ -113,7 +113,7 @@ Important backend modules:
 
 Important frontend modules:
 
-- `frontend/src/App.tsx`: current Composite Builder UI, settings drawer, region browser, Color Lab, generated image display, copy/share behavior.
+- `frontend/src/App.tsx`: composition root wiring builder hooks (`builder/useCompositeRecipe.ts`, `builder/useMapGeneration.ts`), panel components (`builder/`), header/settings chrome (`chrome/`), and the Color Lab (`colorLab/`).
 - `frontend/src/mapRecipe.ts`: typed URL/API recipe parsing and serialization.
 - `frontend/src/variableConfig.ts`: frontend variable/level selection mapped to backend API variables.
 - `frontend/src/sharedOptions.ts`: shared UI option helpers.
@@ -198,9 +198,9 @@ The planning screenshot in `docs/archive/` is an older UI checkpoint from May 20
 
 ### React / Frontend Guardrails
 
-The current frontend works, but `frontend/src/App.tsx` has accumulated too many responsibilities. Future frontend work should avoid making that pattern worse and should move gradually toward smaller, testable units.
+Resolved July 2026: `App.tsx` was refactored from ~2,800 lines to a ~285-line composition root. Recipe state lives in `builder/useCompositeRecipe.ts`, request lifecycle in `builder/useMapGeneration.ts`, and the UI in focused panel components under `builder/`, `chrome/`, `colorLab/`, and `ui/`. Future frontend work should keep this shape.
 
-- Treat `App.tsx` as overgrown legacy surface area. Do not add large new workflows, drawers, panels, or data orchestration there unless the change is a small bridge toward extraction.
+- Do not add workflows, drawers, panels, or data orchestration back into `App.tsx`; extend the matching hook or panel component instead.
 - Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
 - Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
 - Prefer derived values from render state, event handlers, reducers, or explicit state machines over effect chains that copy state into more state. Use `useMemo` only when it avoids real work or stabilizes references for child components.
@@ -274,7 +274,7 @@ Highest priority scale work:
 
 ### Color Lab
 
-Color Lab is implemented as an admin-only experimental tool in `frontend/src/App.tsx`.
+Color Lab is implemented as an admin-only experimental tool in `frontend/src/colorLab/` (`scaleModel.ts`, `useScaleDesigner.ts`, `ColorLabPanel.tsx`).
 
 What works now:
 
@@ -299,7 +299,7 @@ Current limitations:
 - Custom scales are not saved to a backend database or durable registry.
 - There is no formal approval workflow for promoting a Color Lab scale into production defaults.
 - Custom scale application is request-scoped: it affects the generated map request when the Color Lab design matches that map's variable/level/mode.
-- It currently lives inside the already-large `App.tsx`, so future work should extract it into focused components.
+- Extracted July 2026 into `colorLab/`: pure scale math in `scaleModel.ts`, designer state in `useScaleDesigner.ts` (instantiated by App because generate reads it), modal UI in `ColorLabPanel.tsx`.
 - Scientific validation still has to happen outside the UI. Color Lab can help design and inspect scales, but it does not answer whether a scale is meteorologically correct.
 
 Recommended next step for Color Lab:
@@ -411,11 +411,11 @@ Unit tests cover parsing and some fallback behavior, but many important validati
 
 ### Frontend Size
 
-`frontend/src/App.tsx` is large and carries builder UI, settings, Color Lab, region browser, image loading, and copy/share behavior. Future frontend work should extract focused components while preserving typed recipe flow through `mapRecipe.ts`.
+Resolved July 2026: `App.tsx` is now a ~285-line composition root over `builder/`, `chrome/`, `colorLab/`, and `ui/` modules, preserving typed recipe flow through `mapRecipe.ts`. Keep new features in focused hooks/components rather than re-growing `App.tsx`.
 
 ### Region Registry Split
 
-Regions are defined in `config.py`, display extents/projections in `visualizer.py`, and frontend grouping in `App.tsx`. This is workable but split. If regions keep growing, move toward a shared registry/export contract.
+Regions are defined in `config.py`, display extents/projections in `visualizer.py`, and frontend grouping in `builder/regionCatalog.ts`. This is workable but split. If regions keep growing, move toward a shared registry/export contract.
 
 ### Documentation Drift
 

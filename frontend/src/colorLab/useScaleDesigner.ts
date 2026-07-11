@@ -4,6 +4,7 @@
 // the /api/map request via applyScaleToParams.
 import { useEffect, useRef, useState } from 'react'
 import type { DisplayMode, PwatUnit, WindUnit } from '../mapRecipe'
+import { API_BASE } from '../lib/api'
 import { normalizeColorStep } from '../sharedOptions'
 import {
   activeAnchors,
@@ -17,9 +18,6 @@ import {
   type ScaleSegmentMode,
 } from './scaleModel'
 
-// Same-origin by default so a missing VITE_API_URL doesn't produce
-// requests to literally "undefined/api/..." in production builds.
-const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
   enabled: boolean
