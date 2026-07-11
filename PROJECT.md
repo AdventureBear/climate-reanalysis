@@ -368,6 +368,13 @@ Recommended next step for Color Lab:
 - Correlation maps.
 - Export/share workflows beyond URL state, such as image download metadata or saved recipes.
 
+### Accounts & Admin Backlog (added 2026-07-10, not yet scheduled)
+
+- GDPR-style account deletion from the admin panel: remove the auth user, profile, projects/folders, saved_maps rows, and all objects under the user's prefix in the `maps` storage bucket, in one confirmed action. Should log/confirm what was removed.
+- User-side bulk download of saved map images (zip of everything in their storage prefix plus recipe metadata), intended as the "take your data" step before requesting deletion.
+- `is_advisor` flag on `profiles` for expert advisors: grants access to the Color Lab but NOT the admin usage dashboard. Frontend gating should treat admin ⊇ advisor for Color Lab; `admin_dashboard_stats` stays admin-only.
+- Possible future: radar reconstruction tab (US-only, hourly requests; MRMS composites for large regions, single-site NEXRAD for small ones) — under discussion, not committed.
+
 ## 8. Known Issues and Open Questions
 
 ### Climatology Source Mismatch
