@@ -342,16 +342,18 @@ def _upper_temp_scale(t_min: int, t_max: int) -> dict:
 
 _TEMP_SCALES: dict[int, dict] = {
     1000: {
+        # Color Lab export 2026-07-11: freezing line at 31/32 (blue→green),
+        # zero line at 0/1, and a hard red→maroon step at 100/101.
         "mapping": "fixed_anchors",
         "unit": "F",
-        "anchors":    [-60, -40,   0,   1,  15,  31,  32,   50,   70,   80,  81,  100, 120],
+        "anchors":    [-60, -40,   0,   1,  15,  31,  32,   54,   70,   85,  100, 101, 130],
         "anchor_hex": [
             '#2a4d73', '#ace3db', '#7a26ab', '#a149b3', '#d8e3eb',
-            '#1650b5', '#104354', '#f2f1a7', '#610d0c', '#7d2f43',
-            '#7a4036', '#f2e7dc', '#4a4a44',
+            '#1650b5', '#0e533c', '#39b030', '#e5d000', '#f48a10',
+            '#df0000', '#640202', '#fa5700',
         ],
         "t_min": -60,
-        "t_max": 120,
+        "t_max": 130,
         "key_breakpoints": [32],
     },
     925: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
