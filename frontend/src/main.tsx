@@ -8,10 +8,15 @@ import { AuthProvider } from './auth/AuthProvider.tsx'
 import AuthCallback from './auth/AuthCallback.tsx'
 import ResetPasswordPage from './auth/ResetPasswordPage.tsx'
 import { PrivacyPage, TermsPage } from './LegalPage.tsx'
+import { RouteTracker } from './chrome/RouteTracker.tsx'
+import { initGoatCounter } from './lib/goatcounter.ts'
+
+initGoatCounter()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <RouteTracker />
       <AuthProvider>
         <Routes>
           <Route path="/" element={<App />} />

@@ -62,6 +62,9 @@ Frontend `.env` values:
 
 ```bash
 VITE_API_URL=http://127.0.0.1:8000
+# Optional, production only: GoatCounter page-view analytics endpoint.
+# Leave unset in dev so local work never counts as traffic.
+# VITE_GOATCOUNTER_URL=https://<sitecode>.goatcounter.com/count
 ```
 
 Without `CORS_ORIGINS`, the FastAPI app defaults to an empty CORS allowlist.
