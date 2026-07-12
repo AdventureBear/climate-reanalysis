@@ -15,9 +15,12 @@ type UserRow = {
   storage_bytes: number
 }
 type Stats = {
-  totals: { users: number; maps: number; projects: number; storage_bytes: number }
+  totals: { users: number; maps: number; projects: number; requests?: number; storage_bytes: number }
   signups_by_day: DayCount[]
   maps_by_day: DayCount[]
+  // Anonymous map_requests counter; absent until the map_requests migrations
+  // are applied, so the panel tolerates undefined.
+  requests_by_day?: DayCount[]
   users: UserRow[]
 }
 
@@ -111,9 +114,10 @@ export default function AdminStatsPanel({ onClose }: { onClose: () => void }) {
 
         {stats && (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {([
                 ['Users', String(stats.totals.users)],
+                ['Map requests', String(stats.totals.requests ?? 0)],
                 ['Saved maps', String(stats.totals.maps)],
                 ['Projects', String(stats.totals.projects)],
                 ['Storage', formatBytes(stats.totals.storage_bytes)],
@@ -125,7 +129,8 @@ export default function AdminStatsPanel({ onClose }: { onClose: () => void }) {
               ))}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <MiniBars title="Map requests per day" counts={stats.requests_by_day ?? []} />
               <MiniBars title="Signups per day" counts={stats.signups_by_day} />
               <MiniBars title="Maps saved per day" counts={stats.maps_by_day} />
             </div>

@@ -40,9 +40,27 @@ export type SavedMap = {
   thumbnail_path: string | null
 } & Timestamps
 
+export type MapRequest = {
+  id: string
+  variable: string | null
+  level: string | null
+  region: string | null
+  mode: string | null
+  time_scale: string | null
+  created_at: string
+}
+
 export type Database = {
   public: {
     Tables: {
+      map_requests: {
+        Row: MapRequest
+        // RLS is insert-only for the API roles; reads happen inside the
+        // SECURITY DEFINER admin_dashboard_stats() function.
+        Insert: Partial<Omit<MapRequest, 'id' | 'created_at'>>
+        Update: Record<string, never>
+        Relationships: []
+      }
       profiles: {
         Row: Profile
         Insert: { id: string; display_name?: string | null; tier?: string; stripe_customer_id?: string | null }
