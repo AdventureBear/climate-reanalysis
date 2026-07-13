@@ -1,8 +1,6 @@
 # PyRe — Frequently Asked Questions
 
-A living reference covering data sources, methods, and scientific design decisions.
-Organized from foundational concepts to more technical detail.
-Add new Q&A pairs at the appropriate level as they come up.
+Data sources, methods, and scientific design decisions organized from foundational concepts to more technical detail.
 
 ---
 
