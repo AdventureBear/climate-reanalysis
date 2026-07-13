@@ -1,7 +1,12 @@
 import type { Metadata } from 'next'
-import { AuthProvider } from '../auth/AuthProvider'
+import { Inter } from 'next/font/google'
+import { AuthProvider } from './auth/AuthProvider'
+import { SiteHeader } from '../chrome/SiteHeader'
+import { SiteFooter } from '../chrome/SiteFooter'
 import { Analytics } from './analytics'
 import '../index.css'
+
+const inter = Inter({ subsets: ['latin'], display: 'swap' })
 
 export const metadata: Metadata = {
   title: 'PyRe Weather - A Climate Reanalysis Playground for Meteorology Students and Researchers',
@@ -16,9 +21,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className={inter.className}>
         <Analytics />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <div className="min-h-screen bg-[#131d3f] text-slate-100 flex flex-col">
+            <SiteHeader />
+            <div className="flex flex-1 flex-col">{children}</div>
+            <SiteFooter />
+          </div>
+        </AuthProvider>
       </body>
     </html>
   )

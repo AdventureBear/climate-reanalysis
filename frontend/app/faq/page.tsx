@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import FaqPage from '../../FaqPage'
+import FaqPage from './FaqPage'
 
 // Server component: the markdown is read at build time and prerendered.
 export default function Faq() {

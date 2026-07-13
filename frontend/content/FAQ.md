@@ -8,7 +8,7 @@ Add new Q&A pairs at the appropriate level as they come up.
 
 ## 1. What is PyRe?
 
-PyRe is a community-built replacement for the NOAA/PSL interactive reanalysis composite pages that stopped updating in March 2026 when the underlying NCEP Reanalysis dataset was discontinued. PSL has no plans to rebuild the interface for the successor dataset. PyRe replicates the three PSL interfaces:
+PyRe is an independently built replacement for the NOAA/PSL interactive reanalysis composite pages that stopped updating in March 2026 when the underlying NCEP Reanalysis dataset was discontinued. PSL has no plans to rebuild the interface for the successor dataset. PyRe replicates the three PSL interfaces:
 
 - **Monthly/Seasonal Composites** — composite means over one or more calendar months
 - **Daily Mean Composites** — average of one or more calendar days across 00z/06z/12z/18z

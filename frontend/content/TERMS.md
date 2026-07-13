@@ -26,7 +26,7 @@ Maps you save belong to you. The underlying reanalysis data is public-domain U.S
 
 ## Availability
 
-PyRe is a community project. We make no guarantee of uptime or continued availability, and features may change or be discontinued at any time. We may also delete inactive accounts or content after reasonable notice.
+PyRe is a free, independently run project. We make no guarantee of uptime or continued availability, and features may change or be discontinued at any time. We may also delete inactive accounts or content after reasonable notice.
 
 ## Limitation of liability
 

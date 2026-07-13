@@ -37,3 +37,4 @@ backend/obs_cache/
 backend/app/*.grib2
 backend/app/*.idx
 frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
