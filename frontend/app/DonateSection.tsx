@@ -3,7 +3,7 @@ import { Heart } from 'lucide-react'
 // Donations. Venmo is live today; Stripe goes live by setting
 // STRIPE_DONATE_URL to a Stripe Payment Link once the account is wired up.
 // No em-dashes.
-const VENMO_DONATE_URL = 'https://venmo.com/u/REPLACE-WITH-VENMO-HANDLE'
+const VENMO_DONATE_URL = 'https://account.venmo.com/u/SuzanneMAtkinson'
 const STRIPE_DONATE_URL: string | null = null
 
 export function DonateSection() {

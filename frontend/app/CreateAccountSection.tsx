@@ -4,6 +4,7 @@
 // builder; this section sells the account, by audience. Pricing copy: free
 // now, paid plans coming. No em-dashes.
 import { useState } from 'react'
+import { Check } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from './auth/authContext'
 import { AuthModal } from './auth/AuthModal'
@@ -56,16 +57,22 @@ export function CreateAccountSection() {
           With a free account, PyRe Weather becomes your best ally, whether you are a student,
           a teacher, a researcher or a storm chaser.
         </p>
-        <div className="mt-6 grid gap-4 text-left sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-5 text-left sm:grid-cols-2 lg:grid-cols-4">
           {AUDIENCES.map(a => (
             <div key={a.who}
-              className="rounded-xl border border-[#2e4278]/60 bg-[#16224a]/60 p-4 transition-all hover:-translate-y-0.5 hover:border-sky-500/50 hover:bg-[#16224a]">
-              <h3 className="text-base font-semibold text-sky-300">{a.who}</h3>
-              <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-300">
-                {a.points.map(pt => (
-                  <li key={pt} className="ml-4 list-disc">{pt}</li>
-                ))}
-              </ul>
+              className="rounded-2xl bg-gradient-to-b from-sky-300/50 via-[#3a5694]/40 to-[#2e4278]/20 p-px transition-all hover:-translate-y-1 hover:from-sky-300/90 hover:shadow-xl hover:shadow-sky-950/60">
+              <div className="h-full rounded-[15px] bg-[#16224a] p-6">
+                <h3 className="text-lg font-semibold text-slate-100">{a.who}</h3>
+                <div className="mt-3 h-px bg-gradient-to-r from-sky-400/60 to-transparent" />
+                <ul className="mt-4 space-y-3 text-sm leading-relaxed text-slate-300">
+                  {a.points.map(pt => (
+                    <li key={pt} className="flex items-start gap-2.5">
+                      <Check size={15} strokeWidth={3} className="mt-0.5 shrink-0 text-emerald-400" />
+                      <span>{pt}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           ))}
         </div>
