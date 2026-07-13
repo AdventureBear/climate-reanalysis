@@ -17,14 +17,7 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
 export default function AboutPage() {
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-16">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">About PyRe</p>
-      <h1 className="mt-2 text-4xl font-bold tracking-tight text-white">
-        Built by one meteorologist, shaped by many
-      </h1>
-      <p className="mt-4 text-lg leading-relaxed text-slate-200">
-        PyRe brings a beloved research workflow back to life: custom composite, anomaly and
-        climatology maps from seventy years of reanalysis data, rendered in seconds.
-      </p>
+      <h1 className="text-4xl font-bold tracking-tight text-white">About PyRe</h1>
 
       <section className="mt-14">
         <SectionHeading eyebrow="The story" title="Why this site exists" />
@@ -36,8 +29,8 @@ export default function AboutPage() {
           the new data.
         </p>
         <p className="mt-3 text-base leading-relaxed text-slate-200">
-          PyRe is built by one person, but it is not built alone. The people below shaped it
-          with their questions, ideas, corrections and encouragement.
+          PyRe is built by one person, but it is not built alone. These people shaped it with
+          their questions, ideas, corrections and encouragement.
         </p>
       </section>
 
@@ -98,6 +91,13 @@ export default function AboutPage() {
           The best parts of this site started as somebody&rsquo;s offhand suggestion. If you have
           an idea for what PyRe should do next, a correction, or a connection worth making,
           say so, and if it shapes the site, your name goes here.
+        </p>
+        <p className="mt-3 text-base leading-relaxed text-slate-200">
+          Email{' '}
+          <a href="mailto:suzyq@pyreweather.org" className="text-sky-300 underline underline-offset-2 hover:text-sky-200">
+            suzyq@pyreweather.org
+          </a>
+          .
         </p>
       </section>
     </main>
