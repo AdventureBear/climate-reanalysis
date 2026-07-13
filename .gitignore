@@ -22,13 +22,15 @@ __pycache__/
 branding/
 # Supabase CLI runtime only — supabase/migrations/ MUST stay tracked:
 # untracked migrations are how dev/prod schema drift happened (2026-07-12).
-supabase/.temp/
+**/supabase/.temp/
 
 backend/.env
 frontend/.env.local.bak
 frontend/.env.production
 
 # Runtime/generated backend data
+frontend/.next/
+frontend/out/
 backend/cache/
 backend/climo_cache/
 backend/obs_cache/

@@ -10,7 +10,7 @@ import { removeMapObjects, uploadMapImages } from './storage'
 
 export type { Folder, Project, SavedMap } from './database.types'
 
-// ── Projects ──────────────────────────────────────────────────────────────
+// -- Projects --------------------------------------------------------------
 export async function listProjects(): Promise<Project[]> {
   const sb = requireSupabase()
   const { data, error } = await sb.from('projects').select('*').order('created_at', { ascending: true })
@@ -43,7 +43,7 @@ export async function deleteProject(id: string): Promise<void> {
   if (error) throw error
 }
 
-// ── Folders ───────────────────────────────────────────────────────────────
+// -- Folders ---------------------------------------------------------------
 // All of the owner's folders across projects (RLS scopes to the owner); the
 // library home view groups them client-side.
 export async function listAllFolders(): Promise<Folder[]> {
@@ -100,7 +100,7 @@ export async function deleteFolder(id: string): Promise<void> {
   if (error) throw error
 }
 
-// ── Saved maps ──────────────────────────────────────────────────────────────
+// -- Saved maps --------------------------------------------------------------
 // All of the owner's maps, newest first. The library modal loads everything up
 // front and filters client-side (home "All maps" grid + per-project views).
 export async function listAllMaps(): Promise<SavedMap[]> {

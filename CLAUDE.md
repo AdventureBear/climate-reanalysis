@@ -58,7 +58,8 @@ GitHub issues are the tracker of record; one issue in flight at a time. New idea
 
 1. **Spec-in-issue before code.** Before building an issue, post the spec as a comment on it — approach, files touched, any migration — and get approval there before writing code.
 2. **Done-when lists.** Every issue gets 2–4 observable acceptance criteria before work starts. Verification means demonstrating those criteria against the running app, not just green checks.
-3. **Fixes get mini-specs too.** Unplanned bugs and small changes go through the same spec-comment step (a few lines is fine) — never straight to code.
+3. **Done means working in development.** An issue closes when its change is verified in dev. Deploying to production is a separate, user-initiated act (push to the deploy branch) — never a condition for closing an issue.
+4. **Fixes get mini-specs too.** Unplanned bugs and small changes go through the same spec-comment step (a few lines is fine) — never straight to code.
 
 Database schema changes additionally follow the migrations rule: write the file in `supabase/migrations/` first; apply that exact content; keep filename versions matching the applied history.
 

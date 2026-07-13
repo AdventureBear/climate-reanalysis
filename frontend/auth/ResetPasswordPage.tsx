@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { useAuth } from './authContext'
 import { PasswordInput } from './PasswordInput'
 import { authErrorMessage } from './authErrors'
@@ -10,7 +10,7 @@ import { authErrorMessage } from './authErrors'
 // Expired/used links come back as error params instead of a code; a direct
 // visit with no session gets the same invalid-link message.
 export default function ResetPasswordPage() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { enabled, loading, session, updatePassword } = useAuth()
   const [linkError, setLinkError] = useState<string | null>(null)
   const [password, setPassword] = useState('')
@@ -30,8 +30,8 @@ export default function ResetPasswordPage() {
 
   // Without Supabase there is no auth at all; this page has no business rendering.
   useEffect(() => {
-    if (!enabled) navigate('/', { replace: true })
-  }, [enabled, navigate])
+    if (!enabled) router.replace('/')
+  }, [enabled, router])
 
   const mismatch = passwordConfirm !== '' && passwordConfirm !== password
 
@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
     try {
       await updatePassword(password)
       // The recovery session is a real session — the user lands home signed in.
-      navigate('/', { replace: true })
+      router.replace('/')
     } catch (err) {
       setError(authErrorMessage(err))
       setBusy(false)
@@ -63,7 +63,7 @@ export default function ResetPasswordPage() {
         <p className="text-xs text-slate-400">
           Open the app and use &ldquo;Forgot password?&rdquo; to request a new one.
         </p>
-        <button type="button" onClick={() => navigate('/', { replace: true })}
+        <button type="button" onClick={() => router.replace('/')}
           className="rounded bg-sky-600 hover:bg-sky-500 px-3 py-1.5 text-sm font-semibold text-white cursor-pointer">
           Back to app
         </button>

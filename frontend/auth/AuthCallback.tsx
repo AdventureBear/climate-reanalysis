@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { useAuth } from './authContext'
 
 // Landing page for the OAuth redirect. With PKCE + detectSessionInUrl, supabase-js
@@ -7,7 +7,7 @@ import { useAuth } from './authContext'
 // we return home. This page must never hang: it surfaces provider errors and always
 // navigates away via a safety timeout.
 export default function AuthCallback() {
-  const navigate = useNavigate()
+  const router = useRouter()
   const { loading, session } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
@@ -24,13 +24,13 @@ export default function AuthCallback() {
   useEffect(() => {
     if (error) return
     if (!loading) {
-      navigate('/', { replace: true })
+      router.replace('/')
       return
     }
     // Safety net: if auth init stalls, don't strand the user on this page.
-    const timer = setTimeout(() => navigate('/', { replace: true }), 5000)
+    const timer = setTimeout(() => router.replace('/'), 5000)
     return () => clearTimeout(timer)
-  }, [loading, session, error, navigate])
+  }, [loading, session, error, router])
 
   if (error) {
     return (
@@ -38,7 +38,7 @@ export default function AuthCallback() {
         <p className="text-sm text-red-300">Sign-in failed: {error}</p>
         <button
           type="button"
-          onClick={() => navigate('/', { replace: true })}
+          onClick={() => router.replace('/')}
           className="rounded bg-sky-600 hover:bg-sky-500 px-3 py-1.5 text-sm font-semibold text-white cursor-pointer"
         >
           Back to app

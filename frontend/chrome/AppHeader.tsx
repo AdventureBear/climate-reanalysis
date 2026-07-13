@@ -1,7 +1,7 @@
 // App header: brand, header-variant time-scale strip, save button, account
 // menu (desktop) and the condensed mobile menu.
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { BarChart3, ChevronDown, FolderOpen, LogIn, LogOut, Menu, Save, Settings, SlidersHorizontal, User, X } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 
@@ -71,7 +71,7 @@ export function AppHeader({ adminMode, saving, onSaveMap, onOpenColorLab, onTogg
                             <SlidersHorizontal size={14} /> Color Lab
                           </button>
                         ) : (
-                          <Link to="/admin" onClick={() => setAccountMenuOpen(false)}
+                          <Link href="/admin" onClick={() => setAccountMenuOpen(false)}
                             className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                             <SlidersHorizontal size={14} /> Color Lab
                           </Link>
@@ -104,7 +104,7 @@ export function AppHeader({ adminMode, saving, onSaveMap, onOpenColorLab, onTogg
             </button>
           ) : (
             <Link
-              to="/admin"
+              href="/admin"
               className="inline-flex h-7 items-center gap-2 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
               title="Open color lab"
             >
@@ -139,7 +139,7 @@ export function AppHeader({ adminMode, saving, onSaveMap, onOpenColorLab, onTogg
               </button>
             ) : (
               <Link
-                to="/admin"
+                href="/admin"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-2 rounded px-3 py-2 text-xs text-slate-200 hover:bg-slate-800"
               >

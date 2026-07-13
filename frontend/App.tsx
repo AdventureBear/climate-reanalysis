@@ -1,5 +1,6 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useAuth } from './auth/authContext'
 import { AuthModal } from './auth/AuthModal'
 import { LibraryModal } from './projects/LibraryModal'
@@ -31,10 +32,9 @@ import { CardRow, Section, VariableDisplayControl } from './ui/controls'
 
 const SAVE_TARGET_STORAGE_KEY = 'pyre.saveTarget'
 
-// ── Main component ────────────────────────────────────────────────────────────
+// -- Main component ------------------------------------------------------------
 
 export default function App({ adminMode = false }: { adminMode?: boolean }) {
-  const [searchParams, setSearchParams] = useSearchParams()
 
   const recipe = useCompositeRecipe()
   const {
@@ -79,22 +79,31 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
   const selfUpdatedParamsRef = useRef<string | null>(null)
 
   useEffect(() => {
-    const paramsString = searchParams.toString()
-    if (paramsString === selfUpdatedParamsRef.current) return
-    selfUpdatedParamsRef.current = paramsString
+    // Read the query string directly (no useSearchParams): the hook forces a
+    // Suspense/CSR bailout on a statically exported page. Deep links apply on
+    // mount; popstate covers back/forward.
+    const applyFromLocation = () => {
+      const params = new URLSearchParams(window.location.search)
+      const paramsString = params.toString()
+      if (paramsString === selfUpdatedParamsRef.current) return
+      selfUpdatedParamsRef.current = paramsString
 
-    const recipe = mapRecipeFromUrl(searchParams)
-    if (!recipe) return
-    applyRecipeToState(recipe)
+      const recipe = mapRecipeFromUrl(params)
+      if (!recipe) return
+      applyRecipeToState(recipe)
 
-    // Shared/deep-linked URLs render immediately instead of showing an empty
-    // panel until the user clicks Generate.
-    const recipeParams = mapRecipeToParams(recipe)
-    if (recipeParams.ok) void generateFromParams(recipeParams.params)
+      // Shared/deep-linked URLs render immediately instead of showing an empty
+      // panel until the user clicks Generate.
+      const recipeParams = mapRecipeToParams(recipe)
+      if (recipeParams.ok) void generateFromParams(recipeParams.params)
+    }
+    applyFromLocation()
+    window.addEventListener('popstate', applyFromLocation)
+    return () => window.removeEventListener('popstate', applyFromLocation)
     // Recipe/generation helpers are recreated every render by their hooks; this
-    // effect must fire only on URL changes (deep links, back/forward).
+    // effect must register once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [])
 
   function openColorLab() {
     scaleDesigner.seedFrom(apiVariable, apiLevel, isClimo ? 'raw' : displayMode)
@@ -121,11 +130,11 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     // Mark this URL update as our own so the URL-sync effect doesn't re-apply
     // it (and re-render the map a second time).
     selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
-    setSearchParams(params)
+    window.history.replaceState(null, '', `?${new URLSearchParams(params).toString()}`)
     await generateFromParams(params)
   }
 
-  // ── Save / load library maps ─────────────────────────────────────────────────
+  // -- Save / load library maps -------------------------------------------------
   function handleSaveMap() {
     if (!user) { setAuthModalOpen(true); return }
     if (!mapSrc) { setError('Generate a map before saving.'); return }
@@ -163,14 +172,14 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
     const recipeParams = mapRecipeToParams(recipe)
     if (recipeParams.ok) {
       selfUpdatedParamsRef.current = new URLSearchParams(recipeParams.params).toString()
-      setSearchParams(recipeParams.params)
+      window.history.replaceState(null, '', `?${new URLSearchParams(recipeParams.params).toString()}`)
     }
     setError(null)
     setLibraryOpen(false)
   }
 
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // -- Render --------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <AppHeader
@@ -188,7 +197,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
       <form onSubmit={handleGenerate}
         className={isVertical ? 'flex flex-1 min-h-0 overflow-x-auto' : 'p-4 flex flex-col gap-4'}>
 
-        {/* ── Card panels ─────────────────────────────────────────────────── */}
+        {/* -- Card panels --------------------------------------------------- */}
         <div className={isVertical
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
           : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start'}>
@@ -228,7 +237,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           <AnalysisPanel recipe={recipe} loading={loading} />
         </div>
 
-        {/* ── Advanced composition panels ─────────────────────────────────── */}
+        {/* -- Advanced composition panels ----------------------------------- */}
         <div className={isVertical
           ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
           : 'grid grid-cols-1 lg:grid-cols-2 gap-3'}>
@@ -236,7 +245,7 @@ export default function App({ adminMode = false }: { adminMode?: boolean }) {
           <PanelsSection />
         </div>
 
-        {/* ── Map panel ───────────────────────────────────────────────────── */}
+        {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical} />
       </form>
 

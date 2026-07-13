@@ -1,6 +1,6 @@
 // GoatCounter page-view analytics (privacy-friendly, no cookies, no PII).
-// Activated only when VITE_GOATCOUNTER_URL is set at build time, e.g.
-//   VITE_GOATCOUNTER_URL=https://<sitecode>.goatcounter.com/count
+// Activated only when NEXT_PUBLIC_GOATCOUNTER_URL is set at build time, e.g.
+//   NEXT_PUBLIC_GOATCOUNTER_URL=https://<sitecode>.goatcounter.com/count
 // Dev builds leave it unset, so local work never counts as traffic.
 //
 // Page views are recorded by pathname only — the recipe query string is
@@ -18,7 +18,7 @@ declare global {
   }
 }
 
-const ENDPOINT: string | undefined = import.meta.env.VITE_GOATCOUNTER_URL
+const ENDPOINT: string | undefined = process.env.NEXT_PUBLIC_GOATCOUNTER_URL
 
 export function initGoatCounter() {
   if (!ENDPOINT) return

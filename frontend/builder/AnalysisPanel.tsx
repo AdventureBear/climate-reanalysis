@@ -90,8 +90,7 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
             <CardRow>
             <VariableDisplayControl label="Render">
             <button type="submit" disabled={loading}
-              className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 active:bg-sky-700
-                         disabled:opacity-50 font-bold text-xs tracking-wide cursor-pointer transition-colors w-full">
+              className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50 font-bold text-xs tracking-wide cursor-pointer transition-colors w-full">
               {generateLabel()}
             </button>
             </VariableDisplayControl>

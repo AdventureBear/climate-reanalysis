@@ -1,11 +1,10 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft, CircleHelp } from 'lucide-react'
-import faqMarkdown from './content/FAQ.md?raw'
 import { SiteFooter } from './SiteFooter'
 
-export default function FaqPage() {
+export default function FaqPage({ markdown }: { markdown: string }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       <header className="bg-slate-900 border-b border-slate-700 px-5 py-3 flex items-center gap-3">
@@ -15,7 +14,7 @@ export default function FaqPage() {
         <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded">CORe / NCEP</span>
         <div className="ml-auto flex items-center gap-3">
           <Link
-            to="/"
+            href="/"
             className="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700 transition-colors"
           >
             <ArrowLeft size={15} />
@@ -49,7 +48,7 @@ export default function FaqPage() {
         </section>
 
         <article className="faq-doc rounded-2xl border border-slate-700/60 bg-slate-900/70 p-6 md:p-8 shadow-xl">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{faqMarkdown}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
         </article>
       </main>
 
