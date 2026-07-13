@@ -190,7 +190,9 @@ export function useCompositeRecipe() {
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
     if (recipe.wind) {
-      setWindStep(recipe.wind.step)
+      // Legacy saved recipes may hold step '0'; state never holds a
+      // sub-minimum density (#57).
+      setWindStep(Number(recipe.wind.step) > 0 ? recipe.wind.step : '2')
       setWindType(recipe.wind.type)
       setWindOn(recipe.wind.on)
       setWindAnomalyOverlay(recipe.wind.anomalyOverlay)

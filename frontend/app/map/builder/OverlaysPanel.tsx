@@ -39,6 +39,7 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
                 <div className={`ml-auto flex items-center gap-1.5 transition-opacity ${windMaster && windOn ? '' : 'opacity-30 pointer-events-none'}`}>
                   <Label>Density</Label>
                   <input type="number" min={1} max={20} value={windStep}
+                    disabled={!(windMaster && windOn)}
                     onChange={e => setWindStep(e.target.value)}
                     className="input w-14 text-center px-1" />
                 </div>

@@ -378,6 +378,9 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   const uiSelection = apiVariable ? uiSelectionForApiVariable(apiVariable, apiLevel) : {}
   const parsedWindType = windType(params.get('wind_type')) ?? 'barbs'
   const windStep = params.get('wind_step')
+  // wind_step=0 (or junk) in a URL means "no glyph overlay", never "density
+  // zero" — builder state must not hold a sub-minimum density (#57).
+  const windStepUsable = Number(windStep) > 0
   const windOverlayMode = params.get('wind_overlay_mode')
   const parsedColorStep = params.get('color_step')
 
@@ -388,8 +391,8 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     climoSource: climoSource(params.get('climo_source')),
     time: timeRecipeFromUrl(params),
     wind: windStep === null && params.get('isotachs') !== '1' ? undefined : {
-      on: windOverlayMode !== 'anomaly' && Number(windStep ?? 0) > 0,
-      step: windStep ?? '2',
+      on: windOverlayMode !== 'anomaly' && windStepUsable,
+      step: windStepUsable ? windStep! : '2',
       type: parsedWindType,
       anomalyOverlay: windOverlayMode === 'anomaly' ? parsedWindType : 'none',
       isotachs: params.get('isotachs') === '1',
