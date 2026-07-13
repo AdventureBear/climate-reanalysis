@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { RecipeRedirect } from './RecipeRedirect'
+import { CreateAccountSection } from './CreateAccountSection'
+import { DonateSection } from './DonateSection'
+import { UsageSection } from './UsageSection'
 
 // Landing page. Hero blends real map renders into the dusk background with
 // the text on top; the builder CTA sits low so the maps do the talking.
@@ -101,23 +104,9 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl px-5">
-        <div className="mt-14 pb-14 text-center">
-          <Link
-            href="/map"
-            className="inline-block rounded-xl bg-sky-500 px-10 py-4 text-lg font-bold text-white shadow-lg shadow-sky-900/40 transition-colors hover:bg-sky-500"
-          >
-            Open the map builder
-          </Link>
-          <p className="mt-4 text-sm text-slate-500">
-            New here? The{' '}
-            <Link href="/faq" className="text-sky-400 underline underline-offset-2 hover:text-sky-300">
-              FAQ
-            </Link>{' '}
-            covers the data sources and how the maps are computed.
-          </p>
-        </div>
-      </div>
+      <CreateAccountSection />
+      <DonateSection />
+      <UsageSection />
     </div>
   )
 }

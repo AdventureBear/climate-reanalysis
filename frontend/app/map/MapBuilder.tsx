@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FolderOpen, Settings, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
+import { SaveAccountPrompt } from './builder/SaveAccountPrompt'
 import { LibraryModal } from './projects/LibraryModal'
 import { saveMap, type SavedMap } from '../../lib/library'
 import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
@@ -64,6 +65,8 @@ export default function MapBuilder() {
   const colorLabAccess = colorLabVisible
   const scaleDesigner = useScaleDesigner({ enabled: colorLabAccess, colorStep, windUnit, pwatUnit })
   const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
+  const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
@@ -135,7 +138,7 @@ export default function MapBuilder() {
 
   // -- Save / load library maps -------------------------------------------------
   function handleSaveMap() {
-    if (!user) { setAuthModalOpen(true); return }
+    if (!user) { setSavePromptOpen(true); return }
     if (!mapSrc) { setError('Generate a map before saving.'); return }
     setSaveModalOpen(true)
   }
@@ -287,7 +290,16 @@ export default function MapBuilder() {
         />
       )}
 
-      {authEnabled && authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      {authEnabled && authModalOpen && (
+        <AuthModal initialMode={authModalMode} onClose={() => { setAuthModalOpen(false); setAuthModalMode('login') }} />
+      )}
+      {authEnabled && savePromptOpen && !user && (
+        <SaveAccountPrompt
+          onClose={() => setSavePromptOpen(false)}
+          onCreateAccount={() => { setSavePromptOpen(false); setAuthModalMode('signup'); setAuthModalOpen(true) }}
+          onSignIn={() => { setSavePromptOpen(false); setAuthModalMode('login'); setAuthModalOpen(true) }}
+        />
+      )}
       {authEnabled && libraryOpen && user && (
         <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={handleLoadMap} />
       )}

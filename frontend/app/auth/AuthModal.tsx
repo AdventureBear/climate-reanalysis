@@ -15,9 +15,9 @@ const TITLES: Record<Mode, string> = {
 // Email confirmations are off (no SMTP yet), so a typo'd sign-up email creates
 // an account nobody can ever recover — the signup form confirms both the email
 // and the password before submitting. Confirm fields intentionally allow paste.
-export function AuthModal({ onClose }: { onClose: () => void }) {
+export function AuthModal({ onClose, initialMode = 'login' }: { onClose: () => void; initialMode?: Mode }) {
   const { signInWithPassword, signUpWithPassword, signInWithGoogle, resetPassword } = useAuth()
-  const [mode, setMode] = useState<Mode>('login')
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [email, setEmail] = useState('')
   const [emailConfirm, setEmailConfirm] = useState('')
   const [password, setPassword] = useState('')
