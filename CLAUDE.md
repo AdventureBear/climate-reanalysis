@@ -52,6 +52,16 @@ Monorepo: `backend/` (Python 3.12, FastAPI, uv) and `frontend/` (React 19, TypeS
 
 The frontend sends a "recipe" (variable, level, region, date list, mode) → backend fetches, computes, renders → streams a PNG → frontend displays in an `<img>` tag.
 
+### Working Agreement (issue-driven workflow)
+
+GitHub issues are the tracker of record; one issue in flight at a time. New ideas become issues, not code.
+
+1. **Spec-in-issue before code.** Before building an issue, post the spec as a comment on it — approach, files touched, any migration — and get approval there before writing code.
+2. **Done-when lists.** Every issue gets 2–4 observable acceptance criteria before work starts. Verification means demonstrating those criteria against the running app, not just green checks.
+3. **Fixes get mini-specs too.** Unplanned bugs and small changes go through the same spec-comment step (a few lines is fine) — never straight to code.
+
+Database schema changes additionally follow the migrations rule: write the file in `supabase/migrations/` first; apply that exact content; keep filename versions matching the applied history.
+
 ### Engineering Guardrails
 
 - Do not add one-off `if` / `else` chains for variable, level, unit, overlay, region, mode, or scale behavior. Add behavior to typed registries/configuration and derive UI/API behavior from those sources of truth.
