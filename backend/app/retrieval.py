@@ -13,7 +13,7 @@ import requests
 import xarray as xr
 
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
-from .disk_cache import atomic_write_netcdf
+from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 
 log = logging.getLogger("pyre.retrieval")
 
@@ -37,19 +37,24 @@ def _load_obs_monthly(path: str) -> xr.DataArray | None:
     if not os.path.exists(path):
         return None
     try:
-        ds = xr.open_dataset(path)
-        da = ds["obs"].load()
-        ds.close()
+        with open_netcdf(path) as ds:
+            da = ds["obs"].load()
         log.debug("OBS_CACHE  hit  %s", os.path.basename(path))
         return da
     except Exception as exc:
-        log.warning("OBS_CACHE  corrupt (%s), re-fetching", exc)
+        log.warning("OBS_CACHE  corrupt (%s), deleting + re-fetching", exc)
+        discard_corrupt(path)
         return None
 
 
 def _save_obs_monthly(da: xr.DataArray, path: str) -> None:
-    atomic_write_netcdf(da.to_dataset(name="obs"), path)
-    log.debug("OBS_CACHE  saved  %s", os.path.basename(path))
+    # Already-fetched data: a failed cache save must never fail the request
+    # (#51 incident 2 500'd here on a sick disk).
+    try:
+        atomic_write_netcdf(da.to_dataset(name="obs"), path)
+        log.debug("OBS_CACHE  saved  %s", os.path.basename(path))
+    except Exception as exc:
+        log.warning("OBS_CACHE  save failed (%s) — serving uncached", exc)
 
 # GCS is the primary archive: 1950 → near real-time, 3-hourly, simpler URL.
 # NOMADS keeps only the last 7 days and uses a more complex batch-dir structure.
@@ -548,11 +553,10 @@ def _fetch_r2m_field(year: int, month: int, grib_name: str, level: int) -> xr.Da
     date_str = f"{year}-{month:02d}-01"
     log.debug("R2M      GET %s  %s@%dhPa  %d-%02d", url, r2_var, level, year, month)
     t0 = time.perf_counter()
-    ds = xr.open_dataset(url, engine="netcdf4")
-    da = ds[r2_var].sel(level=level, method="nearest").sel(
-        time=date_str, method="nearest"
-    ).load()
-    ds.close()
+    with open_netcdf(url, engine="netcdf4") as ds:
+        da = ds[r2_var].sel(level=level, method="nearest").sel(
+            time=date_str, method="nearest"
+        ).load()
     da = da.where(np.abs(da) < 1e30)
     da = da.rename({"lat": "latitude", "lon": "longitude"})
     log.debug("R2M      fetched %.0fKB in %.2fs", da.nbytes / 1024, time.perf_counter() - t0)
@@ -599,9 +603,8 @@ def fetch_monthly_named_level_field(year: int, month: int, grib_name: str, level
     if (grib_name, level_name) == ("PRES", "MSL") and R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
         log.info("OBS      %s %d  %s:%s  → R2-monthly (mslp)", _cal.month_abbr[month], year, grib_name, level_name)
         url = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/surface/mslp.mon.mean.nc"
-        ds = xr.open_dataset(url, engine="netcdf4")
-        da = ds["mslp"].sel(time=f"{year}-{month:02d}-01", method="nearest").load()
-        ds.close()
+        with open_netcdf(url, engine="netcdf4") as ds:
+            da = ds["mslp"].sel(time=f"{year}-{month:02d}-01", method="nearest").load()
         da = da.where(np.abs(da) < 1e30)
         da = da.rename({"lat": "latitude", "lon": "longitude"})
         da.attrs["_pyre_obs_source"] = "R2-monthly"

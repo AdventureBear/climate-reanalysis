@@ -55,7 +55,7 @@ import numpy as np
 import xarray as xr
 
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
-from .disk_cache import atomic_write_netcdf
+from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 
 log = logging.getLogger("pyre.climo_r2")
 
@@ -180,20 +180,25 @@ def _load_disk(r2_var: str, level: int, month: int, day: int) -> dict[str, xr.Da
     if not os.path.exists(path):
         return None
     try:
-        ds = xr.open_dataset(path)
-        result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
-        ds.close()
+        with open_netcdf(path) as ds:
+            result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
         log.debug("CLIMO_R2  disk cache hit  %s", os.path.basename(path))
         return result
     except Exception as exc:
-        log.warning("CLIMO_R2  disk cache corrupt (%s), re-fetching", exc)
+        log.warning("CLIMO_R2  disk cache corrupt (%s), deleting + re-fetching", exc)
+        discard_corrupt(path)
         return None
 
 
 def _save_disk(r2_var: str, level: int, month: int, day: int, result: dict[str, xr.DataArray]) -> None:
     path = _disk_path(r2_var, level, month, day)
-    atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
-    log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
+    # The data is already computed — a failed cache save must never fail the
+    # request (#51 incident 2 500'd here on a sick disk).
+    try:
+        atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
+        log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
+    except Exception as exc:
+        log.warning("CLIMO_R2  cache save failed (%s) — serving uncached", exc)
 
 
 def _disk_path_monthly(r2_var: str, level: int, month: int) -> str:
@@ -205,20 +210,23 @@ def _load_disk_monthly(r2_var: str, level: int, month: int) -> dict[str, xr.Data
     if not os.path.exists(path):
         return None
     try:
-        ds = xr.open_dataset(path)
-        result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
-        ds.close()
+        with open_netcdf(path) as ds:
+            result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
         log.debug("CLIMO_R2M  disk cache hit  %s", os.path.basename(path))
         return result
     except Exception as exc:
-        log.warning("CLIMO_R2M  disk cache corrupt (%s), re-fetching", exc)
+        log.warning("CLIMO_R2M  disk cache corrupt (%s), deleting + re-fetching", exc)
+        discard_corrupt(path)
         return None
 
 
 def _save_disk_monthly(r2_var: str, level: int, month: int, result: dict[str, xr.DataArray]) -> None:
     path = _disk_path_monthly(r2_var, level, month)
-    atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
-    log.debug("CLIMO_R2M  saved to disk   %s", os.path.basename(path))
+    try:
+        atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
+        log.debug("CLIMO_R2M  saved to disk   %s", os.path.basename(path))
+    except Exception as exc:
+        log.warning("CLIMO_R2M  cache save failed (%s) — serving uncached", exc)
 
 
 # ── Surgical OPeNDAP fetch ───────────────────────────────────────────────────
@@ -251,14 +259,14 @@ def _fetch_one_year(
 
     for attempt in range(max_retries):
         try:
-            ds = xr.open_dataset(url, engine="netcdf4")
             # .sel() with a date string + level value constructs an OPeNDAP
             # constraint expression; .load() issues the single small request.
-            da = ds[r2_var]
-            if "level" in da.dims:
-                da = da.sel(level=level, method="nearest")
-            da = da.sel(time=date_str, method="nearest").load()
-            ds.close()
+            # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
+            with open_netcdf(url, engine="netcdf4") as ds:
+                da = ds[r2_var]
+                if "level" in da.dims:
+                    da = da.sel(level=level, method="nearest")
+                da = da.sel(time=date_str, method="nearest").load()
             # Mask R2 fill value (-9.96921e36) and upcast to float64
             da = da.where(np.abs(da) < 1e30).astype(np.float64)
             return da
@@ -400,18 +408,17 @@ def _fetch_r2m_monthly_scalar(
     """
     url = _monthly_url(file_stem or r2_var, dataset)
     t0 = time.perf_counter()
-    ds = xr.open_dataset(url, engine="netcdf4")
-    time_slice = _r2m_climo_time_slice(ds, month)
-    log.info(
-        "CLIMO_R2M  fetching  var=%s  level=%dhPa  month=%02d  "
-        "t_slice=[%d:%d:12]  url=%s",
-        file_stem or r2_var, level, month, time_slice.start, time_slice.stop, url,
-    )
-    da_30yr = ds[r2_var]
-    if "level" in da_30yr.dims:
-        da_30yr = da_30yr.sel(level=level, method="nearest")
-    da_30yr = da_30yr.isel(time=time_slice).load()
-    ds.close()
+    with open_netcdf(url, engine="netcdf4") as ds:
+        time_slice = _r2m_climo_time_slice(ds, month)
+        log.info(
+            "CLIMO_R2M  fetching  var=%s  level=%dhPa  month=%02d  "
+            "t_slice=[%d:%d:12]  url=%s",
+            file_stem or r2_var, level, month, time_slice.start, time_slice.stop, url,
+        )
+        da_30yr = ds[r2_var]
+        if "level" in da_30yr.dims:
+            da_30yr = da_30yr.sel(level=level, method="nearest")
+        da_30yr = da_30yr.isel(time=time_slice).load()
     log.info("CLIMO_R2M  fetched in %.1fs  shape=%s", time.perf_counter() - t0, da_30yr.shape)
 
     da_30yr = da_30yr.where(np.abs(da_30yr) < 1e30).astype(np.float64)
@@ -434,18 +441,16 @@ def _fetch_r2m_monthly_wind_speed(level: int, month: int) -> dict[str, xr.DataAr
     """
     log.info("CLIMO_R2M  fetching wind speed  level=%dhPa  month=%02d", level, month)
     t0 = time.perf_counter()
-    ds_u = xr.open_dataset(_monthly_url("uwnd", "pressure"), engine="netcdf4")
-    ds_v = xr.open_dataset(_monthly_url("vwnd", "pressure"), engine="netcdf4")
-    u_30yr = (
-        ds_u["uwnd"].sel(level=level, method="nearest")
-        .isel(time=_r2m_climo_time_slice(ds_u, month)).load()
-    )
-    v_30yr = (
-        ds_v["vwnd"].sel(level=level, method="nearest")
-        .isel(time=_r2m_climo_time_slice(ds_v, month)).load()
-    )
-    ds_u.close()
-    ds_v.close()
+    with open_netcdf(_monthly_url("uwnd", "pressure"), engine="netcdf4") as ds_u:
+        u_30yr = (
+            ds_u["uwnd"].sel(level=level, method="nearest")
+            .isel(time=_r2m_climo_time_slice(ds_u, month)).load()
+        )
+    with open_netcdf(_monthly_url("vwnd", "pressure"), engine="netcdf4") as ds_v:
+        v_30yr = (
+            ds_v["vwnd"].sel(level=level, method="nearest")
+            .isel(time=_r2m_climo_time_slice(ds_v, month)).load()
+        )
     log.info("CLIMO_R2M  fetched in %.1fs", time.perf_counter() - t0)
 
     u_30yr = u_30yr.where(np.abs(u_30yr) < 1e30).astype(np.float64)
@@ -530,12 +535,11 @@ def _fetch_single_level_monthly(spec: dict, month: int) -> dict[str, xr.DataArra
 
 def _fetch_r2m_30yr(spec: dict, month: int) -> xr.DataArray:
     """One strided OPeNDAP request for the 30 climo-period values of a month."""
-    ds = xr.open_dataset(_monthly_url(spec["file"], spec["dataset"]), engine="netcdf4")
-    da = ds[spec["var"]]
-    if "level" in da.dims:
-        da = da.isel(level=0)
-    da = da.isel(time=_r2m_climo_time_slice(ds, month)).load()
-    ds.close()
+    with open_netcdf(_monthly_url(spec["file"], spec["dataset"]), engine="netcdf4") as ds:
+        da = ds[spec["var"]]
+        if "level" in da.dims:
+            da = da.isel(level=0)
+        da = da.isel(time=_r2m_climo_time_slice(ds, month)).load()
     return da.where(np.abs(da) < 1e30).astype(np.float64)
 
 
@@ -565,20 +569,23 @@ def _load_disk_single_level(stem: str, month: int, day: int | None) -> dict[str,
     if not os.path.exists(path):
         return None
     try:
-        ds = xr.open_dataset(path)
-        result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
-        ds.close()
+        with open_netcdf(path) as ds:
+            result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
         log.debug("CLIMO_R2  disk cache hit  %s", os.path.basename(path))
         return result
     except Exception as exc:
-        log.warning("CLIMO_R2  disk cache corrupt (%s), re-fetching", exc)
+        log.warning("CLIMO_R2  disk cache corrupt (%s), deleting + re-fetching", exc)
+        discard_corrupt(path)
         return None
 
 
 def _save_disk_single_level(stem: str, month: int, day: int | None, result: dict[str, xr.DataArray]) -> None:
     path = _disk_path_single_level(stem, month, day)
-    atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
-    log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
+    try:
+        atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
+        log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
+    except Exception as exc:
+        log.warning("CLIMO_R2  cache save failed (%s) — serving uncached", exc)
 
 
 # ── Cache-aware loader ────────────────────────────────────────────────────────
