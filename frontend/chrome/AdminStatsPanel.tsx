@@ -3,6 +3,15 @@ import { BarChart3, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 type DayCount = { day: string; count: number }
+type VisitorDay = {
+  day: string
+  visitors: number
+  anon_visitors: number
+  signed_in_visitors: number
+  median_renders: number
+  max_renders: number
+}
+type TopItem = { value: string; count: number }
 type UserRow = {
   id: string
   email: string | null
@@ -21,6 +30,11 @@ type Stats = {
   // Anonymous map_requests counter; absent until the map_requests migrations
   // are applied, so the panel tolerates undefined.
   requests_by_day?: DayCount[]
+  // Visitor analytics (#14); absent until its migration is applied.
+  visitors_by_day?: VisitorDay[]
+  top_variables?: TopItem[]
+  top_regions?: TopItem[]
+  top_modes?: TopItem[]
   users: UserRow[]
 }
 
@@ -71,6 +85,67 @@ function MiniBars({ title, counts }: { title: string; counts: DayCount[] }) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Unique visitors per day: stacked bars (anonymous + signed-in), with the
+// per-visitor render distribution (median/max — the abuse radar) on hover.
+function VisitorBars({ days }: { days: VisitorDay[] }) {
+  const byDay = new Map(days.map(d => [d.day, d]))
+  const filled: VisitorDay[] = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const key = d.toISOString().slice(0, 10)
+    filled.push(byDay.get(key) ?? { day: key, visitors: 0, anon_visitors: 0, signed_in_visitors: 0, median_renders: 0, max_renders: 0 })
+  }
+  const max = Math.max(1, ...filled.map(d => d.visitors))
+  const total = filled.reduce((s, d) => s + d.visitors, 0)
+  return (
+    <div className="rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Unique visitors per day</span>
+        <span className="text-xs text-slate-300">
+          {total} visitor-days in 30
+          <span className="ml-2 inline-block h-2 w-2 rounded-sm bg-sky-500" /> anon
+          <span className="ml-2 inline-block h-2 w-2 rounded-sm bg-emerald-500" /> signed in
+        </span>
+      </div>
+      <div className="flex h-16 items-end gap-[2px]">
+        {filled.map(d => (
+          <div key={d.day} className="group relative flex h-full flex-1 items-end">
+            <div className="flex w-full flex-col justify-end" style={{ height: `${d.visitors > 0 ? Math.max(8, (d.visitors / max) * 100) : 4}%` }}>
+              {d.signed_in_visitors > 0 && (
+                <div className="w-full rounded-t-sm bg-emerald-500" style={{ height: `${(d.signed_in_visitors / Math.max(1, d.visitors)) * 100}%` }} />
+              )}
+              <div className={`w-full flex-1 rounded-sm ${d.visitors > 0 ? 'bg-sky-500' : 'bg-slate-800'}`} />
+            </div>
+            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-200 group-hover:block">
+              {formatDay(d.day)}: {d.visitors} visitors ({d.signed_in_visitors} signed in) · renders median {Math.round(d.median_renders)}, max {d.max_renders}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TopList({ title, items }: { title: string; items: TopItem[] }) {
+  const max = Math.max(1, ...items.map(i => i.count))
+  return (
+    <div className="rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{title}</div>
+      {items.length === 0 && <p className="text-xs text-slate-500">No data yet.</p>}
+      <ul className="flex flex-col gap-1">
+        {items.map(i => (
+          <li key={i.value} className="relative flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-xs">
+            <div className="absolute inset-y-0 left-0 rounded bg-sky-900/40" style={{ width: `${(i.count / max) * 100}%` }} />
+            <span className="relative truncate text-slate-200">{i.value}</span>
+            <span className="relative shrink-0 text-slate-400">{i.count}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -133,6 +208,14 @@ export default function AdminStatsPanel({ onClose }: { onClose: () => void }) {
               <MiniBars title="Map requests per day" counts={stats.requests_by_day ?? []} />
               <MiniBars title="Signups per day" counts={stats.signups_by_day} />
               <MiniBars title="Maps saved per day" counts={stats.maps_by_day} />
+            </div>
+
+            <VisitorBars days={stats.visitors_by_day ?? []} />
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <TopList title="Top variables (30d)" items={stats.top_variables ?? []} />
+              <TopList title="Top regions (30d)" items={stats.top_regions ?? []} />
+              <TopList title="Top modes (30d)" items={stats.top_modes ?? []} />
             </div>
 
             <div className="overflow-x-auto rounded-lg border border-slate-700/70">

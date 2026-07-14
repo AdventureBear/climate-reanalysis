@@ -47,6 +47,9 @@ export type MapRequest = {
   region: string | null
   mode: string | null
   time_scale: string | null
+  // Both filled by the before-insert trigger, never by the client (#14).
+  signed_in: boolean
+  visitor: string | null
   created_at: string
 }
 
@@ -56,8 +59,9 @@ export type Database = {
       map_requests: {
         Row: MapRequest
         // RLS is insert-only for the API roles; reads happen inside the
-        // SECURITY DEFINER admin_dashboard_stats() function.
-        Insert: Partial<Omit<MapRequest, 'id' | 'created_at'>>
+        // SECURITY DEFINER admin_dashboard_stats() function. signed_in and
+        // visitor are trigger-owned — the client cannot set them.
+        Insert: Partial<Omit<MapRequest, 'id' | 'created_at' | 'signed_in' | 'visitor'>>
         Update: Record<string, never>
         Relationships: []
       }
