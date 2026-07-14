@@ -61,6 +61,7 @@ GitHub issues are the tracker of record; one issue in flight at a time. New idea
 3. **Done means working in development.** An issue closes when its change is verified in dev. Deploying to production is a separate, user-initiated act (push to the deploy branch) — never a condition for closing an issue.
 4. **Fixes get mini-specs too.** Unplanned bugs and small changes go through the same spec-comment step (a few lines is fine) — never straight to code.
 5. **Filing is not fixing.** "Add issue: X" and comments on backlogged issues produce issue text only. Triage reasoning, ruled-out causes, and ready-to-run diagnostic commands belong in issue comments; executing any of them (running commands, probing prod, editing code) waits until the issue is explicitly picked up to work. The turn ends when the comment is posted.
+6. **Claude never commits to main.** Every piece of work — features, fixes, docs, one-line changes — is committed on a feature branch (`feat/…`, `fix/…`). Only the user merges to main, and only the user pushes anywhere. If the working tree is on main when work starts, branch first.
 
 Database schema changes additionally follow the migrations rule: write the file in `supabase/migrations/` first; apply that exact content; keep filename versions matching the applied history.
 
