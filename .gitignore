@@ -34,6 +34,7 @@ frontend/out/
 backend/cache/
 backend/climo_cache/
 backend/obs_cache/
+backend/scripts/out/
 backend/app/*.grib2
 backend/app/*.idx
 frontend/next-env.d.ts
