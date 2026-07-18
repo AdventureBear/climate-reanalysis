@@ -21,10 +21,16 @@ uv add <package>                       # add a dependency
 ```bash
 cd frontend
 npm install       # install deps
-npm run dev       # dev server at http://localhost:5173
-npm run build     # tsc + vite production build
+npm run dev       # next dev at http://localhost:5173
+npm run build     # next build → static export in out/
 npm run lint      # eslint
 ```
+
+**Supabase** (dev project only — production gets its own project; keep this one localhost-oriented)
+```bash
+supabase migration list    # compare local files vs applied history
+```
+Schema changes are file-first: write the migration in `supabase/migrations/`, then apply that exact content (see Working Agreement).
 
 ---
 
@@ -46,11 +52,17 @@ The new underlying dataset is **CORe (Climate-Ocean Reanalysis)** from NCEP/CPC,
 
 ## Architecture
 
-Monorepo: `backend/` (Python 3.12, FastAPI, uv) and `frontend/` (React 19, TypeScript, Vite, Tailwind v4).
+Monorepo, three legs:
+
+- `backend/` — Python 3.12, FastAPI, uv. All scientific computation and map rendering.
+- `frontend/` — Next.js 16 **static export** (React 19, TypeScript, Tailwind v4, React Compiler). No Node server in production: `next build` emits `out/`, served by Render's static site. Dev server runs on port 5173.
+- `supabase/` — accounts, saved-map library, visitor analytics, blog posts, object storage, and the `rebuild-site` Edge Function. The React app talks to Supabase directly with the anon key; RLS enforces ownership and admin gates.
 
 **The frontend is a thin UI shell. All computation and rendering happen on the backend.**
 
 The frontend sends a "recipe" (variable, level, region, date list, mode) → backend fetches, computes, renders → streams a PNG → frontend displays in an `<img>` tag.
+
+**Deployment:** frontend `out/` on a Render static site (rebuilt via a deploy hook that only the `rebuild-site` Edge Function calls); backend on a Render service with `CORS_ORIGINS`, `PYRE_CACHE_DIR`, etc. set in the environment. The current Supabase project is DEV only. Deploying to production is always a user-initiated act.
 
 ### Working Agreement (issue-driven workflow)
 
@@ -78,7 +90,9 @@ Database schema changes additionally follow the migrations rule: write the file 
 
 ### React / Frontend Guardrails
 
-- `App.tsx` is a thin composition root (July 2026 refactor): state lives in `builder/useCompositeRecipe.ts` and `builder/useMapGeneration.ts`, UI in focused panel components. Do not add workflows, drawers, panels, or data orchestration back into `App.tsx` — extend the matching hook or panel, or add a new focused module.
+- `app/map/MapBuilder.tsx` is a thin composition root (July 2026 refactor, formerly `App.tsx`): state lives in `app/map/builder/useCompositeRecipe.ts` and `useMapGeneration.ts`, UI in focused panel components. Do not add workflows, drawers, panels, or data orchestration back into `MapBuilder.tsx` — extend the matching hook or panel, or add a new focused module.
+- Routes are Next.js App Router directories under `frontend/app/`. The site is a static export: no server components that need a runtime, no API routes. Build-time data fetching (e.g. published posts) is fine.
+- Interactive pages are `'use client'` components mounted from small `page.tsx` files; keep the page files thin.
 - Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
 - Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
 - Prefer derived values from render state (`useMemo` only when it avoids real work or stabilizes references), event handlers, reducers, or explicit state machines over effect chains that copy state into more state.
@@ -139,31 +153,57 @@ Current backend capabilities include:
 - R2 daily/monthly climatology support, with sub-monthly anomaly modes forced to `r2-daily`.
 - Climatology/anomaly modes for the starter surface/named-level variables (2m temp, 10m wind, MSLP, PWAT) via R2 single-level baselines declared as `r2_climo` specs in `config.VARIABLES`; specific humidity is raw-only.
 - Omega (VVEL, 100–1000 mb via per-variable `levels` lists), precipitation rate (mm/day display), and OLR (ULWRF at TOA), all with full climatology/anomaly support; PRATE/ULWRF are 0–3h average forecast fields.
-- Raw-only case-study variables: surface-based CAPE/CIN, 2m dewpoint (°F), absolute vorticity (10⁻⁵/s), snow depth (in) — empty `climo_sources` gates them to raw mode everywhere.
-- Wind speed, wind overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
+- Raw-only case-study variables: CAPE/CIN in three parcel variants (surface-based, mixed-layer `_ml`, most-unstable `_mu`), 2m dewpoint (°F), absolute vorticity (10⁻⁵/s), snow depth (in) — empty `climo_sources` gates them to raw mode everywhere.
+- MSLP plots MSLET (Eta/membrane reduction), not `PRES:mean sea level` — see the comment in `config.py`.
+- Wind speed, combinable wind overlays (shading/isotachs/barbs/vectors), H/L pressure centers, pressure/height/temp contour overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
+- All HDF5/netCDF access is serialized behind `disk_cache.HDF5_LOCK` (#51: the bundled HDF5 C library is not thread-safe and concurrent access segfaulted the Render service). Every netCDF open/read/write must hold it; the GRIB path (cfgrib/eccodes) intentionally stays concurrent.
 
 Current frontend capabilities include:
-- A Composite Builder composed in `App.tsx` from focused panels (`builder/`), header/settings chrome (`chrome/`), Color Lab modules (`colorLab/`), and shared primitives (`ui/controls.tsx`).
-- Typed recipe serialization in `mapRecipe.ts`.
-- Frontend variable/level API mapping in `variableConfig.ts`.
-- Region browser/thumbnails, settings controls, rendered PNG display, and admin-only Color Lab.
+- A public site shell: landing page (`/`), map builder (`/map`), About, FAQ, Terms/Privacy (markdown in `content/`), and the Synopsis blog (`/synopsis`).
+- The Composite Builder composed in `app/map/MapBuilder.tsx` from focused panels (`app/map/builder/`), Color Lab modules (`app/map/colorLab/`), and shared primitives (`ui/controls.tsx`).
+- Typed recipe serialization in `mapRecipe.ts` (repo-root of `frontend/`); variable/level API mapping in `variableConfig.ts`. Old `/?variable=…` share links redirect to `/map` via `app/RecipeRedirect.tsx`.
+- Accounts (Supabase auth, `app/auth/`), a saved-map library (projects → folders → maps: recipe JSON in Postgres, PNG + thumbnail in the private `maps` bucket), and save/load modals in `app/map/projects/`.
+- Admin-only surfaces: Color Lab, Admin Stats panel (`chrome/AdminStatsPanel.tsx`, tabbed usage/visitor/growth views over SECURITY DEFINER RPCs), and the Synopsis editor.
+- Synopsis blog (#36): admin-only BlockNote editor at `/synopsis/editor`, drafts/scheduling/publish in the `posts` table, static post pages baked at build time (`app/synopsis/[slug]/`, dependency-free `BlockRenderer`), images referenced as bucket paths and resolved at build.
+- GoatCounter page-view analytics (env-gated) plus anonymous per-render `map_requests` logging.
 
 ### Backend (`backend/app/`)
 
-- **`main.py`** — FastAPI app and all API endpoints. CORS configured for `localhost:5173` / `127.0.0.1:5173`.
-- **`config.py`** — `REGIONS` dict (lat/lon bounding boxes, 0–360 longitude) and `VARIABLES` dict (GRIB key mappings). Source of truth — don't hardcode bounds or variable names elsewhere.
+- **`main.py`** — FastAPI app and all API endpoints. Loads `.env` before app-module imports. CORS origins come from the `CORS_ORIGINS` env var (comma-separated; empty = warn and allow none).
+- **`config.py`** — `REGIONS` dict (lat/lon bounding boxes, 0–360 longitude) and `VARIABLES` dict (GRIB key mappings, per-variable `levels`, `climo_sources` gating). Source of truth — don't hardcode bounds or variable names elsewhere.
+- **`api_options.py`** — valid modes/units/climo-source enums and query-param helpers derived from config.
 - **`map_service.py`** — orchestrates `MapRequest` → fetch/compute/render pipeline.
-- **`map_pipeline/`** — time selection, climatology policy, fetch planning, labels, logging, computation helpers, and wind overlays.
+- **`map_pipeline/`** — time selection, climatology policy, fetch planning, labels, request logging, computation helpers, and wind overlays.
+- **`retrieval.py`** — surgical CORe GRIB retrieval (`.idx` parsing, HTTP Range, GCS-first with NOMADS fallback).
+- **`climo_r2.py`** — R2 daily/monthly climatology over OPeNDAP with constraint-expression fetches and disk caching.
+- **`disk_cache.py`** — cache roots (`PYRE_CACHE_DIR`) and `HDF5_LOCK` + `open_netcdf()`; all netCDF access goes through here.
 - **`visualizer.py`** — renders Matplotlib/Cartopy PNGs and owns current color-scale logic.
+- **`scripts/`** — `precompute_climo.py`, `generate_region_thumbnails.py`.
 
-### Frontend (`frontend/src/`)
+### Frontend (`frontend/`)
 
-- **`App.tsx`** — composition root (~285 lines): wires the recipe/generation/designer hooks, URL sync, save/load glue, and modal visibility; renders the panels below.
-- **`builder/`** — Composite Builder domain: `useCompositeRecipe.ts` (all recipe state + MapRecipe conversion + guard effects), `useMapGeneration.ts` (request lifecycle, blob URL handling), panel components (`VariableLevelPanel`, `TemporalPanel`, `AnalysisPanel`, `OverlaysPanel`, `TimeScaleControls`, `MapPanel`, `RegionsModal`, `PanelsSection`), and the region catalogue (`regionCatalog.ts`, `RegionThumbnail.tsx`).
-- **`chrome/`** — `AppHeader.tsx` (brand, save, account/mobile menus) and `SettingsDrawer.tsx`.
-- **`colorLab/`** — `scaleModel.ts` (pure scale math + types), `useScaleDesigner.ts` (designer state + scale-meta fetch + generate-time `scale_spec`), `ColorLabPanel.tsx` (modal UI).
-- **`ui/controls.tsx`** — shared presentational primitives (TabStrip, SelectField, ToggleButton, Section, etc.).
-- Styled with **Tailwind CSS v4** (installed via `@tailwindcss/vite` plugin). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
+Next.js App Router, static export. Domain modules live at the `frontend/` root (not `src/`):
+
+- **`app/`** — routes: `page.tsx` (landing, plus `RecipeRedirect` for legacy share links), `map/` (builder), `about/`, `faq/`, `privacy/`, `terms/`, `synopsis/` (blog: index, `[slug]/`, `editor/`, `preview/`), `auth/` (provider, modal, callback, reset), `sitemap.ts`, `layout.tsx`.
+- **`app/map/`** — `MapBuilder.tsx` (composition root: wires recipe/generation/designer hooks, URL sync, save/load glue, modal visibility), `SettingsDrawer.tsx`, and:
+  - **`builder/`** — `useCompositeRecipe.ts` (all recipe state + MapRecipe conversion + guard effects), `useMapGeneration.ts` (request lifecycle, blob URL handling), panel components (`VariableLevelPanel`, `TemporalPanel`, `AnalysisPanel`, `OverlaysPanel`, `TimeScaleControls`, `MapPanel`, `RegionsModal`, `PanelsSection`), and the region catalogue (`regionCatalog.ts`, `RegionThumbnail.tsx`).
+  - **`colorLab/`** — `scaleModel.ts` (pure scale math + types), `useScaleDesigner.ts` (designer state + scale-meta fetch + generate-time `scale_spec`), `ColorLabPanel.tsx` (modal UI).
+  - **`projects/`** — saved-library modals (`LibraryModal`, `SaveMapModal`, `NameModal`).
+- **`mapRecipe.ts`**, **`variableConfig.ts`**, **`sharedOptions.ts`** — typed recipe/URL/API serialization and variable/level mapping (root-level; the guardrail contracts).
+- **`lib/`** — `supabase.ts` (null-safe client: site fully works without accounts config), `library.ts` (projects/folders/saved maps), `storage.ts`, `posts.ts` (build-time published-post fetch), `postsAdmin.ts` (editor CRUD + rebuild trigger), `api.ts` (`API_BASE` from `NEXT_PUBLIC_API_URL`), `images.ts`, `goatcounter.ts`, `database.types.ts`.
+- **`chrome/`** — `SiteHeader.tsx`, `SiteFooter.tsx`, `AdminStatsPanel.tsx`.
+- **`ui/`** — `controls.tsx` (TabStrip, SelectField, ToggleButton, Section, etc.), `PageShell.tsx` (standard reading-page width).
+- **`content/`** — FAQ/TERMS/PRIVACY markdown rendered by their routes.
+- Styled with **Tailwind CSS v4** (via `@tailwindcss/postcss`). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
+- Env vars are `NEXT_PUBLIC_*`: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, GoatCounter URL.
+
+### Supabase (`supabase/`)
+
+- **Migrations** (`supabase/migrations/`, tracked in git) are the schema history. File-first rule: write the file, apply that exact content, keep filename versions matching applied history. Gotcha: MCP-applied migrations skip default grants — always add explicit `GRANT`s alongside RLS policies or authenticated calls hit 42501.
+- **Tables:** `profiles` (+ `is_admin` flag — the single admin gate), `projects`/`folders`/`saved_maps` (owner-scoped library; recipe JSON in rows, PNGs in storage), `map_requests` (anonymous per-render analytics with visitor hashing), `posts` (Synopsis blog: drafts, `publish_at` scheduling, published flag).
+- **Storage buckets:** `maps` (private; saved-map PNGs + thumbnails), `post-images` (public; blog photos and copies of saved-map PNGs). Body/image references store bucket paths, never full URLs.
+- **RPCs:** admin stats functions (SECURITY DEFINER, admin-checked) backing `AdminStatsPanel`.
+- **Edge Functions:** `rebuild-site` — the one place the Render deploy-hook URL lives. Mode `rebuild` (admin JWT) rebuilds the static site; mode `cron` (`x-cron-secret`) publishes due scheduled posts, then rebuilds.
 
 ---
 
