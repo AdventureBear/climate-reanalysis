@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { PostBody } from '../[slug]/PostBody'
 import { PageShell } from '../../../ui/PageShell'
+import { Lightbox } from '../[slug]/Lightbox'
 
 type Draft = { title: string; description: string; body: string; at: number }
 
@@ -48,6 +49,7 @@ export default function DraftPreview() {
           <div className="faq-doc mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
             <PostBody body={draft.body} />
           </div>
+          <Lightbox />
         </article>
       </PageShell>
     </div>

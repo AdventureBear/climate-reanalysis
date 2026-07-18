@@ -5,6 +5,7 @@ import { getPublishedPost, listPublishedPosts } from '../../../lib/posts'
 import { PostBody } from './PostBody'
 import { EditorLink } from '../EditorLink'
 import { PageShell } from '../../../ui/PageShell'
+import { Lightbox } from './Lightbox'
 
 type Params = { slug: string }
 
@@ -81,6 +82,7 @@ export default async function SynopsisPost({ params }: { params: Promise<Params>
           <div className="faq-doc mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
             <PostBody body={post.body_md} />
           </div>
+          <Lightbox />
         </article>
       </PageShell>
     </div>
