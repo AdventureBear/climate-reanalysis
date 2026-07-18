@@ -81,3 +81,11 @@
     @apply border border-slate-700 px-3 py-2 align-top text-slate-300;
   }
 }
+
+/* Synopsis post images carry inline pixel widths from the editor; never let
+   them exceed the column on small screens. */
+.faq-doc img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}

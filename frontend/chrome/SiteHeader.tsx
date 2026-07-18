@@ -14,6 +14,7 @@ import AdminStatsPanel from './AdminStatsPanel'
 const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/map', label: 'Mapping' },
+  { href: '/synopsis', label: 'Synopsis' },
   { href: '/faq', label: 'FAQ' },
 ]
 

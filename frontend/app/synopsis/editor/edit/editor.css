@@ -1,0 +1,45 @@
+/* BlockNote writing surface (#36): cool-slate canvas, one calm text tone,
+   themed to sit inside the site's dusk-blue chrome. */
+.synopsis-editor .bn-container {
+  --bn-colors-editor-background: #282d33;
+  --bn-colors-editor-text: #c6ccd2;
+  --bn-colors-menu-background: #2b3036;
+  --bn-colors-menu-text: #c6ccd2;
+  --bn-colors-tooltip-background: #333941;
+  --bn-colors-tooltip-text: #c6ccd2;
+  --bn-colors-hovered-background: #333941;
+  --bn-colors-hovered-text: #dde2e7;
+  --bn-colors-selected-background: #3d5a80;
+  --bn-colors-selected-text: #ffffff;
+  --bn-colors-disabled-background: #2b3036;
+  --bn-colors-disabled-text: #6b7480;
+  --bn-colors-shadow: rgba(0, 0, 0, 0.35);
+  --bn-colors-border: #3d444d;
+  --bn-colors-side-menu: #9aa3ad;
+  --bn-border-radius: 8px;
+  --bn-font-family: inherit;
+}
+.synopsis-editor .bn-editor {
+  overflow-x: clip;
+  background-color: #282d33;
+  border: 1px solid #3d444d;
+  border-radius: 8px;
+  min-height: 520px;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.synopsis-editor .bn-editor:focus-within {
+  border-color: #5a6472;
+}
+
+/* Images can carry pixel widths wider than the column (legacy content,
+   generous presets): clamp them so they and their resize handles always
+   stay inside the editing surface. */
+.synopsis-editor .bn-editor .bn-visual-media,
+.synopsis-editor .bn-editor .bn-visual-media-wrapper,
+.synopsis-editor .bn-editor img {
+  max-width: 100%;
+  height: auto;
+}

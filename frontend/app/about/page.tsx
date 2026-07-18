@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { PageShell } from '../../ui/PageShell'
 
 export const metadata: Metadata = {
   title: 'About — PyRe Weather',
@@ -16,7 +17,7 @@ function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) 
 
 export default function AboutPage() {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-16">
+    <PageShell>
       <h1 className="text-4xl font-bold tracking-tight text-white">About PyRe</h1>
 
       <section className="mt-14">
@@ -100,6 +101,6 @@ export default function AboutPage() {
           .
         </p>
       </section>
-    </main>
+    </PageShell>
   )
 }
