@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Synopsis pipeline (#37): forecast discussion -> post JSON -> rendered maps.
+Synopsis pipeline CLI (#37) — a thin wrapper over app.synopsis for local
+testing. Maps render in-process, so the dev server does NOT need to be
+running. Output goes to scripts/out/<timestamp>/ for review:
 
-v1 writes local files only (no bucket upload, no posts row):
+    post.json     the generated post
+    <id>.png      one PNG per map
+    preview.html  open in a browser to judge the post
 
-    scripts/out/<timestamp>/post.json     the generated post
-    scripts/out/<timestamp>/<id>.png      one PNG per map
-    scripts/out/<timestamp>/preview.html  open in a browser to judge the post
-
-Run from the backend/ directory (the local API server must be running):
+Run from the backend/ directory:
 
     uv run python scripts/discussion_post.py --file scripts/example_discussion.txt
+    uv run python scripts/discussion_post.py --fetch               # discussion from 2 days ago
+    uv run python scripts/discussion_post.py --fetch --draft      # ...and save a dev draft
 
-Needs ANTHROPIC_API_KEY (from backend/.env or the environment). Two flags
-work without a key:
+Needs ANTHROPIC_API_KEY (backend/.env). --draft also needs SUPABASE_URL and
+SUPABASE_SERVICE_ROLE_KEY. Two flags work without any keys:
 
     --dry-run              print the assembled system prompt and exit
     --from-json <path>     skip the model call; render maps from a saved post.json
@@ -25,148 +27,20 @@ import argparse
 import json
 import sys
 import time
-import urllib.parse
 from pathlib import Path
 
-import requests
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app.config import PRESSURE_LEVELS, REGIONS, VARIABLES  # noqa: E402
 
-MODEL = "claude-opus-4-8"
-COST_PER_MTOK_IN = 5.00
-COST_PER_MTOK_OUT = 25.00
-HOURS = ["00", "03", "06", "09", "12", "15", "18", "21"]
-PROMPT_PATH = Path(__file__).with_name("synopsis_prompt.md")
+load_dotenv()  # before app imports so keys are visible to them
 
-# Structured-output schema: every field is required; optional map params are
-# nullable and the renderer drops nulls before building the query string.
-_NULLABLE_INT = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
-_NULLABLE_STR = {"anyOf": [{"type": "string"}, {"type": "null"}]}
-POST_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "title": {"type": "string"},
-        "description": {"type": "string"},
-        "intro": {"type": "string"},
-        "maps": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "id": {"type": "string"},
-                    "caption": {"type": "string"},
-                    "params": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "variable": {"type": "string"},
-                            "level": _NULLABLE_INT,
-                            "region": {"type": "string"},
-                            "date": {"type": "string"},
-                            "hour": {"type": "string", "enum": HOURS},
-                            "mode": {"type": "string", "enum": ["raw", "anomaly"]},
-                            "fill_mode": _NULLABLE_STR,
-                            "contours": _NULLABLE_STR,
-                            "centers": _NULLABLE_INT,
-                        },
-                        "required": [
-                            "variable", "level", "region", "date", "hour",
-                            "mode", "fill_mode", "contours", "centers",
-                        ],
-                    },
-                },
-                "required": ["id", "caption", "params"],
-            },
-        },
-        "sections": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "heading": {"type": "string"},
-                    "body": {"type": "string"},
-                    "map_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["heading", "body", "map_ids"],
-            },
-        },
-    },
-    "required": ["title", "description", "intro", "maps", "sections"],
-}
-
-
-def legal_values_block() -> str:
-    """The lists of valid params, generated live from app.config."""
-    lines = ["## Legal values", "", "Regions: " + ", ".join(REGIONS)]
-    lines += ["", "Variables (key — name; modes; level):"]
-    for key, cfg in VARIABLES.items():
-        modes = "raw, anomaly" if cfg.get("climo_sources") else "raw only"
-        if "display_level" in cfg:
-            level = f"single-level ({cfg['display_level']}) — set level to null"
-        else:
-            levels = cfg.get("levels", PRESSURE_LEVELS)
-            level = "levels (mb): " + ", ".join(str(v) for v in levels)
-        lines.append(f"- {key} — {cfg['name']}; {modes}; {level}")
-    lines += [
-        "",
-        "hour (UTC): " + ", ".join(HOURS) + " — pick the hour that best shows the feature "
-        "(21z is afternoon in the US).",
-        "date: YYYYMMDD, within the discussion's valid period.",
-        "Overlays: fill_mode 'shaded' is recommended for height maps. "
-        "contours takes a comma list from: pressure, height, temp. "
-        "centers 1 adds H/L pressure markers (pairs well with temp_2m plus contours 'pressure').",
-        "Set unused optional fields to null.",
-    ]
-    return "\n".join(lines)
-
-
-def build_system_prompt() -> str:
-    return PROMPT_PATH.read_text() + "\n" + legal_values_block()
-
-
-def generate_post(discussion: str) -> tuple[dict, dict]:
-    """One model call: discussion text in, post JSON out. Returns (post, usage)."""
-    import anthropic
-
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=16000,
-        thinking={"type": "adaptive"},
-        system=build_system_prompt(),
-        output_config={"format": {"type": "json_schema", "schema": POST_SCHEMA}},
-        messages=[{"role": "user", "content": discussion}],
-    )
-    text = next(b.text for b in response.content if b.type == "text")
-    usage = {
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
-    }
-    return json.loads(text), usage
-
-
-def render_maps(post: dict, api_base: str, out_dir: Path) -> list[str]:
-    """GET /api/map for each entry; save PNGs next to post.json. Returns errors."""
-    errors: list[str] = []
-    for m in post["maps"]:
-        params = {k: v for k, v in m["params"].items() if v is not None}
-        url = f"{api_base}/api/map?" + urllib.parse.urlencode(params)
-        print(f"  {m['id']}: {url}")
-        resp = requests.get(url, timeout=300)
-        if resp.status_code != 200 or not resp.headers.get("content-type", "").startswith("image/"):
-            errors.append(f"{m['id']}: HTTP {resp.status_code} — {resp.text[:200]}")
-            continue
-        (out_dir / f"{m['id']}.png").write_bytes(resp.content)
-    return errors
+from app import synopsis  # noqa: E402
 
 
 def write_preview(post: dict, out_dir: Path) -> None:
-    """A single local HTML file that shows the post roughly as /synopsis would."""
+    """A single local HTML file that shows the post roughly as /synopsis
+    would: medium images, click for the full-size lightbox."""
     def fig(map_id: str) -> str:
         m = next((x for x in post["maps"] if x["id"] == map_id), None)
         if m is None or not (out_dir / f"{map_id}.png").exists():
@@ -174,7 +48,17 @@ def write_preview(post: dict, out_dir: Path) -> None:
         return (f"<figure><img src='{map_id}.png' alt=''>"
                 f"<figcaption>{m['caption']}</figcaption></figure>")
 
-    parts = [f"<h2>{s['heading']}</h2><p>{s['body']}</p>" + "".join(fig(i) for i in s["map_ids"])
+    shown: set[str] = set()
+
+    def figs(section: dict) -> str:
+        out = []
+        for mid in section["map_ids"]:
+            if mid not in shown:
+                shown.add(mid)
+                out.append(fig(mid))
+        return "".join(out)
+
+    parts = [f"<h2>{s['heading']}</h2><p>{s['body']}</p>" + figs(s)
              for s in post["sections"]]
     html = f"""<!doctype html><meta charset="utf-8"><title>{post['title']}</title>
 <style>
@@ -186,59 +70,101 @@ def write_preview(post: dict, out_dir: Path) -> None:
   article p {{ line-height:1.75; }}
   article h2 {{ color:#e2e8f0; font-size:1.25rem; margin-top:2rem; }}
   figure {{ margin:1.4rem 0; }}
-  figure img {{ display:block; max-width:100%; height:auto; border-radius:.5rem; margin:0 auto; }}
+  figure img {{ display:block; width:640px; max-width:100%; height:auto;
+                border-radius:.5rem; margin:0 auto; cursor:zoom-in; }}
   figcaption {{ text-align:center; font-size:.82rem; color:#8fa0c5; margin-top:.45rem; }}
   .missing {{ color:#fca5a5; }}
+  #lightbox {{ display:none; position:fixed; inset:0; z-index:80;
+               background:rgba(0,0,0,.85); cursor:zoom-out;
+               align-items:center; justify-content:center; }}
+  #lightbox img {{ max-width:95vw; max-height:92vh; border-radius:.5rem; }}
 </style>
 <div class="shell">
   <h1>{post['title']}</h1>
   <article><p>{post['intro']}</p>{''.join(parts)}</article>
-</div>"""
+</div>
+<div id="lightbox"><img alt=""></div>
+<script>
+  const lb = document.getElementById('lightbox');
+  document.querySelectorAll('figure img').forEach(img =>
+    img.addEventListener('click', () => {{
+      lb.querySelector('img').src = img.src;
+      lb.style.display = 'flex';
+    }}));
+  lb.addEventListener('click', () => lb.style.display = 'none');
+  document.addEventListener('keydown', e => {{
+    if (e.key === 'Escape') lb.style.display = 'none';
+  }});
+</script>"""
     (out_dir / "preview.html").write_text(html)
 
 
 def main() -> int:
-    load_dotenv()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", help="path to a forecast discussion text file")
+    ap.add_argument("--fetch", action="store_true",
+                    help=f"fetch the PMDSPD from {synopsis.LAG_DAYS} days ago (the day CORe has data for)")
+    ap.add_argument("--date", help="override the fetch date (YYYYMMDD)")
     ap.add_argument("--from-json", help="render an existing post.json (no model call)")
     ap.add_argument("--dry-run", action="store_true", help="print the system prompt and exit")
-    ap.add_argument("--api-base", default="http://127.0.0.1:8000")
+    ap.add_argument("--draft", action="store_true",
+                    help="also upload images and save an unpublished draft to Supabase")
     ap.add_argument("--out", default=str(Path(__file__).with_name("out")))
     args = ap.parse_args()
 
     if args.dry_run:
-        print(build_system_prompt())
+        print(synopsis.build_system_prompt())
         return 0
-
-    if args.from_json:
-        post = json.loads(Path(args.from_json).read_text())
-    else:
-        if not args.file:
-            ap.error("--file is required (or use --from-json / --dry-run)")
-        discussion = Path(args.file).read_text()
-        print(f"Calling {MODEL} ...")
-        post, usage = generate_post(discussion)
-        cost = (usage["input_tokens"] * COST_PER_MTOK_IN
-                + usage["output_tokens"] * COST_PER_MTOK_OUT) / 1_000_000
-        print(f"  tokens: {usage['input_tokens']} in / {usage['output_tokens']} out"
-              f"  (~${cost:.3f})")
 
     out_dir = Path(args.out) / time.strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "post.json").write_text(json.dumps(post, indent=2))
 
-    print(f"Rendering {len(post['maps'])} maps via {args.api_base} ...")
-    errors = render_maps(post, args.api_base, out_dir)
+    if args.from_json:
+        post = json.loads(Path(args.from_json).read_text())
+        post.setdefault("title", synopsis.compose_title(post))
+        images, errors = synopsis.render_all_maps(post)
+        result = {"post": post, "images": images, "map_errors": errors,
+                  "review_flags": [], "slug": synopsis.compose_slug(post)}
+        if args.draft:
+            synopsis.upload_images(result["slug"], images)
+            result["draft"] = synopsis.upsert_draft(
+                result["slug"], post["title"], post["description"],
+                synopsis.build_body_md(post, result["slug"]))
+    else:
+        if args.fetch or args.date:
+            discussion = synopsis.fetch_discussion(args.date)
+            print("Fetched discussion:", discussion.splitlines()[2])
+        elif args.file:
+            discussion = Path(args.file).read_text()
+        else:
+            ap.error("need --file, --fetch, --from-json, or --dry-run")
+        print(f"Calling {synopsis.MODEL} ...")
+        result = synopsis.run_pipeline(discussion, save_draft=args.draft)
+        u = result["usage"]
+        print(f"  tokens: {u['input_tokens']} in / {u['output_tokens']} out"
+              f"  (~${u['cost_usd']:.3f})")
+
+    post = result["post"]
+    for map_id, png in result["images"].items():
+        (out_dir / f"{map_id}.png").write_bytes(png)
+    (out_dir / "post.json").write_text(json.dumps(
+        {k: v for k, v in post.items()}, indent=2))
     write_preview(post, out_dir)
+
+    if result["review_flags"]:
+        print(f"  REVIEW: post uses impact words the discussion never does: "
+              f"{', '.join(result['review_flags'])}")
+    if result.get("draft"):
+        print(f"  Draft {result['draft']}: '{result['slug']}' (unpublished, "
+              f"category '{synopsis.CATEGORY}')")
 
     print(f"\nWrote {out_dir}/")
     print(f"  open {out_dir}/preview.html")
-    if errors:
+    if result["map_errors"]:
         print("\nMap errors:")
-        for e in errors:
+        for e in result["map_errors"]:
             print(f"  {e}")
-    return 1 if errors else 0
+    return 1 if result["map_errors"] else 0
 
 
 if __name__ == "__main__":

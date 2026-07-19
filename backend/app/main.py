@@ -3,7 +3,7 @@ import os
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -112,6 +112,21 @@ def root():
         # climo_sources. The frontend registry mirrors this.
         "variable_modes": {name: list(supported_modes(name)) for name in VARIABLES},
     }
+
+
+@app.post("/api/synopsis/generate", status_code=202)
+def synopsis_generate(background_tasks: BackgroundTasks, x_cron_secret: str = Header(default="")):
+    """Kick off the Synopsis draft pipeline (#37). Called by the Supabase
+    scheduler once a day; the 2-4 minute job runs after this returns."""
+    from . import synopsis
+
+    secret = os.environ.get("SYNOPSIS_CRON_SECRET", "")
+    if not secret:
+        raise HTTPException(status_code=503, detail="SYNOPSIS_CRON_SECRET is not configured")
+    if x_cron_secret != secret:
+        raise HTTPException(status_code=401, detail="bad or missing x-cron-secret header")
+    background_tasks.add_task(synopsis.run_scheduled)
+    return {"started": True}
 
 
 @app.get("/api/scale-meta")
