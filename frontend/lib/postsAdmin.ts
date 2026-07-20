@@ -12,6 +12,7 @@ export type PostRow = {
   description: string
   body_md: string
   category: string
+  event_date: string | null
   published: boolean
   publish_at: string | null
   published_at: string | null

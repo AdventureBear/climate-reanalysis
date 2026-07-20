@@ -354,9 +354,16 @@ def is_admin_token(token: str) -> bool:
     return bool(rows and rows[0].get("is_admin"))
 
 
-def upsert_draft(slug: str, title: str, description: str, body_md: str) -> str:
+def event_date_iso(post_date: str) -> str:
+    """YYYYMMDD -> YYYY-MM-DD for the posts.event_date column."""
+    return datetime.strptime(post_date, "%Y%m%d").strftime("%Y-%m-%d")
+
+
+def upsert_draft(slug: str, title: str, description: str, body_md: str,
+                 event_date: str | None = None) -> str:
     """Insert the draft, or refresh it if a draft with this slug exists.
-    A published post is never touched — regeneration then reports and stops."""
+    A published post is never touched — regeneration then reports and stops.
+    event_date (YYYY-MM-DD) is the weather day the post describes (#82)."""
     url, headers = _supabase()
     existing = requests.get(
         f"{url}/rest/v1/posts?slug=eq.{slug}&select=id,published",
@@ -370,6 +377,8 @@ def upsert_draft(slug: str, title: str, description: str, body_md: str) -> str:
 
     fields = {"title": title, "description": description, "body_md": body_md,
               "category": CATEGORY, "published": False}
+    if event_date:
+        fields["event_date"] = event_date
     if rows:
         resp = requests.patch(
             f"{url}/rest/v1/posts?id=eq.{rows[0]['id']}",
@@ -415,7 +424,8 @@ def run_pipeline(discussion: str, save_draft: bool = False,
     if save_draft:
         upload_images(slug, images)
         result["draft"] = upsert_draft(
-            slug, post["title"], post["description"], build_body_md(post, slug)
+            slug, post["title"], post["description"], build_body_md(post, slug),
+            event_date=event_date_iso(post["post_date"]),
         )
     return result
 

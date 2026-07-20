@@ -129,7 +129,8 @@ def main() -> int:
             synopsis.upload_images(result["slug"], images)
             result["draft"] = synopsis.upsert_draft(
                 result["slug"], post["title"], post["description"],
-                synopsis.build_body_md(post, result["slug"]))
+                synopsis.build_body_md(post, result["slug"]),
+                event_date=synopsis.event_date_iso(post["post_date"]))
     else:
         target_date = None
         if args.fetch or args.date:

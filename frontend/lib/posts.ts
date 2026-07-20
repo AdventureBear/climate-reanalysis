@@ -11,6 +11,8 @@ export type Post = {
   title: string
   description: string
   body_md: string
+  // The weather day an AFD post describes (#82); null for hand-written posts.
+  event_date: string | null
   published_at: string | null
   updated_at: string
 }
@@ -41,11 +43,20 @@ async function restFetch(query: string): Promise<Post[]> {
   return (await res.json()) as Post[]
 }
 
+// The date a post is filed under chronologically: its weather day if it has
+// one (AFD posts, #82), otherwise its publish date. A backfilled historical
+// event thus sorts by when the weather happened, not when it was generated.
+export function effectiveDate(p: Post): string {
+  return p.event_date ?? (p.published_at ?? p.updated_at).slice(0, 10)
+}
+
 export async function listPublishedPosts(): Promise<Post[]> {
-  return restFetch(
-    'select=id,slug,title,description,body_md,published_at,updated_at'
-    + '&published=eq.true&order=published_at.desc',
+  const posts = await restFetch(
+    'select=id,slug,title,description,body_md,event_date,published_at,updated_at'
+    + '&published=eq.true',
   )
+  // One-column DB ordering can't mix event_date and published_at, so sort here.
+  return posts.sort((a, b) => effectiveDate(b).localeCompare(effectiveDate(a)))
 }
 
 // Post bodies are BlockNote block arrays (legacy posts: markdown). True when
@@ -72,7 +83,7 @@ export function textFromJsonBody(body: string): string {
 
 export async function getPublishedPost(slug: string): Promise<Post | null> {
   const rows = await restFetch(
-    'select=id,slug,title,description,body_md,published_at,updated_at'
+    'select=id,slug,title,description,body_md,event_date,published_at,updated_at'
     + `&published=eq.true&slug=eq.${encodeURIComponent(slug)}&limit=1`,
   )
   return rows[0] ?? null
