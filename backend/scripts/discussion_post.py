@@ -131,15 +131,18 @@ def main() -> int:
                 result["slug"], post["title"], post["description"],
                 synopsis.build_body_md(post, result["slug"]))
     else:
+        target_date = None
         if args.fetch or args.date:
-            discussion = synopsis.fetch_discussion(args.date)
+            target_date = args.date or synopsis.default_target_date()
+            discussion = synopsis.fetch_discussion(target_date)
             print("Fetched discussion:", discussion.splitlines()[2])
         elif args.file:
             discussion = Path(args.file).read_text()
         else:
             ap.error("need --file, --fetch, --from-json, or --dry-run")
         print(f"Calling {synopsis.MODEL} ...")
-        result = synopsis.run_pipeline(discussion, save_draft=args.draft)
+        result = synopsis.run_pipeline(discussion, save_draft=args.draft,
+                                       target_date=target_date)
         u = result["usage"]
         print(f"  tokens: {u['input_tokens']} in / {u['output_tokens']} out"
               f"  (~${u['cost_usd']:.3f})")

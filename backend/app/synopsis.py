@@ -116,12 +116,16 @@ POST_SCHEMA = {
 
 # ── Fetch ────────────────────────────────────────────────────────────────────
 
+def default_target_date() -> str:
+    return (datetime.utcnow() - timedelta(days=LAG_DAYS)).strftime("%Y%m%d")
+
+
 def fetch_discussion(target_date: str | None = None) -> str:
     """The morning PMDSPD for target_date (YYYYMMDD; default LAG_DAYS ago).
     The 4 AM EDT issuance's valid period starts that same day, so the post
     recaps a day whose data CORe already has."""
     if target_date is None:
-        target_date = (datetime.utcnow() - timedelta(days=LAG_DAYS)).strftime("%Y%m%d")
+        target_date = default_target_date()
     day = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
     resp = requests.get(
         DISCUSSION_URL,
@@ -165,11 +169,15 @@ def legal_values_block() -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt() -> str:
-    return PROMPT_PATH.read_text() + "\n" + legal_values_block()
+def build_system_prompt(target_date: str | None = None) -> str:
+    prompt = PROMPT_PATH.read_text() + "\n" + legal_values_block()
+    if target_date:
+        prompt += (f"\nThis column covers {target_date} only. Every map uses date {target_date} — "
+                   "later days in the discussion are forecasts, and no data exists for them yet.")
+    return prompt
 
 
-def generate_post(discussion: str) -> tuple[dict, dict]:
+def generate_post(discussion: str, target_date: str | None = None) -> tuple[dict, dict]:
     """One model call: discussion text in, post JSON out. Returns (post, usage)."""
     import anthropic
 
@@ -178,7 +186,7 @@ def generate_post(discussion: str) -> tuple[dict, dict]:
         model=MODEL,
         max_tokens=16000,
         thinking={"type": "adaptive"},
-        system=build_system_prompt(),
+        system=build_system_prompt(target_date),
         output_config={"format": {"type": "json_schema", "schema": POST_SCHEMA}},
         messages=[{"role": "user", "content": discussion}],
     )
@@ -209,6 +217,16 @@ def unsupported_words(post: dict, discussion: str) -> list[str]:
     post_text = json.dumps(post).lower()
     source = discussion.lower()
     return [w for w in WATCH_WORDS if w in post_text and w not in source]
+
+
+def pin_dates(post: dict, target_date: str) -> None:
+    """Force the post and every map onto the discussion's own day. Later days
+    in the valid period are forecasts — CORe has no data for them, and the
+    column recaps one day only. Deterministic, like the barbs rule: the model
+    is told the date, but this makes it impossible to get wrong."""
+    post["post_date"] = target_date
+    for m in post["maps"]:
+        m["params"]["date"] = target_date
 
 
 # ── Render ───────────────────────────────────────────────────────────────────
@@ -317,9 +335,12 @@ def upsert_draft(slug: str, title: str, description: str, body_md: str) -> str:
 
 # ── Orchestration ────────────────────────────────────────────────────────────
 
-def run_pipeline(discussion: str, save_draft: bool = False) -> dict:
+def run_pipeline(discussion: str, save_draft: bool = False,
+                 target_date: str | None = None) -> dict:
     """The whole job. Returns a summary dict (also logged)."""
-    post, usage = generate_post(discussion)
+    post, usage = generate_post(discussion, target_date)
+    if target_date:
+        pin_dates(post, target_date)
     post["title"] = compose_title(post)
     slug = compose_slug(post)
     flagged = unsupported_words(post, discussion)
@@ -349,8 +370,9 @@ def run_scheduled() -> None:
     """Fetch the newest discussion and save a draft. Called by the cron
     endpoint in a background task; all outcomes go to the log."""
     try:
-        discussion = fetch_discussion()
-        result = run_pipeline(discussion, save_draft=True)
+        target = default_target_date()
+        discussion = fetch_discussion(target)
+        result = run_pipeline(discussion, save_draft=True, target_date=target)
         log.info(
             "synopsis: draft %s '%s' (%d maps, %d errors, flags=%s, $%.3f)",
             result.get("draft"), result["slug"], result["maps_rendered"],
