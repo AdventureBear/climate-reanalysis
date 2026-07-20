@@ -27,13 +27,13 @@ import {
 } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import { Eye, Image as ImageIcon, Map as MapIcon } from 'lucide-react'
-import { useAuth } from '../../../auth/authContext'
-import type { SavedMap } from '../../../../lib/database.types'
+import { useAuth } from '../../auth/authContext'
+import type { SavedMap } from '../../../lib/database.types'
 import {
   copySavedMapImage, deletePost, descriptionFromBody, listAllPosts, slugify,
   triggerRebuild, uploadPostImage, upsertPost, type PostInput,
-} from '../../../../lib/postsAdmin'
-import { POST_IMAGE_BASE, resolvePostImage } from '../../../../lib/posts'
+} from '../../../lib/postsAdmin'
+import { POST_IMAGE_BASE, resolvePostImage } from '../../../lib/posts'
 import { EditorGate } from '../shared'
 import { MapPickerModal } from './MapPickerModal'
 
@@ -236,7 +236,7 @@ export default function EditorApp() {
     try {
       await deletePost(postId)
       if (wasPublished) await updateLiveSite('Deleted.')
-      window.location.href = '/synopsis/editor/'
+      window.location.href = '/admin/posts/'
     } catch (e) {
       say(String((e as Error).message ?? e))
       setBusy(false)
@@ -302,7 +302,7 @@ export default function EditorApp() {
     <div className="synopsis-editor flex-1 bg-[#16224a]">
       <main className="mx-auto w-full max-w-6xl px-5 py-8">
         <div className="flex items-baseline gap-3">
-          <Link href="/synopsis/editor/" className="text-sm text-slate-500 hover:text-slate-300">← Posts</Link>
+          <Link href="/admin/posts/" className="text-sm text-slate-500 hover:text-slate-300">← Posts</Link>
           {notice && (
             <span className="text-sm text-slate-400">
               {notice}
@@ -392,17 +392,26 @@ export default function EditorApp() {
                 <button type="button" onClick={() => void handleSaveDraft()} disabled={busy} className={BTN}>
                   {status === 'published' ? 'Revert to draft' : 'Save draft'}
                 </button>
-                <div className="mt-1 border-t border-[#2e4278]/60 pt-3">
-                  <label className="text-xs text-slate-500">
-                    Schedule for later
-                    <input type="datetime-local" value={scheduleAt} onChange={e => setScheduleAt(e.target.value)}
-                      className={`${FIELD} mt-1 text-xs`} />
-                  </label>
-                  <button type="button" onClick={() => void handleSchedule()} disabled={busy}
-                    className={`${BTN} mt-2 w-full`}>
-                    Schedule
-                  </button>
-                </div>
+                {status === 'published' && slug && (
+                  <Link href={`/synopsis/${slug}/`} className={`${BTN} text-center`}>
+                    View Post
+                  </Link>
+                )}
+                {/* Scheduling only applies before a post is live; the section
+                    returns when the post reverts to draft. */}
+                {status !== 'published' && (
+                  <div className="mt-1 border-t border-[#2e4278]/60 pt-3">
+                    <label className="text-xs text-slate-500">
+                      Schedule for later
+                      <input type="datetime-local" value={scheduleAt} onChange={e => setScheduleAt(e.target.value)}
+                        className={`${FIELD} mt-1 text-xs`} />
+                    </label>
+                    <button type="button" onClick={() => void handleSchedule()} disabled={busy}
+                      className={`${BTN} mt-2 w-full`}>
+                      Schedule
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

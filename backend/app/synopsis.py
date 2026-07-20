@@ -120,17 +120,27 @@ def default_target_date() -> str:
     return (datetime.utcnow() - timedelta(days=LAG_DAYS)).strftime("%Y%m%d")
 
 
-def fetch_discussion(target_date: str | None = None) -> str:
-    """The morning PMDSPD for target_date (YYYYMMDD; default LAG_DAYS ago).
-    The 4 AM EDT issuance's valid period starts that same day, so the post
-    recaps a day whose data CORe already has."""
+# Issuance windows (UTC) for the two daily PMDSPD releases.
+ISSUANCE_WINDOWS = {
+    "morning": ("06:00", "14:00"),    # ~4 AM EDT release
+    "afternoon": ("17:00", "23:00"),  # ~4 PM EDT release
+}
+
+
+def fetch_discussion(target_date: str | None = None, issuance: str = "morning") -> str:
+    """The PMDSPD issued on target_date (YYYYMMDD; default LAG_DAYS ago) in
+    the chosen issuance window. An AFD post is a historical forecast: the
+    discussion as issued, with maps of the setup on that same day."""
     if target_date is None:
         target_date = default_target_date()
+    if issuance not in ISSUANCE_WINDOWS:
+        raise ValueError(f"issuance must be one of {list(ISSUANCE_WINDOWS)}")
+    start, end = ISSUANCE_WINDOWS[issuance]
     day = datetime.strptime(target_date, "%Y%m%d").strftime("%Y-%m-%d")
     resp = requests.get(
         DISCUSSION_URL,
         params={"pil": "PMDSPD", "fmt": "text", "limit": 1,
-                "sdate": f"{day}T06:00Z", "edate": f"{day}T14:00Z"},
+                "sdate": f"{day}T{start}Z", "edate": f"{day}T{end}Z"},
         timeout=30,
     )
     resp.raise_for_status()
@@ -208,9 +218,13 @@ def compose_title(post: dict) -> str:
     return f"US Weather {day.strftime('%A')} {day.strftime('%B')} {day.day}, {day.year}: {post['headline']}"
 
 
-def compose_slug(post: dict) -> str:
-    day = datetime.strptime(post["post_date"], "%Y%m%d")
+def slug_for_date(date: str) -> str:
+    day = datetime.strptime(date, "%Y%m%d")
     return f"us-weather-{day.strftime('%A').lower()}-{day.strftime('%B').lower()}-{day.day}-{day.year}"
+
+
+def compose_slug(post: dict) -> str:
+    return slug_for_date(post["post_date"])
 
 
 def unsupported_words(post: dict, discussion: str) -> list[str]:
@@ -300,6 +314,46 @@ def upload_images(slug: str, images: dict[str, bytes]) -> None:
             raise RuntimeError(f"image upload {map_id}: HTTP {resp.status_code} {resp.text[:200]}")
 
 
+def day_status(date: str) -> str:
+    """'published', 'draft', or 'none' for the day's post."""
+    url, headers = _supabase()
+    resp = requests.get(
+        f"{url}/rest/v1/posts?slug=eq.{slug_for_date(date)}&select=published",
+        headers=headers, timeout=30,
+    )
+    resp.raise_for_status()
+    rows = resp.json()
+    if not rows:
+        return "none"
+    return "published" if rows[0]["published"] else "draft"
+
+
+def is_admin_token(token: str) -> bool:
+    """True when the bearer token is a signed-in user whose profile has
+    is_admin. Same gate the rebuild-site function uses."""
+    if not token:
+        return False
+    url, headers = _supabase()
+    who = requests.get(
+        f"{url}/auth/v1/user",
+        headers={**headers, "Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    if who.status_code != 200:
+        return False
+    uid = who.json().get("id")
+    if not uid:
+        return False
+    prof = requests.get(
+        f"{url}/rest/v1/profiles?id=eq.{uid}&select=is_admin",
+        headers=headers, timeout=30,
+    )
+    if prof.status_code != 200:
+        return False
+    rows = prof.json()
+    return bool(rows and rows[0].get("is_admin"))
+
+
 def upsert_draft(slug: str, title: str, description: str, body_md: str) -> str:
     """Insert the draft, or refresh it if a draft with this slug exists.
     A published post is never touched — regeneration then reports and stops."""
@@ -366,12 +420,15 @@ def run_pipeline(discussion: str, save_draft: bool = False,
     return result
 
 
-def run_scheduled() -> None:
-    """Fetch the newest discussion and save a draft. Called by the cron
-    endpoint in a background task; all outcomes go to the log."""
+def run_scheduled(target_date: str | None = None, issuance: str = "morning") -> None:
+    """Fetch a discussion and save a draft. Called by the cron endpoint in a
+    background task; all outcomes go to the log."""
     try:
-        target = default_target_date()
-        discussion = fetch_discussion(target)
+        target = target_date or default_target_date()
+        if day_status(target) == "published":
+            log.info("synopsis: post for %s already published — skipping", target)
+            return
+        discussion = fetch_discussion(target, issuance)
         result = run_pipeline(discussion, save_draft=True, target_date=target)
         log.info(
             "synopsis: draft %s '%s' (%d maps, %d errors, flags=%s, $%.3f)",

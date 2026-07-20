@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, Settings, SlidersHorizontal } from 'lucide-react'
+import { Settings, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
 import { SaveAccountPrompt } from './builder/SaveAccountPrompt'
@@ -100,6 +100,17 @@ export default function MapBuilder() {
       if (recipeParams.ok) void generateFromParams(recipeParams.params)
     }
     applyFromLocation()
+
+    // The header's "My Maps" menu item links to /map?library=1: open the
+    // library, then drop the flag so refresh/back doesn't reopen it.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('library') === '1') {
+      setLibraryOpen(true)
+      params.delete('library')
+      const rest = params.toString()
+      window.history.replaceState(null, '', rest ? `?${rest}` : window.location.pathname)
+    }
+
     window.addEventListener('popstate', applyFromLocation)
     return () => window.removeEventListener('popstate', applyFromLocation)
     // Recipe/generation helpers are recreated every render by their hooks; this
@@ -189,12 +200,6 @@ export default function MapBuilder() {
       <div className="hidden md:flex items-center gap-3 border-b border-slate-800 bg-slate-900/60 px-4 py-2">
         <TimeScaleControls recipe={recipe} header />
         <div className="ml-auto flex items-center gap-2">
-          {authEnabled && user && (
-            <button type="button" onClick={() => setLibraryOpen(true)}
-              className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors">
-              <FolderOpen size={14} /> My Maps
-            </button>
-          )}
           {colorLabAccess && (
             <button type="button" onClick={openColorLab}
               className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors">

@@ -9,7 +9,7 @@ import { useAuth } from '../auth/authContext'
 export function EditorLink({ postId }: { postId?: string }) {
   const { enabled, user, isAdmin } = useAuth()
   if (!enabled || !user || !isAdmin) return null
-  const href = postId ? `/synopsis/editor/edit/?id=${postId}` : '/synopsis/editor/'
+  const href = postId ? `/admin/post/?id=${postId}` : '/admin/posts/'
   return (
     <Link href={href}
       className="rounded-md border border-slate-600/70 bg-slate-800/60 px-2.5 py-1 text-xs text-slate-300 transition-colors hover:bg-slate-700/60">

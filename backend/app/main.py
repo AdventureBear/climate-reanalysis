@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
@@ -115,18 +116,49 @@ def root():
 
 
 @app.post("/api/synopsis/generate", status_code=202)
-def synopsis_generate(background_tasks: BackgroundTasks, x_cron_secret: str = Header(default="")):
-    """Kick off the Synopsis draft pipeline (#37). Called by the Supabase
-    scheduler once a day; the 2-4 minute job runs after this returns."""
+def synopsis_generate(
+    background_tasks: BackgroundTasks,
+    body: dict | None = None,
+    x_cron_secret: str = Header(default=""),
+    authorization: str = Header(default=""),
+):
+    """Kick off the Synopsis AFD draft pipeline (#37/#76). Two callers:
+    the daily Supabase scheduler (x-cron-secret, no body) and the admin
+    New AFD page (admin bearer token, optional {date, issuance}). The
+    2-4 minute job runs after this returns; the response carries the slug
+    so the UI can poll for the draft."""
     from . import synopsis
 
     secret = os.environ.get("SYNOPSIS_CRON_SECRET", "")
-    if not secret:
-        raise HTTPException(status_code=503, detail="SYNOPSIS_CRON_SECRET is not configured")
-    if x_cron_secret != secret:
-        raise HTTPException(status_code=401, detail="bad or missing x-cron-secret header")
-    background_tasks.add_task(synopsis.run_scheduled)
-    return {"started": True}
+    cron_ok = bool(secret) and x_cron_secret == secret
+    if not cron_ok:
+        token = authorization.replace("Bearer ", "")
+        if not synopsis.is_admin_token(token):
+            raise HTTPException(status_code=401, detail="admin sign-in or cron secret required")
+
+    body = body or {}
+    date = body.get("date") or synopsis.default_target_date()
+    issuance = body.get("issuance") or "morning"
+    try:
+        datetime.strptime(date, "%Y%m%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date must be YYYYMMDD")
+    if issuance not in synopsis.ISSUANCE_WINDOWS:
+        raise HTTPException(status_code=422, detail="issuance must be 'morning' or 'afternoon'")
+    if date > synopsis.default_target_date():
+        raise HTTPException(
+            status_code=422,
+            detail=f"data is not available yet for {date}; the newest allowed day is "
+                   f"{synopsis.default_target_date()} (reanalysis lags real time)",
+        )
+    if synopsis.day_status(date) == "published":
+        raise HTTPException(
+            status_code=409,
+            detail=f"the post for {date} is already published; it will not be overwritten",
+        )
+    background_tasks.add_task(synopsis.run_scheduled, date, issuance)
+    return {"started": True, "date": date, "issuance": issuance,
+            "slug": synopsis.slug_for_date(date)}
 
 
 @app.get("/api/scale-meta")

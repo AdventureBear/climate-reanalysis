@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, ChevronDown, LogIn, LogOut, Menu, User, X } from 'lucide-react'
+import { BarChart3, ChevronDown, FilePlus2, Files, FolderOpen, LogIn, LogOut, Menu, Newspaper, User, X } from 'lucide-react'
 import { useAuth } from '../app/auth/authContext'
 import { AuthModal } from '../app/auth/AuthModal'
 import AdminStatsPanel from './AdminStatsPanel'
@@ -15,13 +15,21 @@ const NAV_LINKS = [
   { href: '/', label: 'Home' },
   { href: '/map', label: 'Mapping' },
   { href: '/synopsis', label: 'Synopsis' },
-  { href: '/faq', label: 'FAQ' },
 ]
 
 function isActive(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(href + '/')
 }
+
+// Admin activities live in the account menu — one row per tool, so new
+// generators (news, past weather events) slot in without new buttons
+// scattered around the site (#76).
+const ADMIN_LINKS = [
+  { href: '/admin/posts/', label: 'All Posts', Icon: Files },
+  { href: '/admin/post/', label: 'New Post', Icon: FilePlus2 },
+  { href: '/admin/afd/', label: 'New AFD', Icon: Newspaper },
+]
 
 export function SiteHeader() {
   const pathname = usePathname()
@@ -75,11 +83,25 @@ export function SiteHeader() {
               <>
                 <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="Close menu" onClick={() => setAccountMenuOpen(false)} />
                 <div className="absolute right-0 top-10 z-40 w-44 rounded-lg border border-slate-700 bg-slate-950 p-1 shadow-xl">
+                  <Link href="/map?library=1" onClick={() => setAccountMenuOpen(false)}
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                    <FolderOpen size={14} /> My Maps
+                  </Link>
                   {isAdmin && (
-                    <button type="button" onClick={() => { setAccountMenuOpen(false); setAdminStatsOpen(true) }}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
-                      <BarChart3 size={14} /> Admin Stats
-                    </button>
+                    <>
+                      {ADMIN_LINKS.map(({ href, label, Icon }) => (
+                        <Link key={href} href={href} onClick={() => setAccountMenuOpen(false)}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                          <Icon size={14} /> {label}
+                        </Link>
+                      ))}
+                      <div className="my-1 h-px bg-slate-800" />
+                      <button type="button" onClick={() => { setAccountMenuOpen(false); setAdminStatsOpen(true) }}
+                        className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
+                        <BarChart3 size={14} /> Admin Stats
+                      </button>
+                      <div className="my-1 h-px bg-slate-800" />
+                    </>
                   )}
                   <button type="button" onClick={() => { setAccountMenuOpen(false); void signOut() }}
                     className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
@@ -115,11 +137,23 @@ export function SiteHeader() {
               <div className="my-1 h-px bg-slate-800" />
               {user ? (
                 <>
+                  <Link href="/map?library=1" onClick={() => setMobileMenuOpen(false)}
+                    className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
+                    <FolderOpen size={14} /> My Maps
+                  </Link>
                   {isAdmin && (
-                    <button type="button" onClick={() => { setMobileMenuOpen(false); setAdminStatsOpen(true) }}
-                      className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
-                      <BarChart3 size={14} /> Admin Stats
-                    </button>
+                    <>
+                      {ADMIN_LINKS.map(({ href, label, Icon }) => (
+                        <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
+                          <Icon size={14} /> {label}
+                        </Link>
+                      ))}
+                      <button type="button" onClick={() => { setMobileMenuOpen(false); setAdminStatsOpen(true) }}
+                        className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
+                        <BarChart3 size={14} /> Admin Stats
+                      </button>
+                    </>
                   )}
                   <button type="button" onClick={() => { setMobileMenuOpen(false); void signOut() }}
                     className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">

@@ -1,12 +1,12 @@
 'use client'
 
-// Synopsis editor, posts list (#36): one row per post, click to edit.
+// All Posts (#76): the admin list — one row per post with Edit and View.
 // Cool-slate palette: calm gray-blue surfaces, one text tone, muted accents.
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '../../auth/authContext'
 import { listAllPosts, type PostRow } from '../../../lib/postsAdmin'
-import { EditorGate, statusOf } from './shared'
+import { EditorGate, statusOf } from '../shared'
 import { PageShell } from '../../../ui/PageShell'
 
 const STATUS_DOT: Record<string, string> = {
@@ -40,10 +40,14 @@ export default function PostsList() {
     <div className="flex-1 bg-[#16224a]">
       <PageShell>
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold text-slate-200">Posts</h1>
-          <Link href="/synopsis/editor/edit/"
+          <h1 className="text-xl font-semibold text-slate-200">All Posts</h1>
+          <Link href="/admin/post/"
             className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-slate-700">
-            New post
+            New Post
+          </Link>
+          <Link href="/admin/afd/"
+            className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-slate-700">
+            New AFD
           </Link>
         </div>
 
@@ -55,16 +59,27 @@ export default function PostsList() {
           {posts?.map(p => {
             const st = statusOf(p)
             return (
-              <li key={p.id}>
-                <Link href={`/synopsis/editor/edit/?id=${p.id}`}
-                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#22335f]">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[st]}`} />
-                  <span className="min-w-0 flex-1 truncate text-[15px] text-slate-300">{p.title}</span>
-                  <span className="shrink-0 text-xs capitalize text-slate-500">{st}</span>
-                  <span className="w-28 shrink-0 text-right text-xs text-slate-500">
-                    {formatDate(p.published_at ?? p.publish_at ?? p.updated_at)}
-                  </span>
+              <li key={p.id} className="flex items-center gap-3 px-4 py-3">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[st]}`} />
+                <span className="min-w-0 flex-1 truncate text-[15px] text-slate-300">{p.title}</span>
+                <span className="shrink-0 text-xs capitalize text-slate-500">{st}</span>
+                <span className="w-28 shrink-0 text-right text-xs text-slate-500">
+                  {formatDate(p.published_at ?? p.publish_at ?? p.updated_at)}
+                </span>
+                <Link href={`/admin/post/?id=${p.id}`}
+                  className="shrink-0 rounded-md border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 transition-colors hover:bg-slate-700">
+                  Edit
                 </Link>
+                {st === 'published' ? (
+                  <Link href={`/synopsis/${p.slug}/`}
+                    className="shrink-0 rounded-md border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 transition-colors hover:bg-slate-700">
+                    View
+                  </Link>
+                ) : (
+                  <span className="shrink-0 px-2.5 py-1 text-xs text-slate-600" title="Drafts have no public page until published">
+                    View
+                  </span>
+                )}
               </li>
             )
           })}

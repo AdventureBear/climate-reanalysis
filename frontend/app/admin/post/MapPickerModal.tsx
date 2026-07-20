@@ -5,9 +5,9 @@
 // through the same signed-URL system the library uses (private bucket).
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, X } from 'lucide-react'
-import { listAllFolders, listAllMaps, listProjects } from '../../../../lib/library'
-import type { Folder, Project, SavedMap } from '../../../../lib/database.types'
-import { signedUrls } from '../../../../lib/storage'
+import { listAllFolders, listAllMaps, listProjects } from '../../../lib/library'
+import type { Folder, Project, SavedMap } from '../../../lib/database.types'
+import { signedUrls } from '../../../lib/storage'
 import { IMAGE_PRESETS } from './EditorApp'
 
 export function MapPickerModal({ onPick, onClose, linkToBuilder, setLinkToBuilder, initialSizePx, title = 'Insert a saved map' }: {
