@@ -12,8 +12,20 @@ import { useAuth } from '../../auth/authContext'
 import { EditorGate } from '../shared'
 import { PageShell } from '../../../ui/PageShell'
 import { API_BASE } from '../../../lib/api'
-import { listAllPosts } from '../../../lib/postsAdmin'
+import { AFD_CATEGORY, listAllPosts, type PostRow } from '../../../lib/postsAdmin'
+import { statusOf } from '../shared'
 import { supabase } from '../../../lib/supabase'
+
+const STATUS_DOT: Record<string, string> = {
+  published: 'bg-emerald-600/80',
+  scheduled: 'bg-amber-600/80',
+  draft: 'bg-slate-500',
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 // Newest allowed day: reanalysis data lags real time by ~2 days.
 function newestAllowed(): string {
@@ -33,6 +45,18 @@ export default function NewAfdPage() {
   const [date, setDate] = useState(newestAllowed())
   const [issuance, setIssuance] = useState<'morning' | 'afternoon'>('morning')
   const [run, setRun] = useState<RunState>({ phase: 'idle' })
+  const [afdPosts, setAfdPosts] = useState<PostRow[] | null>(null)
+
+  const ready = authEnabled && user && isAdmin
+
+  // Load AFD posts (this generator's own output) on mount, and refresh
+  // whenever a run finishes.
+  useEffect(() => {
+    if (!ready) return
+    listAllPosts()
+      .then(rows => setAfdPosts(rows.filter(p => p.category === AFD_CATEGORY)))
+      .catch(() => setAfdPosts([]))
+  }, [ready, run.phase === 'done'])
 
   // Poll for the draft once a run starts; the backend told us its slug.
   useEffect(() => {
@@ -151,6 +175,37 @@ export default function NewAfdPage() {
             </p>
           )}
           {run.phase === 'error' && <p className="text-red-300/90">{run.message}</p>}
+        </div>
+
+        <div className="mt-10">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-slate-500">
+            Forecast-discussion posts
+          </h2>
+          {afdPosts === null && <p className="mt-3 text-sm text-slate-500">Loading…</p>}
+          {afdPosts?.length === 0 && (
+            <p className="mt-3 text-sm text-slate-500">None yet — generate one above.</p>
+          )}
+          {afdPosts && afdPosts.length > 0 && (
+            <ul className="mt-3 divide-y divide-[#2e4278]/40 rounded-lg border border-[#2e4278]/60 bg-[#1b2a55]/70">
+              {afdPosts.map(p => {
+                const st = statusOf(p)
+                return (
+                  <li key={p.id} className="flex items-center gap-3 px-4 py-3">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[st]}`} />
+                    <span className="min-w-0 flex-1 truncate text-[15px] text-slate-300">{p.title}</span>
+                    <span className="shrink-0 text-xs capitalize text-slate-500">{st}</span>
+                    <span className="w-28 shrink-0 text-right text-xs text-slate-500">
+                      {formatDate(p.published_at ?? p.publish_at ?? p.updated_at)}
+                    </span>
+                    <Link href={`/admin/post/?id=${p.id}`}
+                      className="shrink-0 rounded-md border border-slate-600 bg-slate-800 px-2.5 py-1 text-xs text-slate-200 transition-colors hover:bg-slate-700">
+                      Edit
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </div>
       </PageShell>
     </div>

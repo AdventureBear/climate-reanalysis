@@ -11,12 +11,16 @@ export type PostRow = {
   title: string
   description: string
   body_md: string
+  category: string
   published: boolean
   publish_at: string | null
   published_at: string | null
   created_at: string
   updated_at: string
 }
+
+// Posts generated from an Area Forecast Discussion carry this category (#37).
+export const AFD_CATEGORY = 'forecast discussion'
 
 function requireSupabase() {
   if (!supabase) throw new Error('Accounts are not configured.')
