@@ -3,6 +3,8 @@ import { RecipeRedirect } from './RecipeRedirect'
 import { CreateAccountSection } from './CreateAccountSection'
 import { DonateSection } from './DonateSection'
 import { UsageSection } from './UsageSection'
+import { JsonLd } from '../ui/JsonLd'
+import { graph, learningResourceSchema } from '../lib/structuredData'
 
 // Landing page. Hero blends real map renders into the dusk background with
 // the text on top; the builder CTA sits low so the maps do the talking.
@@ -10,6 +12,8 @@ import { UsageSection } from './UsageSection'
 export default function LandingPage() {
   return (
     <div className="flex-1 bg-[#16224a]">
+      {/* Free educational tool — the type Google needs to see (#86). */}
+      <JsonLd data={graph(learningResourceSchema)} />
       <RecipeRedirect />
 
       {/* Hero: map art fading into the dusk color */}

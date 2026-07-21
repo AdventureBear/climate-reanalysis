@@ -4,6 +4,8 @@ import { AuthProvider } from './auth/AuthProvider'
 import { SiteHeader } from '../chrome/SiteHeader'
 import { SiteFooter } from '../chrome/SiteFooter'
 import { Analytics } from './analytics'
+import { JsonLd } from '../ui/JsonLd'
+import { graph, personSchema, websiteSchema } from '../lib/structuredData'
 import '../index.css'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap' })
@@ -22,6 +24,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={inter.className}>
+        {/* Site-wide entities; page-level schemas reference these by @id. */}
+        <JsonLd data={graph(websiteSchema, personSchema)} />
         <Analytics />
         <AuthProvider>
           <div className="min-h-screen bg-[#131d3f] text-slate-100 flex flex-col">

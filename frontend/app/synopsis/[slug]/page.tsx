@@ -6,6 +6,8 @@ import { PostBody } from './PostBody'
 import { EditorLink } from '../EditorLink'
 import { PageShell } from '../../../ui/PageShell'
 import { Lightbox } from './Lightbox'
+import { JsonLd } from '../../../ui/JsonLd'
+import { articleSchema, breadcrumbSchema, graph } from '../../../lib/structuredData'
 
 type Params = { slug: string }
 
@@ -68,6 +70,8 @@ export default async function SynopsisPost({ params }: { params: Promise<Params>
           </Link>
           <EditorLink postId={post.id} />
         </div>
+        {/* Article + breadcrumbs for search results (#86). */}
+        <JsonLd data={graph(articleSchema(post), breadcrumbSchema(post))} />
         <article className="mt-6">
           <div className="text-xs uppercase tracking-wide text-sky-300/80">{bylineDate(post)}</div>
           <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">{displayHeadline(post)}</h1>
