@@ -56,8 +56,11 @@ export const learningResourceSchema = {
   isPartOf: { '@id': SITE_ID },
 }
 
-// A Synopsis post. datePublished uses the post's weather day when it has one
-// (#82) so the article is dated by the weather it describes.
+// A Synopsis post. datePublished is when the article was published — a full
+// timestamp with timezone, which is what validators expect (a bare date is
+// flagged as an invalid datetime). The weather day the post describes is a
+// different thing and belongs in temporalCoverage, not datePublished: a
+// backfilled Helene recap really was published in 2026, about 2024 weather.
 export function articleSchema(post: Post) {
   const url = `${SITE_URL}/synopsis/${post.slug}/`
   const image = leadImagePath(post.body_md, post.slug)
@@ -67,10 +70,14 @@ export function articleSchema(post: Post) {
     headline: post.title,
     description: post.description,
     url,
-    datePublished: post.event_date ?? post.published_at ?? undefined,
+    datePublished: post.published_at ?? post.updated_at,
     dateModified: post.updated_at,
-    author: { '@id': AUTHOR_ID },
-    publisher: { '@id': AUTHOR_ID },
+    ...(post.event_date ? { temporalCoverage: post.event_date } : {}),
+    // Same entity as the sitewide Person (@id), but with the name inline:
+    // validators flag a bare @id reference as "author missing name" when the
+    // entity is defined in a different <script> block on the page.
+    author: { '@type': 'Person', '@id': AUTHOR_ID, name: AUTHOR_NAME },
+    publisher: { '@type': 'Person', '@id': AUTHOR_ID, name: AUTHOR_NAME },
     isPartOf: { '@id': SITE_ID },
     isAccessibleForFree: true,
     ...(image ? { image: POST_IMAGE_BASE + image } : {}),

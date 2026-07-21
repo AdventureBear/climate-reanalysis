@@ -1,7 +1,7 @@
 // Admin-side post operations for the Synopsis editor (#36). All calls run as
 // the signed-in admin; RLS enforces the is_admin gate server-side.
 import { supabase } from './supabase'
-import { isJsonBody, textFromJsonBody } from './posts'
+import { AFD_CATEGORY, isJsonBody, textFromJsonBody } from './posts'
 import { downloadImageBlob } from './storage'
 import type { SavedMap } from './database.types'
 
@@ -20,8 +20,9 @@ export type PostRow = {
   updated_at: string
 }
 
-// Posts generated from an Area Forecast Discussion carry this category (#37).
-export const AFD_CATEGORY = 'forecast discussion'
+// Re-exported so admin modules keep importing it from here (defined in
+// ./posts because the public build-time list needs it to order posts).
+export { AFD_CATEGORY }
 
 function requireSupabase() {
   if (!supabase) throw new Error('Accounts are not configured.')
