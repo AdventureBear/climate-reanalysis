@@ -380,6 +380,11 @@ export default function EditorApp() {
               <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Publish</div>
               <div className="mt-3 flex flex-col gap-2 text-sm text-slate-300">
                 <span>Status: <span className="capitalize text-slate-400">{status}</span></span>
+                {status === 'published' && publishedAt && (
+                  <span className="text-xs text-slate-500">
+                    published {new Date(publishedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </span>
+                )}
                 {status === 'scheduled' && scheduleAt && (
                   <span className="text-xs text-slate-500">goes live {new Date(scheduleAt).toLocaleString()}</span>
                 )}

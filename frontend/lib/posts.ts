@@ -44,25 +44,87 @@ async function restFetch(query: string): Promise<Post[]> {
 }
 
 // The date a post is filed under chronologically: its weather day if it has
-// one (AFD posts, #82), otherwise its publish date. A backfilled historical
-// event thus sorts by when the weather happened, not when it was generated.
+// one (AFD posts, #82), otherwise its publish date. Not the default index
+// order (that stays publish-date) — reserved for a future chronological
+// browse/sort/filter/search page.
 export function effectiveDate(p: Post): string {
   return p.event_date ?? (p.published_at ?? p.updated_at).slice(0, 10)
 }
 
 export async function listPublishedPosts(): Promise<Post[]> {
-  const posts = await restFetch(
+  return restFetch(
     'select=id,slug,title,description,body_md,event_date,published_at,updated_at'
-    + '&published=eq.true',
+    + '&published=eq.true&order=published_at.desc',
   )
-  // One-column DB ordering can't mix event_date and published_at, so sort here.
-  return posts.sort((a, b) => effectiveDate(b).localeCompare(effectiveDate(a)))
 }
 
 // Post bodies are BlockNote block arrays (legacy posts: markdown). True when
 // the stored body is the structured format.
 export function isJsonBody(body: string): boolean {
   return body.trimStart().startsWith('[')
+}
+
+// Parse a YYYY-MM-DD date string as a local calendar day (no timezone shift).
+function localDate(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+// The headline without the "US Weather <weekday> <month> <day>, <year>: "
+// prefix that compose_title adds to AFD posts (#88). The prefix is rebuilt
+// exactly from event_date and stripped; hand-written posts (no event_date)
+// keep their title as-is. The full title stays the SEO <title> / OG value.
+export function displayHeadline(p: Post): string {
+  if (!p.event_date) return p.title
+  const d = localDate(p.event_date)
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'long' })
+  const month = d.toLocaleDateString('en-US', { month: 'long' })
+  const prefix = `US Weather ${weekday} ${month} ${d.getDate()}, ${d.getFullYear()}: `
+  return p.title.startsWith(prefix) ? p.title.slice(prefix.length) : p.title
+}
+
+// The date shown as a byline: the weather day for AFD posts, else the publish
+// date. AFD posts read as "Thursday, July 16, 2026"; others "July 15, 2026".
+export function bylineDate(p: Post): string {
+  if (p.event_date) {
+    return localDate(p.event_date).toLocaleDateString('en-US',
+      { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  }
+  return p.published_at
+    ? new Date(p.published_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : ''
+}
+
+// All image paths in a post body, as stored bucket paths. AFD bodies are
+// markdown (![caption](post-images/...)); hand-written posts are BlockNote
+// JSON with image blocks.
+export function imagePaths(body: string): string[] {
+  if (isJsonBody(body)) {
+    const out: string[] = []
+    const walk = (n: unknown): void => {
+      if (!n || typeof n !== 'object') return
+      if (Array.isArray(n)) { n.forEach(walk); return }
+      const node = n as { type?: string; props?: { url?: string }; content?: unknown[]; children?: unknown[] }
+      if (node.type === 'image' && node.props?.url) out.push(node.props.url)
+      walk(node.content ?? [])
+      walk(node.children ?? [])
+    }
+    try { walk(JSON.parse(body)) } catch { /* fall through to empty */ }
+    return out
+  }
+  return [...body.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map(m => m[1])
+}
+
+// Lead thumbnail (#84): a varied pick from the post's images, seeded by slug
+// so each post shows a different map (AFDs all open with the 500mb overview,
+// so the first image would look repetitive). Deterministic — stable across
+// builds. Null when the post has no image.
+export function leadImagePath(body: string, seed: string): string | null {
+  const paths = imagePaths(body)
+  if (paths.length === 0) return null
+  let h = 0
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) | 0
+  return paths[Math.abs(h) % paths.length]
 }
 
 // Plain text from a stored block document (for auto-descriptions).

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getPublishedPost, listPublishedPosts } from '../../../lib/posts'
+import { bylineDate, displayHeadline, getPublishedPost, listPublishedPosts } from '../../../lib/posts'
 import { PostBody } from './PostBody'
 import { EditorLink } from '../EditorLink'
 import { PageShell } from '../../../ui/PageShell'
@@ -39,11 +39,6 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   }
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-}
-
 export default async function SynopsisPost({ params }: { params: Promise<Params> }) {
   const { slug } = await params
   const post = await getPublishedPost(slug)
@@ -74,8 +69,8 @@ export default async function SynopsisPost({ params }: { params: Promise<Params>
           <EditorLink postId={post.id} />
         </div>
         <article className="mt-6">
-          <div className="text-xs uppercase tracking-wide text-sky-300/80">{formatDate(post.published_at)}</div>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">{post.title}</h1>
+          <div className="text-xs uppercase tracking-wide text-sky-300/80">{bylineDate(post)}</div>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-white">{displayHeadline(post)}</h1>
           {post.description && (
             <p className="mt-3 text-lg leading-relaxed text-slate-300">{post.description}</p>
           )}

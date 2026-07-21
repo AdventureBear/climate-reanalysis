@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { listPublishedPosts } from '../../lib/posts'
+import { bylineDate, displayHeadline, leadImagePath, listPublishedPosts, resolvePostImage } from '../../lib/posts'
 import { EditorLink } from './EditorLink'
 import { PageShell } from '../../ui/PageShell'
 
@@ -8,11 +8,6 @@ export const metadata: Metadata = {
   title: 'The Synopsis — PyRe Weather',
   description:
     'Weather stories and case studies: historical events explained with reanalysis maps you can explore yourself.',
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 export default async function SynopsisIndex() {
@@ -33,23 +28,41 @@ export default async function SynopsisIndex() {
         )}
 
         <div className="mt-8 flex flex-col gap-4">
-          {posts.map(p => (
-            <div key={p.slug} className="relative">
-              <Link
-                href={`/synopsis/${p.slug}/`}
-                className="block rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 transition-all hover:-translate-y-0.5 hover:border-sky-500/50"
+          {posts.map(p => {
+            const thumb = leadImagePath(p.body_md, p.slug)
+            // The whole card links to the post via a stretched headline link,
+            // so the admin Edit control can sit in normal flow (a nested <a>
+            // would be invalid) and still be clickable above the overlay.
+            return (
+              <div
+                key={p.slug}
+                className="relative flex gap-5 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-5 transition-all hover:-translate-y-0.5 hover:border-sky-500/50"
               >
-                <div className="text-xs uppercase tracking-wide text-sky-300/80">{formatDate(p.published_at)}</div>
-                <h2 className="mt-1 text-xl font-semibold text-slate-100">{p.title}</h2>
-                {p.description && (
-                  <p className="mt-2 text-sm leading-relaxed text-slate-300">{p.description}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs uppercase tracking-wide text-sky-300/80">{bylineDate(p)}</div>
+                  <h2 className="mt-1 text-xl font-semibold text-slate-100">
+                    <Link href={`/synopsis/${p.slug}/`} className="after:absolute after:inset-0">
+                      {displayHeadline(p)}
+                    </Link>
+                  </h2>
+                  {p.description && (
+                    <p className="mt-2 text-sm leading-relaxed text-slate-300">{p.description}</p>
+                  )}
+                  <div className="relative z-10 mt-3 empty:mt-0">
+                    <EditorLink postId={p.id} />
+                  </div>
+                </div>
+                {thumb && (
+                  <img
+                    src={resolvePostImage(thumb)}
+                    alt=""
+                    loading="lazy"
+                    className="hidden h-24 w-36 shrink-0 self-center rounded-lg object-cover sm:block"
+                  />
                 )}
-              </Link>
-              <span className="absolute right-4 top-4">
-                <EditorLink postId={p.id} />
-              </span>
-            </div>
-          ))}
+              </div>
+            )
+          })}
         </div>
       </PageShell>
     </div>
