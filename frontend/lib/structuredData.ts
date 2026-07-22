@@ -5,7 +5,7 @@
 // NOT emit Dataset — the site renders images from NOAA's public reanalysis
 // rather than hosting downloadable data, and Dataset Search expects the
 // latter (see #86 for the reasoning).
-import { POST_IMAGE_BASE, leadImagePath, type Post } from './posts'
+import { POST_IMAGE_BASE, displayHeadline, leadImagePath, type Post } from './posts'
 
 export const SITE_URL = 'https://www.pyreweather.org'
 const AUTHOR_NAME = 'Suzanne Atkinson'
@@ -67,7 +67,11 @@ export function articleSchema(post: Post) {
   return {
     '@type': 'BlogPosting',
     '@id': `${url}#article`,
-    headline: post.title,
+    // The date-stripped headline, matching the page's <h1>. Google truncates
+    // past ~110 characters, and the full stored title runs longer once the
+    // "US Weather {weekday} {date}: " prefix is counted. The weather day is
+    // still machine-readable below, in temporalCoverage.
+    headline: displayHeadline(post),
     description: post.description,
     url,
     datePublished: post.published_at ?? post.updated_at,
@@ -88,7 +92,7 @@ export function breadcrumbSchema(post: Post) {
   const crumbs = [
     { name: 'Home', item: `${SITE_URL}/` },
     { name: 'The Synopsis', item: `${SITE_URL}/synopsis/` },
-    { name: post.title, item: `${SITE_URL}/synopsis/${post.slug}/` },
+    { name: displayHeadline(post), item: `${SITE_URL}/synopsis/${post.slug}/` },
   ]
   return {
     '@type': 'BreadcrumbList',
