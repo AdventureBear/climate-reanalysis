@@ -64,26 +64,40 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 
 **Deployment:** frontend `out/` on a Render static site (rebuilt via a deploy hook that only the `rebuild-site` Edge Function calls); backend on a Render service with `CORS_ORIGINS`, `PYRE_CACHE_DIR`, etc. set in the environment. The current Supabase project is DEV only. Deploying to production is always a user-initiated act.
 
-### Working Agreement (issue-driven workflow)
+### Working Agreement
 
 GitHub issues are the tracker of record; one issue in flight at a time. New ideas become issues, not code.
 
-1. **Spec-in-issue before code.** Before building an issue, post the spec as a comment on it — approach, files touched, any migration — and get approval there before writing code.
-2. **Done-when lists.** Every issue gets 2–4 observable acceptance criteria before work starts. Verification means demonstrating those criteria against the running app, not just green checks.
-3. **Done means working in development.** An issue closes when its change is verified in dev. Deploying to production is a separate, user-initiated act (push to the deploy branch) — never a condition for closing an issue.
-4. **Fixes get mini-specs too.** Unplanned bugs and small changes go through the same spec-comment step (a few lines is fine) — never straight to code.
-5. **Filing is not fixing.** "Add issue: X" and comments on backlogged issues produce issue text only. Triage reasoning, ruled-out causes, and ready-to-run diagnostic commands belong in issue comments; executing any of them (running commands, probing prod, editing code) waits until the issue is explicitly picked up to work. The turn ends when the comment is posted.
-6. **Claude never commits to main.** Every piece of work — features, fixes, docs, one-line changes — is committed on a feature branch (`feat/…`, `fix/…`). Every new feature starts with a fresh branch off current main. Only the user merges to main, and only the user pushes anywhere (the deploy branch is named `render` — her name, don't rename it). If the working tree is on main or `render` when work starts, branch first. **The user owns all git commit and merge commands** — Claude never runs `git commit`, `git merge`, or `git push` unless she says so in that turn. Claude may create/switch/recreate feature branches (see below) and stage changes, but committing is hers. **Check the branch immediately before any commit-adjacent action, never from memory — she moves between branches (including onto `render`) between turns.** For an in-flight issue: if its feature branch is gone, recreate it off current main and continue there; if the tree is on `main`/`render`, branch first.
-7. **Discussion stays in chat; the issue gets one comment per phase.** While a spec or plan is under discussion, never post to the GitHub issue — draft thinking there becomes stale noise she deletes by hand. Post to the issue exactly once per phase, only after she explicitly confirms agreement ("go", "agreed", "post it"). During discussion, no point is "settled" or "confirmed" until she declares the discussion done; restate working state neutrally, ask clarifying questions about the ticket, and don't push toward closure.
-8. **Explicit "go" before building.** Spec approval and answered clarifying questions are NOT a green light. After the discussion converges, present the concrete ordered build plan in chat (migration DDL, modules touched, verification steps) and end the turn. Code, migrations, and branch creation start only after she explicitly says go. This applies to experiments too — discuss the exact commands/requests before running them.
-9. **Commits happen only when she says "commit."** During design/tuning iterations: implement → show the result → stop. Don't commit per iteration, don't prompt or remind her to commit — she decides when work has earned it, and approved tweaks batch into one commit.
-10. **Verify shared state before each work chunk, don't infer it.** She changes the repo and database between turns (merges, deletes branches, pushes, runs SQL). Run `git branch --show-current` + `git status --short` before starting any piece of work — if the expected branch is gone she merged it, so branch fresh off current main. For the database, check `supabase migration list` or query the actual schema; never act on remembered state.
-11. **Plain literal language; complete runnable commands.** Programming vocabulary and short code snippets, not prose metaphors, in both explanations and status updates. Explanations are written at a 10th-grade reading level: short sentences, one idea per sentence, no dense academic prose — the terms can be technical, the sentence structure stays simple. Shell commands are always complete: `cd <absolute path>` first when the directory matters, full file paths, explicit `<placeholders>`.
-12. **Don't redo routine ops she knows.** Starting/restarting dev servers and similar are hers — state what needs to happen and let her run it. Reserve tool calls for work that genuinely needs Claude.
+**Planning**
+
+- **Spec, then plan, then explicit "go".** Every issue (including small fixes) gets a spec — approach, files touched, any migration — and 2–4 observable acceptance criteria before code. Discussion happens in chat; the issue gets exactly one comment per phase, posted only after she confirms agreement. Spec approval is not a green light: present the ordered build plan (migration SQL, modules touched, verification steps) and start only when she says go. This applies to experiments too.
+- **"Add issue" means file it and stop.** Filing produces issue text only. Diagnosing, running commands, probing prod, and editing code wait until she picks the issue up.
+- **Done means verified in dev.** An issue closes when its acceptance criteria work in the running dev app. Deploying to production is her act, never a closing condition.
+
+**Git**
+
+- **She owns `git commit`, `git merge`, and `git push`.** Claude never runs them unless she says so in that turn. Claude may create, switch, and recreate feature branches and stage changes. Work lands on feature branches (`feat/…`, `fix/…`) off current main; only she merges and pushes. The deploy branch is named `render` — don't rename it. During iterations: implement, show the result, stop; don't prompt her to commit; approved tweaks batch into one commit.
+- **Check state before acting, never from memory.** She changes branches, merges, and runs SQL between turns. Run `git branch --show-current` and `git status --short` before starting work and before anything commit-adjacent. If the expected feature branch is gone she merged it — recreate off current main. If the tree is on `main` or `render`, branch first. For the database, check `supabase migration list` or query the schema.
+
+**Database**
 
 **NO MIGRATIONS, PERIOD, UNLESS SHE EXPLICITLY APPROVES THAT SPECIFIC MIGRATION.** Claude never applies any change to any database — schema, grants, RLS, buckets, data — without her saying yes to that exact migration first, shown to her as SQL in chat. This has no exceptions: not for one-liners, not for grants, not to unblock a failing run, not because a migration was named in an approved spec. Approval of a plan is not approval of a migration; each `apply_migration` or DDL `execute_sql` call requires its own explicit yes, immediately before it runs.
 
-Database schema changes additionally follow the migrations rule: write the file in `supabase/migrations/` first; apply that exact content; keep filename versions matching the applied history.
+Schema changes are file-first: write the file in `supabase/migrations/`, apply that exact content, keep filename versions matching the applied history.
+
+**Communication**
+
+- **Plain, literal language everywhere.** Short sentences, one idea each, 10th-grade reading level; technical terms are fine, dense or clever phrasing is not. No metaphors, no compressed clauses that need decoding ("yours when it looks good") — say the plain version ("nothing is committed; tell me when to commit"). Use programming vocabulary and short code snippets, not prose descriptions of code. Shell commands are always complete and runnable: `cd <absolute path>` first when the directory matters, full file paths, explicit `<placeholders>`.
+
+**Effort**
+
+- **Spend effort where it's needed, nowhere else.** Routine ops she knows (starting servers, deploys) are hers — state what needs to happen. Verify at the level of the change: a class or style edit is verified by reading the code; use the browser when behavior is genuinely uncertain. Reserve tool calls for work that needs Claude.
+
+**Libraries & Reuse**
+
+- **Read the existing feature first.** When a request mirrors something already shipped, read that implementation and make the new thing be the old thing — same tables, same fields, same code paths — before designing anything parallel. An LLM output schema is the cheapest interface in the system to change; change it to fit existing storage rather than converting around it.
+- **Verify a "can't" before designing around it.** Never claim a library lacks a capability without checking its docs or the installed types (`node_modules/**/*.d.ts`).
+- **Shared maps travel as `/map` deep links.** A deep link regenerates the map for anyone; include one wherever a map is showcased, since an image alone can't be recreated.
 
 ### Engineering Guardrails
 
