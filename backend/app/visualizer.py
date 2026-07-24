@@ -530,6 +530,22 @@ _HEIGHT_RAMPS: dict[str, tuple[list[str], list[float]]] = {
     # wine (ridge) — each with its own light-to-dark run. Softer saturation
     # than the meteocentre rainbows, but family handoffs keep 4-dam bands
     # scannable in a way a two-color diverging ramp can't.
+    # Classic spectral ramp (#49 round 4), adapted from the PSL-style 500mb
+    # temperature bar she likes: deep pink at the extreme LOW end (cold-core
+    # vortex, matching the coldest temps) through violet/blue/cyan/green/
+    # yellow/orange to red at the ridge top. Anchors are EVENLY spaced so
+    # each hue family owns an equal share of the window, like the reference
+    # bar's fixed 4-degree bands; a season shows its own slice of the
+    # spectrum (winter reaches the pinks/purples, summer reaches the reds).
+    # Red is reachable by a strong summer ridge (~592-598); the band above
+    # it is pink, so pink at the warm end marks record territory (the June
+    # 2021 heat dome's ~599 dam would render pink).
+    "spectral": (
+        ["#e0218a", "#9933cc", "#5c33cc", "#2244e0", "#4d94ff",
+         "#7fd4f2", "#66e0cc", "#66d966", "#a6e346", "#eef255", "#f2cc3d",
+         "#f2a03d", "#f26e2e", "#e63324", "#ff70cf"],
+        [i / 14 for i in range(15)],
+    ),
     "families": (
         ["#6b3fa0", "#31479e", "#4a68bd", "#6f92d4", "#c9e3c4", "#a8d0a8",
          "#86bd8c", "#eee6b8", "#e3c078", "#dd9a5b", "#d1382e", "#ec4fa3",
@@ -551,7 +567,7 @@ _HEIGHT_FILL_SPECS: dict[int, tuple[float, float, str]] = {
     850:  (122, 162, "warm"),
     700:  (277, 317, "warm"),
     600:  (391, 446, "warm"),
-    500:  (512, 604, "families"),
+    500:  (512, 604, "spectral"),
     # Cool-level window tops reach the summer subtropical ridge (verified
     # against 2026-07-21: 980 dam at 300mb, 1256 at 200mb) so July maps
     # grade instead of saturating at the domain edge (#49).
