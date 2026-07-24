@@ -486,55 +486,87 @@ _HEIGHT_CONTOUR_SCALE_CONFIG = {
     "step": 4,
 }
 
-# Shaded-height fill windows (dam) per pressure level, compressed to the
-# TYPICAL synoptic band (standard-atmosphere height sits at the green anchor,
-# ~2/3 up the window, since below-normal departures run larger than above).
-# Excursions beyond the window render in the extend colors — the same
-# add-on-band approach as the temperature and wind scales. Values are
-# working estimates pending domain review.
-_HEIGHT_FILL_WINDOWS: dict[int, tuple[float, float]] = {
-    1000: (-13, 27),
-    925:  (52, 92),
-    850:  (122, 162),
-    700:  (277, 317),
-    600:  (391, 446),
-    500:  (512, 587),
-    400:  (674, 754),
-    300:  (866, 956),
-    250:  (994, 1104),
-    200:  (1123, 1233),
-    150:  (1306, 1416),
-    100:  (1563, 1673),
-    70:   (1789, 1899),
-    50:   (2003, 2113),
-    20:   (2578, 2718),
-    10:   (3006, 3206),
+# Shaded-height ramps (#49). Three named ramps; each level picks one in
+# _HEIGHT_FILL_SPECS. Every ramp is (hex colors, window fractions) with the
+# same mid-dense spacing so common departures get most of the hue variation.
+#
+# warm      — purple = far below normal, green = normal, red = far above.
+#             Same 13-hue ladder as the MSLP spectrum. Levels 600-1000mb.
+# warm_pink — the warm ladder plus magenta -> pink headroom above red, for
+#             500mb only: its window top moves 587 -> 604 dam so a summer
+#             subtropical ridge (588-600) grades red into pink instead of
+#             saturating flat red. The first 13 fractions keep the original
+#             anchors at their original dam positions in the wider window.
+# cool      — 400mb and up: no warm hues at all. Below-normal side keeps the
+#             familiar purple/blue/cyan; above normal runs mint -> periwinkle
+#             -> lilac -> orchid -> pink, so jet-level maps read cool even in
+#             summer when heights sit high in the window.
+_HEIGHT_RAMPS: dict[str, tuple[list[str], list[float]]] = {
+    "warm": (
+        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
+         "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600",
+         "#e60000"],
+        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
+         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
+    ),
+    "warm_pink": (
+        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
+         "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600",
+         "#e60000", "#ff33cc", "#ffb3e6"],
+        [0.0, 0.1456, 0.2620, 0.3494, 0.4193, 0.4658,
+         0.5124, 0.5415, 0.5707, 0.6056, 0.6522, 0.7104,
+         0.8152, 0.9130, 1.0],
+    ),
+    "cool": (
+        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
+         "#00e0e0", "#66e0c2", "#b3c6f7", "#c9a6f7", "#e08ae0", "#f75fc0",
+         "#e61f8e"],
+        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
+         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
+    ),
 }
 
-# Same 13-hue ladder as the MSLP spectrum (purple = far below normal, green =
-# normal, red = far above), with the same mid-dense anchor spacing so common
-# departures get most of the hue variation.
-_HEIGHT_FILL_RAMP_HEX = [
-    "#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
-    "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600", "#e60000",
-]
-_HEIGHT_RAMP_FRACTIONS = [
-    0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
-    0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0,
-]
+# Per-level fill spec: (window_min_dam, window_max_dam, ramp_name). Windows
+# are compressed to the TYPICAL synoptic band (standard-atmosphere height
+# sits ~2/3 up the window, since below-normal departures run larger than
+# above). Excursions beyond the window render in the extend colors — the
+# same add-on-band approach as the temperature and wind scales. Values are
+# working estimates pending domain review.
+_HEIGHT_FILL_SPECS: dict[int, tuple[float, float, str]] = {
+    1000: (-13, 27, "warm"),
+    925:  (52, 92, "warm"),
+    850:  (122, 162, "warm"),
+    700:  (277, 317, "warm"),
+    600:  (391, 446, "warm"),
+    500:  (512, 604, "warm_pink"),
+    # Cool-level window tops reach the summer subtropical ridge (verified
+    # against 2026-07-21: 980 dam at 300mb, 1256 at 200mb) so July maps
+    # grade instead of saturating at the domain edge (#49).
+    400:  (674, 770, "cool"),
+    300:  (866, 985, "cool"),
+    250:  (994, 1120, "cool"),
+    200:  (1123, 1262, "cool"),
+    150:  (1306, 1440, "cool"),
+    100:  (1563, 1690, "cool"),
+    70:   (1789, 1899, "cool"),
+    50:   (2003, 2113, "cool"),
+    20:   (2578, 2718, "cool"),
+    10:   (3006, 3206, "cool"),
+}
 
 
 def _height_fill_cfg(level: int) -> dict | None:
-    window = _HEIGHT_FILL_WINDOWS.get(level)
-    if window is None:
+    spec = _HEIGHT_FILL_SPECS.get(level)
+    if spec is None:
         return None
-    w0, w1 = window
+    w0, w1, ramp_name = spec
+    colors, fractions = _HEIGHT_RAMPS[ramp_name]
     return {
         "mapping": "fixed_anchors",
         "domain_min": w0,
         "domain_max": w1,
-        "anchor_values": [w0 + f * (w1 - w0) for f in _HEIGHT_RAMP_FRACTIONS],
-        "anchor_colors": _HEIGHT_FILL_RAMP_HEX,
+        "anchor_values": [w0 + f * (w1 - w0) for f in fractions],
+        "anchor_colors": colors,
         "key_breakpoints": [],
         "step": 4,
     }
