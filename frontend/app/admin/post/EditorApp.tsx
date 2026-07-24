@@ -34,6 +34,7 @@ import {
   triggerRebuild, uploadPostImage, upsertPost, type PostInput,
 } from '../../../lib/postsAdmin'
 import { POST_IMAGE_BASE, resolvePostImage } from '../../../lib/posts'
+import { TEXT_LINK } from '../../../ui/linkStyles'
 import { EditorGate } from '../shared'
 import { MapPickerModal } from './MapPickerModal'
 
@@ -126,6 +127,9 @@ export default function EditorApp() {
   const ready = authEnabled && user && isAdmin
 
   const editor = useCreateBlockNote({
+    // Same link look as every public renderer (ui/linkStyles.ts); BlockNote
+    // writes its own <a> tags, so the class is handed in as an editor option.
+    links: { HTMLAttributes: { class: TEXT_LINK } },
     // The slash-menu "Image" item and drag-drop uploads land in the same
     // public bucket as the Add photo button.
     uploadFile: async (file: File) => {

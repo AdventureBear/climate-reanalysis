@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { resolvePostImage } from '../../../lib/posts'
+import { TEXT_LINK } from '../../../ui/linkStyles'
 
 // Renders BlockNote's stored document (an array of blocks) to plain JSX at
 // build time. Deliberately dependency-free: BlockNote's own server renderer
@@ -28,7 +29,11 @@ function renderInline(nodes: InlineNode[] | undefined, keyBase: string): ReactNo
   return nodes.map((n, i) => {
     const key = `${keyBase}-${i}`
     if (n.type === 'link') {
-      return <a key={key} href={n.href}>{renderInline(n.content, key)}</a>
+      return (
+        <a key={key} href={n.href} className={TEXT_LINK}>
+          {renderInline(n.content, key)}
+        </a>
+      )
     }
     let el: ReactNode = n.text ?? ''
     const s = n.styles ?? {}

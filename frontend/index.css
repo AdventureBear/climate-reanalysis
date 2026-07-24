@@ -61,10 +61,6 @@
     @apply my-8 border-slate-700;
   }
 
-  .faq-doc a {
-    @apply text-sky-300 underline decoration-sky-700 underline-offset-2 hover:text-sky-200;
-  }
-
   .faq-doc table {
     @apply my-5 w-full border-collapse overflow-hidden rounded-xl border border-slate-700 text-sm;
   }

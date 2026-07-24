@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolvePostImage } from '../../../lib/posts'
+import { TEXT_LINK } from '../../../ui/linkStyles'
 import { BlockRenderer } from './BlockRenderer'
 
 // Renders a post body at build time. Two formats: BlockNote block arrays
@@ -29,6 +30,7 @@ export function PostBody({ body }: { body: string }) {
             className="mx-auto max-w-full rounded-lg"
           />
         ),
+        a: props => <a {...props} className={TEXT_LINK} />,
       }}
     >
       {body}
