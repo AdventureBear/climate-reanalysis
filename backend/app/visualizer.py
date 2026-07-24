@@ -531,9 +531,9 @@ _HEIGHT_RAMPS: dict[str, tuple[list[str], list[float]]] = {
     # than the meteocentre rainbows, but family handoffs keep 4-dam bands
     # scannable in a way a two-color diverging ramp can't.
     "families": (
-        ["#31479e", "#4a68bd", "#6f92d4", "#c9e3c4", "#a8d0a8", "#86bd8c",
-         "#eee6b8", "#e8d894", "#e3c078", "#dd9a5b", "#c85f45", "#cf6f9e",
-         "#e5a3c8"],
+        ["#6b3fa0", "#31479e", "#4a68bd", "#6f92d4", "#c9e3c4", "#a8d0a8",
+         "#86bd8c", "#eee6b8", "#e3c078", "#dd9a5b", "#d1382e", "#ec4fa3",
+         "#ffffff"],
         [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
          0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
     ),
