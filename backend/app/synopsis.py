@@ -382,9 +382,14 @@ def recipe_to_params(recipe: dict) -> dict:
 def builder_url(recipe: dict) -> str:
     """Relative /map deep link that reopens this recipe in the builder —
     generated from the recipe on demand (mapRecipeFromUrl parses these same
-    param names on load). Relative so it works on dev and prod alike."""
+    param names on load). Relative so it works on dev and prod alike.
+    Returns "" for a recipe that can't translate — a failed map must not
+    kill the draft; its recipe still reaches the library for debugging."""
     from urllib.parse import urlencode
-    return "/map?" + urlencode(recipe_to_params(recipe))
+    try:
+        return "/map?" + urlencode(recipe_to_params(recipe))
+    except ValueError:
+        return ""
 
 
 def recipe_to_request(recipe: dict) -> MapRequest:
@@ -439,9 +444,10 @@ def build_body_md(post: dict, slug: str) -> str:
                 continue
             embedded.add(mid)
             m = maps[mid]
+            url = builder_url(m["recipe"])
+            link = f" · [Open this map in the builder]({url})" if url else ""
             lines += [f"![{m['caption']}](post-images/{slug}/{mid}.png)", "",
-                      f"*{m['caption']} · [Open this map in the builder]({builder_url(m['recipe'])})*",
-                      ""]
+                      f"*{m['caption']}{link}*", ""]
     source = post.get("source") or {}
     if source.get("url"):
         issued = f", issued {source['issued']}" if source.get("issued") else ""
