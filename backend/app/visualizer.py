@@ -486,101 +486,52 @@ _HEIGHT_CONTOUR_SCALE_CONFIG = {
     "step": 4,
 }
 
-# Shaded-height ramps (#49). Three named ramps; each level picks one in
-# _HEIGHT_FILL_SPECS. Every ramp is (hex colors, window fractions) with the
-# same mid-dense spacing so common departures get most of the hue variation.
-#
-# warm      — purple = far below normal, green = normal, red = far above.
-#             Same 13-hue ladder as the MSLP spectrum. Levels 600-1000mb.
-# warm_pink — the warm ladder plus magenta -> pink headroom above red, for
-#             500mb only: its window top moves 587 -> 604 dam so a summer
-#             subtropical ridge (588-600) grades red into pink instead of
-#             saturating flat red. The first 13 fractions keep the original
-#             anchors at their original dam positions in the wider window.
-# cool      — 400mb and up: no warm hues at all. Below-normal side keeps the
-#             familiar purple/blue/cyan; above normal runs mint -> periwinkle
-#             -> lilac -> orchid -> pink, so jet-level maps read cool even in
-#             summer when heights sit high in the window.
+# Shaded-height ramp (#49): one classic spectral ramp for every level,
+# adapted from the PSL-style 500mb temperature bar and tuned with the editor
+# against Dec/Jul renders. Ascending: a deep-magenta record-low floor,
+# magentas, purples, blues, cyan, greens, yellows, oranges, red, and a pink
+# record-high ceiling. Anchors are EVENLY spaced so each hue family owns an
+# equal share of the window, and a season shows its own slice of the
+# spectrum (winter reaches the magentas, summer reaches the reds). The
+# per-level window does all the altitude adaptation; one visual language
+# everywhere — pink on any height map means record-ridge territory (the
+# June 2021 heat dome's ~599 dam at 500mb renders pink), deep magenta means
+# record-trough.
 _HEIGHT_RAMPS: dict[str, tuple[list[str], list[float]]] = {
-    "warm": (
-        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
-         "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600",
-         "#e60000"],
-        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
-         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
-    ),
-    "warm_pink": (
-        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
-         "#00e0e0", "#33cc66", "#99e600", "#ffee00", "#ffaa00", "#ff6600",
-         "#e60000", "#ff33cc", "#ffb3e6"],
-        [0.0, 0.1456, 0.2620, 0.3494, 0.4193, 0.4658,
-         0.5124, 0.5415, 0.5707, 0.6056, 0.6522, 0.7104,
-         0.8152, 0.9130, 1.0],
-    ),
-    "cool": (
-        ["#f2ecf9", "#b366ff", "#6600cc", "#0d33cc", "#0066ff", "#00aaff",
-         "#00e0e0", "#66e0c2", "#b3c6f7", "#c9a6f7", "#e08ae0", "#f75fc0",
-         "#e61f8e"],
-        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
-         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
-    ),
-    # Multi-center family ramp (#49 review round 3), built like the wind
-    # scale: distinct hue families in sequence — violet (deep trough), blue
-    # (below normal), soft green (normal band), sand/peach (above), rose ->
-    # wine (ridge) — each with its own light-to-dark run. Softer saturation
-    # than the meteocentre rainbows, but family handoffs keep 4-dam bands
-    # scannable in a way a two-color diverging ramp can't.
-    # Classic spectral ramp (#49 round 4), adapted from the PSL-style 500mb
-    # temperature bar she likes: deep pink at the extreme LOW end (cold-core
-    # vortex, matching the coldest temps) through violet/blue/cyan/green/
-    # yellow/orange to red at the ridge top. Anchors are EVENLY spaced so
-    # each hue family owns an equal share of the window, like the reference
-    # bar's fixed 4-degree bands; a season shows its own slice of the
-    # spectrum (winter reaches the pinks/purples, summer reaches the reds).
-    # Red is reachable by a strong summer ridge (~592-598); the band above
-    # it is pink, so pink at the warm end marks record territory (the June
-    # 2021 heat dome's ~599 dam would render pink).
     "spectral": (
         ["#8f0f5c", "#c2187c", "#e0218a", "#b13bd9", "#8433cc", "#5c33cc",
          "#2244e0", "#4d94ff", "#66e0cc", "#66d966", "#a6e346", "#eef255",
          "#f2cc3d", "#f2a03d", "#f26e2e", "#e63324", "#ff70cf"],
         [i / 16 for i in range(17)],
     ),
-    "families": (
-        ["#6b3fa0", "#31479e", "#4a68bd", "#6f92d4", "#c9e3c4", "#a8d0a8",
-         "#86bd8c", "#eee6b8", "#e3c078", "#dd9a5b", "#d1382e", "#ec4fa3",
-         "#ffffff"],
-        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
-         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
-    ),
 }
 
 # Per-level fill spec: (window_min_dam, window_max_dam, ramp_name). Windows
-# are compressed to the TYPICAL synoptic band (standard-atmosphere height
-# sits ~2/3 up the window, since below-normal departures run larger than
-# above). Excursions beyond the window render in the extend colors — the
-# same add-on-band approach as the temperature and wind scales. Values are
-# working estimates pending domain review.
+# span the practical record range for each level — the floor near the
+# deepest analyzed vortex core, the ceiling near the strongest analyzed
+# ridge — so the top band means record-high and the bottom band record-low
+# at every level, and nothing renders as a flat beyond-domain pool. 500mb
+# is editor-calibrated (484 record floor, 604 ceiling, red reachable by a
+# strong summer ridge at ~592-598); the other windows are climatological
+# estimates in the same spirit, pending domain review against extreme
+# events per level.
 _HEIGHT_FILL_SPECS: dict[int, tuple[float, float, str]] = {
-    1000: (-13, 27, "warm"),
-    925:  (52, 92, "warm"),
-    850:  (122, 162, "warm"),
-    700:  (277, 317, "warm"),
-    600:  (391, 446, "warm"),
+    1000: (-45, 48, "spectral"),
+    925:  (18, 100, "spectral"),
+    850:  (95, 175, "spectral"),
+    700:  (235, 330, "spectral"),
+    600:  (355, 462, "spectral"),
     500:  (484, 604, "spectral"),
-    # Cool-level window tops reach the summer subtropical ridge (verified
-    # against 2026-07-21: 980 dam at 300mb, 1256 at 200mb) so July maps
-    # grade instead of saturating at the domain edge (#49).
-    400:  (674, 770, "cool"),
-    300:  (866, 985, "families"),
-    250:  (994, 1120, "cool"),
-    200:  (1123, 1262, "cool"),
-    150:  (1306, 1440, "cool"),
-    100:  (1563, 1690, "cool"),
-    70:   (1789, 1899, "cool"),
-    50:   (2003, 2113, "cool"),
-    20:   (2578, 2718, "cool"),
-    10:   (3006, 3206, "cool"),
+    400:  (630, 775, "spectral"),
+    300:  (808, 992, "spectral"),
+    250:  (930, 1130, "spectral"),
+    200:  (1080, 1270, "spectral"),
+    150:  (1260, 1450, "spectral"),
+    100:  (1500, 1700, "spectral"),
+    70:   (1740, 1915, "spectral"),
+    50:   (1940, 2140, "spectral"),
+    20:   (2480, 2740, "spectral"),
+    10:   (2880, 3220, "spectral"),
 }
 
 
@@ -633,6 +584,13 @@ _MSLP_CONTOUR_SCALE_CONFIG = {
     "step": 4,
 }
 
+# MSLP deliberately keeps its own mid-dense scale rather than the heights'
+# even spectral ramp (#49, compared on the 1993 Superstorm + a 2026 July
+# high, saved in the admin Scale Comparisons library): heights slide
+# through their window with season and latitude, so even bands work; MSLP
+# lives in 990-1035 every day everywhere, so the everyday band needs the
+# hue density and the extremes stay reserved — which is what the config
+# above already does.
 _PWAT_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
     "domain_min": 0,
