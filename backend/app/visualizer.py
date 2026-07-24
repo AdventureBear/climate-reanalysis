@@ -524,6 +524,19 @@ _HEIGHT_RAMPS: dict[str, tuple[list[str], list[float]]] = {
         [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
          0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
     ),
+    # Multi-center family ramp (#49 review round 3), built like the wind
+    # scale: distinct hue families in sequence — violet (deep trough), blue
+    # (below normal), soft green (normal band), sand/peach (above), rose ->
+    # wine (ridge) — each with its own light-to-dark run. Softer saturation
+    # than the meteocentre rainbows, but family handoffs keep 4-dam bands
+    # scannable in a way a two-color diverging ramp can't.
+    "families": (
+        ["#31479e", "#4a68bd", "#6f92d4", "#c9e3c4", "#a8d0a8", "#86bd8c",
+         "#eee6b8", "#e8d894", "#e3c078", "#dd9a5b", "#c85f45", "#cf6f9e",
+         "#e5a3c8"],
+        [0.0, 0.1786, 0.3214, 0.4286, 0.5143, 0.5714,
+         0.6286, 0.6643, 0.7, 0.7429, 0.8, 0.8714, 1.0],
+    ),
 }
 
 # Per-level fill spec: (window_min_dam, window_max_dam, ramp_name). Windows
@@ -538,12 +551,12 @@ _HEIGHT_FILL_SPECS: dict[int, tuple[float, float, str]] = {
     850:  (122, 162, "warm"),
     700:  (277, 317, "warm"),
     600:  (391, 446, "warm"),
-    500:  (512, 604, "warm_pink"),
+    500:  (512, 604, "families"),
     # Cool-level window tops reach the summer subtropical ridge (verified
     # against 2026-07-21: 980 dam at 300mb, 1256 at 200mb) so July maps
     # grade instead of saturating at the domain edge (#49).
     400:  (674, 770, "cool"),
-    300:  (866, 985, "cool"),
+    300:  (866, 985, "families"),
     250:  (994, 1120, "cool"),
     200:  (1123, 1262, "cool"),
     150:  (1306, 1440, "cool"),
