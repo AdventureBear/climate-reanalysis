@@ -34,6 +34,18 @@
   border-color: #5a6472;
 }
 
+/* Links: Tailwind's reset strips browser link styling, so without this they
+   read as plain text. Match the public post pages (sky blue, underlined). */
+.synopsis-editor .bn-editor a {
+  color: #38bdf8; /* sky-400 */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer; /* contenteditable defaults to a text cursor over links */
+}
+.synopsis-editor .bn-editor a:hover {
+  color: #7dd3fc; /* sky-300 */
+}
+
 /* Images can carry pixel widths wider than the column (legacy content,
    generous presets): clamp them so they and their resize handles always
    stay inside the editing surface. */
