@@ -57,6 +57,52 @@ def create_map_buffer(req: MapRequest):
         wind_unit=req.wind_unit,
     )
 
+    obs_source = "CORe-pgb"
+    cached_u = cached_v = None
+    obs_u_subset = obs_v_subset = None
+    anomaly_u_subset = anomaly_v_subset = None
+    obs = obs_subset = None
+
+    # Observations before climatology (#95): obs carry the data-availability
+    # risk and take seconds; climatology takes minutes on long composites.
+    # A request doomed by a missing CORe record fails here, not after the
+    # climatology spend.
+    if req.mode != "climatology":
+        step += 1
+        obs_what, obs_method = obs_description(req, selection)
+        log.info("")
+        if req.variable == "wind_speed" and (req.wind_step > 0 or req.isotachs or use_vector_wind_anomaly):
+            purpose = "wind speed + overlay" if req.wind_step > 0 else "wind vector anomaly"
+            log.info("STEP %d  Fetch U + V components @ %dmb  (%s — single fetch)", step, req.level, purpose)
+            log.info("  Method  : %s", obs_method)
+            log.info("  Note    : U and V fetched together; speed = √(U²+V²); components reused downstream")
+            t0 = time.perf_counter()
+            cached_u, cached_v = fetch_wind(req, selection)
+            obs_elapsed = time.perf_counter() - t0
+            obs = wind_speed_from_components(cached_u, cached_v)
+        else:
+            log.info("STEP %d  Fetch observation data", step)
+            log.info("  What    : %s", obs_what)
+            log.info("  Method  : %s", obs_method)
+            t0 = time.perf_counter()
+            obs = fetch_obs(req, selection, grib_name)
+            obs_elapsed = time.perf_counter() - t0
+
+        obs_source = obs.attrs.get("_pyre_obs_source", obs_source)
+        obs_subset = select_region(obs, bounds)
+        if cached_u is not None and cached_v is not None:
+            obs_u_subset = select_region(cached_u, bounds)
+            obs_v_subset = select_region(cached_v, bounds)
+
+        log.info("STEP %d ✓  obs ready  (%.1fs)  source=%s", step, obs_elapsed, obs_source)
+        log.info("  obs grid    : %s", "×".join(str(s) for s in obs_subset.shape))
+        log.info(
+            "  obs range   : [%.3g, %.3g] %s  (region subset)",
+            float(obs_subset.min()),
+            float(obs_subset.max()),
+            VARIABLES[req.variable].get("units", ""),
+        )
+
     climo_mean = climo_std = None
     climo_u_mean = climo_v_mean = None
     if req.mode != "raw":
@@ -125,50 +171,9 @@ def create_map_buffer(req: MapRequest):
                 VARIABLES[req.variable].get("units", ""),
             )
 
-    obs_source = "CORe-pgb"
-    cached_u = cached_v = None
-    obs_u_subset = obs_v_subset = None
-    anomaly_u_subset = anomaly_v_subset = None
-
     if req.mode == "climatology":
         subset = climo_mean
-        obs = None
     else:
-        step += 1
-        obs_what, obs_method = obs_description(req, selection)
-        log.info("")
-        if req.variable == "wind_speed" and (req.wind_step > 0 or req.isotachs or use_vector_wind_anomaly):
-            purpose = "wind speed + overlay" if req.wind_step > 0 else "wind vector anomaly"
-            log.info("STEP %d  Fetch U + V components @ %dmb  (%s — single fetch)", step, req.level, purpose)
-            log.info("  Method  : %s", obs_method)
-            log.info("  Note    : U and V fetched together; speed = √(U²+V²); components reused downstream")
-            t0 = time.perf_counter()
-            cached_u, cached_v = fetch_wind(req, selection)
-            obs_elapsed = time.perf_counter() - t0
-            obs = wind_speed_from_components(cached_u, cached_v)
-        else:
-            log.info("STEP %d  Fetch observation data", step)
-            log.info("  What    : %s", obs_what)
-            log.info("  Method  : %s", obs_method)
-            t0 = time.perf_counter()
-            obs = fetch_obs(req, selection, grib_name)
-            obs_elapsed = time.perf_counter() - t0
-
-        obs_source = obs.attrs.get("_pyre_obs_source", obs_source)
-        obs_subset = select_region(obs, bounds)
-        if cached_u is not None and cached_v is not None:
-            obs_u_subset = select_region(cached_u, bounds)
-            obs_v_subset = select_region(cached_v, bounds)
-
-        log.info("STEP %d ✓  obs ready  (%.1fs)  source=%s", step, obs_elapsed, obs_source)
-        log.info("  obs grid    : %s", "×".join(str(s) for s in obs_subset.shape))
-        log.info(
-            "  obs range   : [%.3g, %.3g] %s  (region subset)",
-            float(obs_subset.min()),
-            float(obs_subset.max()),
-            VARIABLES[req.variable].get("units", ""),
-        )
-
         if req.mode in ("anomaly", "normalized"):
             step += 1
             log.info("")
