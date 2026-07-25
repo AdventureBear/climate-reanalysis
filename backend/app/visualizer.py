@@ -314,12 +314,17 @@ _TEMP_LOW_ANCHOR_HEX = [
     '#f2f1a7', '#610000', '#f2e7dc', '#c7bfb7',
 ]
 
-# Mid- and upper-level temperature anchors: evenly spaced cold-to-warm palette
-# across each level group's climatological range. Practical defaults pending the
-# scientific color-scale review tracked in PROJECT.md §8.
+# Mid- and upper-level temperature anchors (#4): transcribed from the
+# editor's reference 500mb temperature bar (the PSL-style scale) — 20
+# colors, denser than the height spectral, with harder contrast between
+# neighboring families so a narrow seasonal slice still crosses visibly
+# distinct bands. Cold end pink -> violet -> blue, warm end yellow ->
+# gold -> orange -> red.
 _TEMP_UPPER_ANCHOR_HEX = [
-    '#3b0f70', '#6247aa', '#2c7bb6', '#63a8d1', '#abd9e9',
-    '#e0f3f8', '#f7f7f7', '#fee090', '#fdae61', '#d7301f',
+    "#e8388a", "#f04fd0", "#c93df0", "#9b2fe0", "#7a1fd0",
+    "#5a2fd8", "#2a2ae8", "#3a6af5", "#6aa8f8", "#7fd8e8",
+    "#8ee8c8", "#7fe87f", "#b8ee5f", "#eef25f", "#f2dc4f",
+    "#f2c44f", "#f2a044", "#f2803a", "#e8442a", "#c81e10",
 ]
 
 
@@ -359,18 +364,29 @@ _TEMP_SCALES: dict[int, dict] = {
     925: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
     850: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  40, "key_breakpoints": [0]},
     700: {"mapping": "fixed_anchors", "unit": "C", "anchors": _TEMP_LOW_ANCHORS_C, "anchor_hex": _TEMP_LOW_ANCHOR_HEX, "t_min": -40, "t_max":  30, "key_breakpoints": [0]},
-    600: _upper_temp_scale(-50, 15),
-    500: _upper_temp_scale(-55, 10),
-    400: _upper_temp_scale(-65,  0),
-    300: _upper_temp_scale(-75, -10),
-    250: _upper_temp_scale(-80, -20),
-    200: _upper_temp_scale(-80, -30),
-    150: _upper_temp_scale(-85, -35),
-    100: _upper_temp_scale(-90, -35),
-    70:  _upper_temp_scale(-90, -35),
+    # Windows trimmed to record-to-record (#4): the old tops sat 8-15°C
+    # above anything the level ever reaches, which parked every real map in
+    # the pale middle. Now the red/pink bands are earned by record warmth
+    # (a +1°C heat-dome day at 500mb renders red) and the magenta floor by
+    # record cold.
+    600: _upper_temp_scale(-48, 12),
+    500: _upper_temp_scale(-56,  2),
+    400: _upper_temp_scale(-66, -4),
+    300: _upper_temp_scale(-76, -18),
+    # 250-70mb share ONE window: a color means the same temperature at every
+    # one of these levels, so flipping between them shows the real change
+    # with height. Each level's map occupies its own slice (250 warm end,
+    # 100 cold end).
+    250: _upper_temp_scale(-90, -30),
+    200: _upper_temp_scale(-90, -30),
+    150: _upper_temp_scale(-90, -30),
+    100: _upper_temp_scale(-90, -30),
+    70:  _upper_temp_scale(-90, -30),
     50:  _upper_temp_scale(-90, -30),
-    20:  _upper_temp_scale(-85, -25),
-    10:  _upper_temp_scale(-80, -20),
+    # Sudden stratospheric warmings really do reach these ceilings — an SSW
+    # climbs through orange/red into the pink record band, which is the story.
+    20:  _upper_temp_scale(-85, -5),
+    10:  _upper_temp_scale(-80, 0),
 }
 
 
@@ -1327,7 +1343,7 @@ def describe_color_scale(
 
     if variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
         cfg = _TEMP_SCALES[_render_level(variable, level)]
-        boundaries_k, interval_colors, _ = _make_temp_scale(cfg, step=color_step)
+        boundaries_k, interval_colors, _ = _make_temp_scale(cfg, step=color_step * cfg.get("step", 1))
         from_k = (lambda k: (k - 273.15) * 9.0 / 5.0 + 32.0) if cfg["unit"] == "F" else (lambda k: k - 273.15)
         boundaries = [from_k(v) for v in boundaries_k]
         data_vals = np.asarray([from_k(v) for v in np.ravel(data_array.values)], dtype=float) if data_array is not None else None
@@ -1767,7 +1783,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         name = "2m Temperature" if variable == "temp_2m" else "Temperature"
         temp_label = f"{name} (°{shown_unit})"
         if not draw_custom_filled(data_array.values, ylabel=temp_label, extend='both'):
-            breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step)
+            breakpoints_k, interval_colors, to_k = _make_temp_scale(cfg, step=color_step * cfg.get("step", 1))
             cmap = mcolors.ListedColormap(interval_colors)
             cmap.set_under(interval_colors[0])
             cmap.set_over(mcolors.to_rgb(cfg["anchor_hex"][-1]))
