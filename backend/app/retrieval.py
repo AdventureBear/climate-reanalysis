@@ -393,6 +393,45 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
 # Composite (multi-date mean) helpers
 # ---------------------------------------------------------------------------
 
+def gather_composite_members(futures_map: dict) -> tuple[list, list[str]]:
+    """The one missing-member policy for every composite (#95).
+
+    futures_map maps each Future to its member label ("20260614 21z").
+    CORe files occasionally lack a record (ValueError from the .idx lookup);
+    a missing member no longer kills the whole composite. Up to ~5% of
+    members (min 1) are skipped, logged by name; more than that — or all —
+    fails immediately, naming every missing member.
+
+    Returns (results in completion order, missing labels). Callers stamp
+    the missing labels into the result's attrs for provenance.
+    """
+    results, missing = [], []
+    for fut in as_completed(futures_map):
+        label = futures_map[fut]
+        try:
+            results.append(fut.result())
+        except ValueError:  # "<VAR> at <level> not found in index"
+            missing.append(label)
+    total = len(futures_map)
+    if missing:
+        allowed = max(1, total // 20)
+        if not results or len(missing) > allowed:
+            raise ValueError(
+                f"CORe records missing for {len(missing)} of {total} "
+                f"composite members: {', '.join(sorted(missing))}"
+            )
+        log.warning(
+            "COMPOSITE  %d/%d members missing their record — skipped: %s",
+            len(missing), total, ", ".join(sorted(missing)),
+        )
+    return results, missing
+
+
+def _stamp_skipped(da: xr.DataArray, missing: list[str]) -> None:
+    if missing:
+        da.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
+
+
 def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
     """
     Fetch the same field for multiple dates concurrently, return the mean.
@@ -401,14 +440,15 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
     log.debug("COMPOSITE  %d dates  hour=%sz  (concurrent)", len(dates), hour)
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(dates), 8)) as pool:
-        futures = {pool.submit(fetch_fn, d, hour, *args): d for d in dates}
-        arrays = [fut.result() for fut in as_completed(futures)]
+        futures = {pool.submit(fetch_fn, d, hour, *args): f"{d} {hour}z" for d in dates}
+        arrays, missing = gather_composite_members(futures)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
     stacked = xr.concat(cleaned, dim="composite_date")
     mean = stacked.mean(dim="composite_date")
     mean.attrs = cleaned[0].attrs
+    _stamp_skipped(mean, missing)
     return mean
 
 
@@ -420,13 +460,14 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args) -> x
     log.debug("COMPOSITE  %d (date×hour) pairs  (concurrent)", len(date_hour_pairs))
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = {pool.submit(fetch_fn, d, h, *args): (d, h) for d, h in date_hour_pairs}
-        arrays = [fut.result() for fut in as_completed(futures)]
+        futures = {pool.submit(fetch_fn, d, h, *args): f"{d} {h}z" for d, h in date_hour_pairs}
+        arrays, missing = gather_composite_members(futures)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
     stacked = xr.concat(cleaned, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
     mean.attrs = cleaned[0].attrs
+    _stamp_skipped(mean, missing)
     return mean
 
 
@@ -447,12 +488,15 @@ def fetch_wind_speed_daily_composite(dates: list[str], hours: list[str], level: 
 def _mean_wind_components_of_pairs(
     date_hour_pairs: list[tuple[str, str]], level: int
 ) -> tuple[xr.DataArray, xr.DataArray]:
-    """Fetch (U, V) once per (date, hour) pair concurrently, mean each component."""
+    """Fetch (U, V) once per (date, hour) pair concurrently, mean each component.
+    A pair counts as one composite member: if either component's record is
+    missing, the whole (date, hour) is skipped under the shared policy."""
     log.debug("COMPOSITE  U+V for %d (date×hour) pairs  (concurrent, single fetch per pair)", len(date_hour_pairs))
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = [pool.submit(fetch_wind_components, d, h, level) for d, h in date_hour_pairs]
-        results = [f.result() for f in futures]
+        futures = {pool.submit(fetch_wind_components, d, h, level): f"{d} {h}z"
+                   for d, h in date_hour_pairs}
+        results, missing = gather_composite_members(futures)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
     u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
@@ -461,6 +505,8 @@ def _mean_wind_components_of_pairs(
     v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
     u_mean.attrs = u_list[0].attrs
     v_mean.attrs = v_list[0].attrs
+    _stamp_skipped(u_mean, missing)
+    _stamp_skipped(v_mean, missing)
     return u_mean, v_mean
 
 

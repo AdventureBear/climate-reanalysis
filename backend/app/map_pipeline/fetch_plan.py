@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import calendar as cal
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Protocol
 
 import xarray as xr
@@ -21,6 +20,7 @@ from ..climo_r2 import (
 )
 from ..retrieval import (
     fetch_field,
+    gather_composite_members,
     fetch_monthly_named_level_composite,
     fetch_field_by_level_name,
     fetch_field_composite,
@@ -48,8 +48,6 @@ from ..retrieval import (
 )
 from ..config import VARIABLES, is_surface_or_named_level
 from .time_selection import TimeSelection
-
-log = logging.getLogger("pyre.api")
 
 
 class FetchRequest(Protocol):
@@ -82,32 +80,13 @@ def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):
 
 
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
-    """Concurrent flx fetches averaged into one composite. CORe flx files
-    occasionally lack a record (#95): a missing member no longer kills the
-    whole composite — up to ~5% of members (min 1) are skipped with a
-    warning naming them; more than that fails fast, also naming them."""
+    """Concurrent flx fetches averaged into one composite, under the shared
+    missing-member policy (gather_composite_members, #95)."""
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = {pool.submit(_flx_field, req, date, hour): (date, hour)
+        futures = {pool.submit(_flx_field, req, date, hour): f"{date} {hour}z"
                    for date, hour in date_hour_pairs}
-        arrays: list[xr.DataArray] = []
-        missing: list[str] = []
-        for fut in as_completed(futures):
-            date, hour = futures[fut]
-            try:
-                arrays.append(fut.result().drop_vars("valid_time", errors="ignore"))
-            except ValueError:  # "<VAR> at <level> not found in index"
-                missing.append(f"{date} {hour}z")
-    if missing:
-        allowed = max(1, len(date_hour_pairs) // 20)
-        if not arrays or len(missing) > allowed:
-            raise ValueError(
-                f"CORe flx records missing for {len(missing)} of "
-                f"{len(date_hour_pairs)} composite members: {', '.join(sorted(missing))}"
-            )
-        log.warning(
-            "COMPOSITE  %d/%d members missing their flx record — skipped: %s",
-            len(missing), len(date_hour_pairs), ", ".join(sorted(missing)),
-        )
+        results, missing = gather_composite_members(futures)
+    arrays = [da.drop_vars("valid_time", errors="ignore") for da in results]
     stacked = xr.concat(arrays, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
     mean.attrs = arrays[0].attrs
@@ -117,16 +96,22 @@ def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -
 
 
 def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]]):
-    """Fetch 10m (U, V) once per (date, hour) pair concurrently, mean each component."""
+    """Fetch 10m (U, V) once per (date, hour) pair concurrently, mean each
+    component. Same shared missing-member policy; a pair is one member."""
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = [pool.submit(fetch_flx_wind_components, date, hour) for date, hour in date_hour_pairs]
-        results = [f.result() for f in futures]
+        futures = {pool.submit(fetch_flx_wind_components, date, hour): f"{date} {hour}z"
+                   for date, hour in date_hour_pairs}
+        results, missing = gather_composite_members(futures)
     u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
     v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
     u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
     v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
     u_mean.attrs = u_list[0].attrs
     v_mean.attrs = v_list[0].attrs
+    if missing:
+        skipped = ", ".join(sorted(missing))
+        u_mean.attrs["_pyre_skipped_members"] = skipped
+        v_mean.attrs["_pyre_skipped_members"] = skipped
     return u_mean, v_mean
 
 
