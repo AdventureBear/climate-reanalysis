@@ -264,21 +264,34 @@ def _fetch_one_year(
             # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
             with open_netcdf(url, engine="netcdf4") as ds:
                 da = ds[r2_var]
+                # A rate-limited/failed DAP response (PSL 429/502) can still
+                # "open", but with an undecoded numeric time axis — selecting
+                # by date string then dies with a misleading dtype ValueError
+                # (#94). Treat it as the fetch failure it is, so it retries.
+                if not np.issubdtype(ds["time"].dtype, np.datetime64):
+                    raise OSError(
+                        f"time axis undecoded (rate-limited or corrupt DAP "
+                        f"response for {year})"
+                    )
                 if "level" in da.dims:
                     da = da.sel(level=level, method="nearest")
                 da = da.sel(time=date_str, method="nearest").load()
             # Mask R2 fill value (-9.96921e36) and upcast to float64
             da = da.where(np.abs(da) < 1e30).astype(np.float64)
             return da
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             if attempt == max_retries - 1:
                 raise RuntimeError(
                     f"R2 OPeNDAP failed after {max_retries} attempts: {url} "
                     f"({date_str} @ {level} hPa)\n"
-                    f"PSL THREDDS may be down — try again in a few minutes.\n"
+                    f"PSL THREDDS may be down or rate-limiting (HTTP 429) — "
+                    f"try again in a few minutes.\n"
                     f"Underlying error: {exc}"
                 ) from exc
             wait = 5 * (2 ** attempt)
+            # PSL's nginx answers bursts with 429; back off harder for those.
+            if "429" in str(exc) or "undecoded" in str(exc):
+                wait = max(wait, 15 * (attempt + 1))
             log.warning(
                 "CLIMO_R2  OPeNDAP error  var=%s year=%d attempt=%d/%d retry in %ds",
                 r2_var, year, attempt + 1, max_retries, wait,
