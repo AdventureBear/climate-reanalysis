@@ -12,6 +12,7 @@ import { signedUrl } from '../../lib/storage'
 import { blobFromObjectUrl } from '../../lib/images'
 import { suggestedMapName } from './mapName'
 import { mapRecipeFromUrl, mapRecipeToParams, type MapRecipe } from '../../mapRecipe'
+import { gapRetryFromGap } from './builder/useMapGeneration'
 import { normalizeColorStep } from '../../sharedOptions'
 import { getRegionLabel } from './builder/regionCatalog'
 import { useCompositeRecipe } from './builder/useCompositeRecipe'
@@ -50,7 +51,7 @@ export default function MapBuilder() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [colorLabOpen, setColorLabOpen] = useState(false)
 
-  const { mapSrc, loading, error, setError, generateFromParams, showImage } = useMapGeneration()
+  const { mapSrc, loading, error, setError, dataGap, generateFromParams, showImage } = useMapGeneration()
 
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
   const isVertical  = layoutMode === 'vertical'
@@ -145,6 +146,21 @@ export default function MapBuilder() {
     selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
     window.history.replaceState(null, '', `?${new URLSearchParams(params).toString()}`)
     await generateFromParams(params)
+  }
+
+  // One-click retry for a composite with missing data (#95): the offer is
+  // just a new request — a truncated range (title stays honest via the
+  // params) or the same range with skip_missing=1 (the map's margin
+  // discloses the skipped times). Recipe state and URL follow the params.
+  const gapRetry = gapRetryFromGap(dataGap)
+  function handleGapRetry() {
+    if (!gapRetry) return
+    const params = gapRetry.params
+    const retryRecipe = mapRecipeFromUrl(new URLSearchParams(params))
+    if (retryRecipe) applyRecipeToState(retryRecipe)
+    selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
+    window.history.replaceState(null, '', `?${new URLSearchParams(params).toString()}`)
+    void generateFromParams(params)
   }
 
   // -- Save / load library maps -------------------------------------------------
@@ -267,6 +283,7 @@ export default function MapBuilder() {
 
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
+          retry={gapRetry ? { label: gapRetry.label, onClick: handleGapRetry } : null}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
 

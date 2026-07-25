@@ -42,6 +42,7 @@ def render_map_product(
     centers_array=None,
     contour_overlays=None,
     monthly_anomaly: bool = False,
+    missing_note: str = "",
 ):
     if req.mode == "anomaly" and use_vector_wind_anomaly:
         log.info("  colormap : positive sequential (vector anomaly magnitude)")
@@ -63,6 +64,7 @@ def render_map_product(
     log_scale_diag(scale_diag)
 
     return create_map_product(
+        missing_note=missing_note,
         data_array=data_array,
         region_bounds=bounds,
         var_name=var_label,

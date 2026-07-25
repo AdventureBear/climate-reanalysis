@@ -216,6 +216,7 @@ def get_map(
     isotachs: int = 0,
     centers: int = 0,
     contours: str = "",
+    skip_missing: int = 0,
 ):
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
@@ -311,11 +312,18 @@ def get_map(
                 isotachs=isotachs,
                 centers=centers,
                 contours=contours,
+                skip_missing=skip_missing,
             )
         )
         return StreamingResponse(buf, media_type="image/png")
     except DataUnavailableError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # Composite gaps ship a structured detail so the frontend can offer
+        # an informed retry: truncate the range, or regenerate with
+        # skip_missing=1 (#95).
+        detail: object = str(exc)
+        if getattr(exc, "missing", None):
+            detail = {"message": str(exc), "missing": exc.missing, "total": exc.total}
+        raise HTTPException(status_code=404, detail=detail) from exc
     except HTTPException:
         raise
     except requests.RequestException as exc:

@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../../../lib/api'
 import { supabase } from '../../../lib/supabase'
+import type { DataGap } from './dataGap'
+
+export type { DataGap, GapRetry } from './dataGap'
+export { gapRetryFromGap } from './dataGap'
 
 function timeScaleFromParams(params: Record<string, string>): string {
   if (params.mode === 'climatology') return 'climatology'
@@ -34,6 +38,7 @@ export function useMapGeneration() {
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
+  const [dataGap, setDataGap] = useState<DataGap | null>(null)
 
   // Release the last rendered blob URL when the component unmounts.
   const mapSrcRef = useRef<string | null>(null)
@@ -47,6 +52,7 @@ export function useMapGeneration() {
   async function generateFromParams(params: Record<string, string>) {
     setLoading(true)
     setError(null)
+    setDataGap(null)
     setMapSrc(prev => {
       if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
       return null
@@ -60,7 +66,19 @@ export function useMapGeneration() {
         logMapRequest(params)
       } else {
         const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-        setError(body.detail ?? `HTTP ${res.status}`)
+        const detail = body.detail
+        if (detail && typeof detail === 'object' && Array.isArray(detail.missing)) {
+          // Structured data-gap error: message for the banner, missing list
+          // for the retry offer.
+          setError(String(detail.message ?? `HTTP ${res.status}`))
+          setDataGap({
+            missing: detail.missing,
+            total: Number(detail.total) || detail.missing.length,
+            params,
+          })
+        } else {
+          setError(typeof detail === 'string' ? detail : `HTTP ${res.status}`)
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -78,5 +96,5 @@ export function useMapGeneration() {
     })
   }
 
-  return { mapSrc, loading, error, setError, generateFromParams, showImage }
+  return { mapSrc, loading, error, setError, dataGap, generateFromParams, showImage }
 }

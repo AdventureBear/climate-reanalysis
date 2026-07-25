@@ -37,3 +37,6 @@ class MapRequest:
     centers: int = 0
     # Comma-separated contour overlays: any of "pressure", "height", "temp".
     contours: str = ""
+    # 1 = user-confirmed retry: skip missing composite members (max 5%),
+    # disclosed on the map's bottom margin (#95). Never the default.
+    skip_missing: int = 0

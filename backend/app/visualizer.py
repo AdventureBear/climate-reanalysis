@@ -1614,7 +1614,7 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = ""):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1623,11 +1623,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
             centers_array=centers_array, contour_overlays=contour_overlays,
-            monthly_anomaly=monthly_anomaly,
+            monthly_anomaly=monthly_anomaly, missing_note=missing_note,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = ""):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -2137,9 +2137,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         cbar.ax.tick_params(labelsize=8)
 
     # Data source credit below the map
+    credit = 'Data: CORe Reanalysis  ·  NCEP/CPC'
+    if missing_note:
+        # User-confirmed skip: the map itself discloses what the composite
+        # is missing, so the title never has to lie (#95).
+        credit += f'  ·  Missing from composite: {missing_note}'
     fig.text(
         pos.x0, pos.y0 - 0.018,
-        'Data: CORe Reanalysis  ·  NCEP/CPC',
+        credit,
         fontsize=7, color='#888',
         ha='left', va='top',
         transform=fig.transFigure,

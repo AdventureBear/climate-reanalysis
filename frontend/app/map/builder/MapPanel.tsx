@@ -33,13 +33,15 @@ function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }
   )
 }
 
-export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false }: {
+export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null }: {
   mapSrc: string | null
   error: string | null
   loading: boolean
   isVertical: boolean
   onSave?: () => void
   saving?: boolean
+  // One-click informed retry when a composite has missing data (#95).
+  retry?: { label: string; onClick: () => void } | null
 }) {
   return (
     <>
@@ -50,6 +52,12 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
                 {error && (
                   <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
                     {error}
+                    {retry && (
+                      <button type="button" onClick={retry.onClick}
+                        className="mt-3 block w-full cursor-pointer rounded border border-red-500 bg-red-900/60 px-3 py-1.5 font-medium text-red-100 hover:bg-red-900">
+                        {retry.label}
+                      </button>
+                    )}
                   </div>
                 )}
                 {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
@@ -72,6 +80,12 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
                 {error && (
                   <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
                     {error}
+                    {retry && (
+                      <button type="button" onClick={retry.onClick}
+                        className="mt-3 block w-full cursor-pointer rounded border border-red-500 bg-red-900/60 px-3 py-1.5 font-medium text-red-100 hover:bg-red-900">
+                        {retry.label}
+                      </button>
+                    )}
                   </div>
                 )}
                 {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}

@@ -19,7 +19,17 @@ log = logging.getLogger("pyre.retrieval")
 
 
 class DataUnavailableError(RuntimeError):
-    """Raised when the requested primary observation data is not available."""
+    """Raised when the requested primary observation data is not available.
+
+    For composites, `missing` lists the absent members ("20260721 21z" or
+    "202608") and `total` the member count — the frontend uses them to offer
+    an informed retry (truncate the range, or regenerate skipping the gaps).
+    """
+
+    def __init__(self, message: str, *, missing: list[str] | None = None, total: int = 0):
+        super().__init__(message)
+        self.missing = missing or []
+        self.total = total
 
 # ── Monthly obs disk cache ────────────────────────────────────────────────────
 # Stores the decoded DataArray for each (grib_name, level, YYYYMM) slice.
@@ -163,7 +173,8 @@ def require_core_index_available(valid_date: str, valid_hour: str, *, stream: st
     if exists:
         return
     raise DataUnavailableError(
-        f"CORe {stream} data are not available for {valid_date} {valid_hour}z yet."
+        f"CORe {stream} data are not available for {valid_date} {valid_hour}z yet.",
+        missing=[f"{valid_date} {valid_hour}z"],
     )
 
 
@@ -393,33 +404,40 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
 # Composite (multi-date mean) helpers
 # ---------------------------------------------------------------------------
 
-def gather_composite_members(futures_map: dict) -> tuple[list, list[str]]:
+def gather_composite_members(futures_map: dict, *, skip_missing: bool = False) -> tuple[list, list[str]]:
     """The one missing-member policy for every composite (#95).
 
     futures_map maps each Future to its member label ("20260614 21z").
     CORe files occasionally lack a record (ValueError from the .idx lookup).
-    One rule: if more than 5% of members are missing, the composite fails,
-    naming every missing member. At or under 5%, the missing members are
-    skipped (the mean uses what exists) and named in the log. A 204-member
-    composite tolerates a stray gap; a 4-member daily mean fails if any
-    synoptic time is absent — 3 of 4 times is not a daily mean.
 
-    Returns (results in completion order, missing labels). Callers stamp
-    the missing labels into the result's attrs for provenance.
+    Default: ANY missing member fails, raising DataUnavailableError that
+    names every one — the frontend turns that into an informed offer
+    (truncate the range, or press the skip button). Nothing is ever
+    dropped silently.
+
+    skip_missing=True (the user pressed the button): members are skipped
+    when at most 5% are missing; the mean uses what exists, the skipped
+    labels go to the log and onto the map's bottom margin. More than 5%
+    still fails — 3 of 4 synoptic times is not a daily mean.
+
+    Returns (results in completion order, missing labels).
     """
     results, missing = [], []
     for fut in as_completed(futures_map):
         label = futures_map[fut]
         try:
             results.append(fut.result())
-        except ValueError:  # "<VAR> at <level> not found in index"
+        except ValueError:  # record absent from an existing file's index
+            missing.append(label)
+        except DataUnavailableError:  # whole file absent (not yet published)
             missing.append(label)
     total = len(futures_map)
     if missing:
-        if not results or len(missing) > total // 20:
-            raise ValueError(
+        if not skip_missing or not results or len(missing) > total // 20:
+            raise DataUnavailableError(
                 f"CORe records missing for {len(missing)} of {total} "
-                f"composite members: {', '.join(sorted(missing))}"
+                f"composite members: {', '.join(sorted(missing))}",
+                missing=sorted(missing), total=total,
             )
         log.warning(
             "COMPOSITE  %d/%d members missing their record — skipped: %s",
@@ -433,7 +451,7 @@ def _stamp_skipped(da: xr.DataArray, missing: list[str]) -> None:
         da.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
 
 
-def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
+def _mean_of(fetch_fn, dates: list[str], hour: str, *args, skip_missing: bool = False) -> xr.DataArray:
     """
     Fetch the same field for multiple dates concurrently, return the mean.
     valid_time differs per date so it is dropped before stacking.
@@ -442,7 +460,7 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(dates), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, hour, *args): f"{d} {hour}z" for d in dates}
-        arrays, missing = gather_composite_members(futures)
+        arrays, missing = gather_composite_members(futures, skip_missing=skip_missing)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
@@ -453,7 +471,7 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args) -> xr.DataArray:
     return mean
 
 
-def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args) -> xr.DataArray:
+def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args, skip_missing: bool = False) -> xr.DataArray:
     """
     Fetch a field for multiple (date, hour) pairs concurrently and return the mean.
     Used for daily composites that average several synoptic times.
@@ -462,7 +480,7 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args) -> x
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, h, *args): f"{d} {h}z" for d, h in date_hour_pairs}
-        arrays, missing = gather_composite_members(futures)
+        arrays, missing = gather_composite_members(futures, skip_missing=skip_missing)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
     cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
     stacked = xr.concat(cleaned, dim="composite_step")
@@ -472,22 +490,22 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args) -> x
     return mean
 
 
-def fetch_field_daily_composite(dates: list[str], hours: list[str], variable: str, level: int) -> xr.DataArray:
+def fetch_field_daily_composite(dates: list[str], hours: list[str], variable: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
     """Fetch a field across all (date × hour) combinations — daily composite."""
-    return _mean_of_pairs(fetch_field, [(d, h) for d in dates for h in hours], variable, level)
+    return _mean_of_pairs(fetch_field, [(d, h) for d in dates for h in hours], variable, level, skip_missing=skip_missing)
 
 
-def fetch_named_level_field_daily_composite(dates: list[str], hours: list[str], variable: str, level_name: str) -> xr.DataArray:
+def fetch_named_level_field_daily_composite(dates: list[str], hours: list[str], variable: str, level_name: str, *, skip_missing: bool = False) -> xr.DataArray:
     """Fetch a named-level field across all (date × hour) combinations — daily composite."""
-    return _mean_of_pairs(fetch_field_by_level_name, [(d, h) for d in dates for h in hours], variable, level_name)
+    return _mean_of_pairs(fetch_field_by_level_name, [(d, h) for d in dates for h in hours], variable, level_name, skip_missing=skip_missing)
 
 
-def fetch_wind_speed_daily_composite(dates: list[str], hours: list[str], level: int) -> xr.DataArray:
-    return _mean_of_pairs(fetch_wind_speed, [(d, h) for d in dates for h in hours], level)
+def fetch_wind_speed_daily_composite(dates: list[str], hours: list[str], level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of_pairs(fetch_wind_speed, [(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
 
 def _mean_wind_components_of_pairs(
-    date_hour_pairs: list[tuple[str, str]], level: int
+    date_hour_pairs: list[tuple[str, str]], level: int, *, skip_missing: bool = False
 ) -> tuple[xr.DataArray, xr.DataArray]:
     """Fetch (U, V) once per (date, hour) pair concurrently, mean each component.
     A pair counts as one composite member: if either component's record is
@@ -497,7 +515,7 @@ def _mean_wind_components_of_pairs(
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_wind_components, d, h, level): f"{d} {h}z"
                    for d, h in date_hour_pairs}
-        results, missing = gather_composite_members(futures)
+        results, missing = gather_composite_members(futures, skip_missing=skip_missing)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
     u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
@@ -511,33 +529,33 @@ def _mean_wind_components_of_pairs(
     return u_mean, v_mean
 
 
-def fetch_wind_components_daily_composite(dates: list[str], hours: list[str], level: int) -> tuple[xr.DataArray, xr.DataArray]:
-    return _mean_wind_components_of_pairs([(d, h) for d in dates for h in hours], level)
+def fetch_wind_components_daily_composite(dates: list[str], hours: list[str], level: int, *, skip_missing: bool = False) -> tuple[xr.DataArray, xr.DataArray]:
+    return _mean_wind_components_of_pairs([(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
 
-def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], level: int) -> xr.DataArray:
-    return _mean_of_pairs(fetch_relative_humidity, [(d, h) for d in dates for h in hours], level)
+def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of_pairs(fetch_relative_humidity, [(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
 
-def fetch_field_composite(dates: list[str], hour: str, variable: str, level: int) -> xr.DataArray:
-    return _mean_of(fetch_field, dates, hour, variable, level)
+def fetch_field_composite(dates: list[str], hour: str, variable: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of(fetch_field, dates, hour, variable, level, skip_missing=skip_missing)
 
 
-def fetch_named_level_field_composite(dates: list[str], hour: str, variable: str, level_name: str) -> xr.DataArray:
-    return _mean_of(fetch_field_by_level_name, dates, hour, variable, level_name)
+def fetch_named_level_field_composite(dates: list[str], hour: str, variable: str, level_name: str, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of(fetch_field_by_level_name, dates, hour, variable, level_name, skip_missing=skip_missing)
 
 
-def fetch_wind_speed_composite(dates: list[str], hour: str, level: int) -> xr.DataArray:
-    return _mean_of(fetch_wind_speed, dates, hour, level)
+def fetch_wind_speed_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of(fetch_wind_speed, dates, hour, level, skip_missing=skip_missing)
 
 
-def fetch_wind_components_composite(dates: list[str], hour: str, level: int) -> tuple[xr.DataArray, xr.DataArray]:
+def fetch_wind_components_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> tuple[xr.DataArray, xr.DataArray]:
     """Return mean U and mean V (vector mean wind — correct for compositing)."""
-    return _mean_wind_components_of_pairs([(d, hour) for d in dates], level)
+    return _mean_wind_components_of_pairs([(d, hour) for d in dates], level, skip_missing=skip_missing)
 
 
-def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int) -> xr.DataArray:
-    return _mean_of(fetch_relative_humidity, dates, hour, level)
+def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of(fetch_relative_humidity, dates, hour, level, skip_missing=skip_missing)
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +685,8 @@ def fetch_monthly_named_level_field(year: int, month: int, grib_name: str, level
     if syn_cfg is None:
         raise DataUnavailableError(
             f"No monthly {grib_name}:{level_name} data for {year}-{month:02d} — "
-            "the CORe monthly archive has not published this month yet."
+            "the CORe monthly archive has not published this month yet.",
+            missing=[f"{year}{month:02d}"],
         )
     syn_grib, syn_level = syn_cfg
     log.info(

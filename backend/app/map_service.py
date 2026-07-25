@@ -331,9 +331,18 @@ def create_map_buffer(req: MapRequest):
         "Southern Hemisphere": "South Polar Stereographic",
     }.get(req.region, "PlateCarree")
     log.info("  region   : %s  (projection: %s)", req.region, projection_label)
+    # Skipped composite members (user-confirmed skip_missing retries) are
+    # disclosed on the map itself, next to the data credit (#95).
+    missing_note = ""
+    if obs is not None:
+        missing_note = obs.attrs.get("_pyre_skipped_members", "")
+    if not missing_note and cached_u is not None:
+        missing_note = cached_u.attrs.get("_pyre_skipped_members", "")
+
     buf = render_map_product(
         req,
         data_array=subset,
+        missing_note=missing_note,
         bounds=bounds,
         var_label=var_label,
         date_label=date_str,

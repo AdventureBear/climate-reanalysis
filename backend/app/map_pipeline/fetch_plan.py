@@ -85,7 +85,7 @@ def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(_flx_field, req, date, hour): f"{date} {hour}z"
                    for date, hour in date_hour_pairs}
-        results, missing = gather_composite_members(futures)
+        results, missing = gather_composite_members(futures, skip_missing=bool(req.skip_missing))
     arrays = [da.drop_vars("valid_time", errors="ignore") for da in results]
     stacked = xr.concat(arrays, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
@@ -95,13 +95,13 @@ def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -
     return mean
 
 
-def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]]):
+def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]], *, skip_missing: bool = False):
     """Fetch 10m (U, V) once per (date, hour) pair concurrently, mean each
     component. Same shared missing-member policy; a pair is one member."""
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_flx_wind_components, date, hour): f"{date} {hour}z"
                    for date, hour in date_hour_pairs}
-        results, missing = gather_composite_members(futures)
+        results, missing = gather_composite_members(futures, skip_missing=skip_missing)
     u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
     v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
     u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
@@ -158,24 +158,26 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
         VARIABLES[req.variable]["monthly_grib_name"],
         VARIABLES[req.variable]["monthly_level_name"],
     ),
-    ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level),
-    ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level),
-    ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level),
+    ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
+    ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
+    ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_daily_composite(
         sel.date_list,
         sel.daily_hours,
         VARIABLES[req.variable]["grib_name"],
         VARIABLES[req.variable]["level_name"],
+        skip_missing=bool(req.skip_missing),
     ),
     ("daily", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, h) for d in sel.date_list for h in sel.daily_hours]),
-    ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level),
-    ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level),
-    ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level),
+    ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
+    ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
+    ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_composite(
         sel.date_list,
         req.hour,
         VARIABLES[req.variable]["grib_name"],
         VARIABLES[req.variable]["level_name"],
+        skip_missing=bool(req.skip_missing),
     ),
     ("composite", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, req.hour) for d in sel.date_list]),
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
@@ -190,12 +192,12 @@ WindFetcher = Callable[[FetchRequest, TimeSelection], tuple]
 
 WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
     "monthly": lambda req, sel: fetch_monthly_wind_components_composite(sel.year_months, req.level),
-    "daily": lambda req, sel: _mean_flx_wind_components([(d, h) for d in sel.date_list for h in sel.daily_hours])
+    "daily": lambda req, sel: _mean_flx_wind_components([(d, h) for d in sel.date_list for h in sel.daily_hours], skip_missing=bool(req.skip_missing))
     if _uses_10m_wind_overlay(req.variable)
-    else fetch_wind_components_daily_composite(sel.date_list, sel.daily_hours, req.level),
-    "composite": lambda req, sel: _mean_flx_wind_components([(d, req.hour) for d in sel.date_list])
+    else fetch_wind_components_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
+    "composite": lambda req, sel: _mean_flx_wind_components([(d, req.hour) for d in sel.date_list], skip_missing=bool(req.skip_missing))
     if _uses_10m_wind_overlay(req.variable)
-    else fetch_wind_components_composite(sel.date_list, req.hour, req.level),
+    else fetch_wind_components_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     "single": lambda req, sel: fetch_flx_wind_components(sel.date_list[0], req.hour)
     if _uses_10m_wind_overlay(req.variable)
     else fetch_wind_components(sel.date_list[0], req.hour, req.level),
@@ -280,9 +282,9 @@ def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
     if kind == "single":
         return fetch_field_by_level_name(selection.date_list[0], req.hour, grib, level_name)
     if kind == "composite":
-        return fetch_named_level_field_composite(selection.date_list, req.hour, grib, level_name)
+        return fetch_named_level_field_composite(selection.date_list, req.hour, grib, level_name, skip_missing=bool(req.skip_missing))
     if kind == "daily":
-        return fetch_named_level_field_daily_composite(selection.date_list, selection.daily_hours, grib, level_name)
+        return fetch_named_level_field_daily_composite(selection.date_list, selection.daily_hours, grib, level_name, skip_missing=bool(req.skip_missing))
     # Monthly selections use the monthly archive (PRES:MSL reduction).
     return fetch_monthly_named_level_composite(
         selection.year_months, cfg["monthly_grib_name"], cfg["monthly_level_name"]
@@ -334,8 +336,8 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
         if kind_key == "single":
             return fetch_field(selection.date_list[0], req.hour, "HGT", level), meta
         if kind_key == "composite":
-            return fetch_field_composite(selection.date_list, req.hour, "HGT", level), meta
-        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "HGT", level), meta
+            return fetch_field_composite(selection.date_list, req.hour, "HGT", level, skip_missing=bool(req.skip_missing)), meta
+        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "HGT", level, skip_missing=bool(req.skip_missing)), meta
 
     if kind == "temp":
         if req.variable in {"temp", "temp_2m"}:
@@ -364,8 +366,8 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
         if kind_key == "single":
             return fetch_field(selection.date_list[0], req.hour, "TMP", level), meta
         if kind_key == "composite":
-            return fetch_field_composite(selection.date_list, req.hour, "TMP", level), meta
-        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "TMP", level), meta
+            return fetch_field_composite(selection.date_list, req.hour, "TMP", level, skip_missing=bool(req.skip_missing)), meta
+        return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "TMP", level, skip_missing=bool(req.skip_missing)), meta
 
     return None, f"unknown contour kind {kind!r}"
 
