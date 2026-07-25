@@ -397,10 +397,12 @@ def gather_composite_members(futures_map: dict) -> tuple[list, list[str]]:
     """The one missing-member policy for every composite (#95).
 
     futures_map maps each Future to its member label ("20260614 21z").
-    CORe files occasionally lack a record (ValueError from the .idx lookup);
-    a missing member no longer kills the whole composite. Up to ~5% of
-    members (min 1) are skipped, logged by name; more than that — or all —
-    fails immediately, naming every missing member.
+    CORe files occasionally lack a record (ValueError from the .idx lookup).
+    One rule: if more than 5% of members are missing, the composite fails,
+    naming every missing member. At or under 5%, the missing members are
+    skipped (the mean uses what exists) and named in the log. A 204-member
+    composite tolerates a stray gap; a 4-member daily mean fails if any
+    synoptic time is absent — 3 of 4 times is not a daily mean.
 
     Returns (results in completion order, missing labels). Callers stamp
     the missing labels into the result's attrs for provenance.
@@ -414,8 +416,7 @@ def gather_composite_members(futures_map: dict) -> tuple[list, list[str]]:
             missing.append(label)
     total = len(futures_map)
     if missing:
-        allowed = max(1, total // 20)
-        if not results or len(missing) > allowed:
+        if not results or len(missing) > total // 20:
             raise ValueError(
                 f"CORe records missing for {len(missing)} of {total} "
                 f"composite members: {', '.join(sorted(missing))}"
