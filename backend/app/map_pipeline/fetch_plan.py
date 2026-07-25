@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar as cal
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Protocol
 
@@ -48,6 +49,8 @@ from ..retrieval import (
 from ..config import VARIABLES, is_surface_or_named_level
 from .time_selection import TimeSelection
 
+log = logging.getLogger("pyre.api")
+
 
 class FetchRequest(Protocol):
     variable: str
@@ -79,12 +82,37 @@ def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):
 
 
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
+    """Concurrent flx fetches averaged into one composite. CORe flx files
+    occasionally lack a record (#95): a missing member no longer kills the
+    whole composite — up to ~5% of members (min 1) are skipped with a
+    warning naming them; more than that fails fast, also naming them."""
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
-        futures = [pool.submit(_flx_field, req, date, hour) for date, hour in date_hour_pairs]
-        arrays = [f.result().drop_vars("valid_time", errors="ignore") for f in as_completed(futures)]
+        futures = {pool.submit(_flx_field, req, date, hour): (date, hour)
+                   for date, hour in date_hour_pairs}
+        arrays: list[xr.DataArray] = []
+        missing: list[str] = []
+        for fut in as_completed(futures):
+            date, hour = futures[fut]
+            try:
+                arrays.append(fut.result().drop_vars("valid_time", errors="ignore"))
+            except ValueError:  # "<VAR> at <level> not found in index"
+                missing.append(f"{date} {hour}z")
+    if missing:
+        allowed = max(1, len(date_hour_pairs) // 20)
+        if not arrays or len(missing) > allowed:
+            raise ValueError(
+                f"CORe flx records missing for {len(missing)} of "
+                f"{len(date_hour_pairs)} composite members: {', '.join(sorted(missing))}"
+            )
+        log.warning(
+            "COMPOSITE  %d/%d members missing their flx record — skipped: %s",
+            len(missing), len(date_hour_pairs), ", ".join(sorted(missing)),
+        )
     stacked = xr.concat(arrays, dim="composite_step")
     mean = stacked.mean(dim="composite_step")
     mean.attrs = arrays[0].attrs
+    if missing:
+        mean.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
     return mean
 
 
