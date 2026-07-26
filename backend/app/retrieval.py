@@ -14,6 +14,7 @@ import xarray as xr
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from .climo_r2 import dap_fetch_with_retries
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 
@@ -640,10 +641,13 @@ def _fetch_r2m_field(year: int, month: int, grib_name: str, level: int) -> xr.Da
     date_str = f"{year}-{month:02d}-01"
     log.debug("R2M      GET %s  %s@%dhPa  %d-%02d", url, r2_var, level, year, month)
     t0 = time.perf_counter()
-    with open_netcdf(url, engine="netcdf4") as ds:
-        da = ds[r2_var].sel(level=level, method="nearest").sel(
+    da = dap_fetch_with_retries(
+        url,
+        lambda ds: ds[r2_var].sel(level=level, method="nearest").sel(
             time=date_str, method="nearest"
-        ).load()
+        ).load(),
+        describe=f"obs var={r2_var} {date_str} @ {level} hPa",
+    )
     da = da.where(np.abs(da) < 1e30)
     da = da.rename({"lat": "latitude", "lon": "longitude"})
     log.debug("R2M      fetched %.0fKB in %.2fs", da.nbytes / 1024, time.perf_counter() - t0)
@@ -690,8 +694,11 @@ def fetch_monthly_named_level_field(year: int, month: int, grib_name: str, level
     if (grib_name, level_name) == ("PRES", "MSL") and R2_MONTHLY_START <= (year, month) <= R2_MONTHLY_END:
         log.info("OBS      %s %d  %s:%s  → R2-monthly (mslp)", _cal.month_abbr[month], year, grib_name, level_name)
         url = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2/Monthlies/surface/mslp.mon.mean.nc"
-        with open_netcdf(url, engine="netcdf4") as ds:
-            da = ds["mslp"].sel(time=f"{year}-{month:02d}-01", method="nearest").load()
+        da = dap_fetch_with_retries(
+            url,
+            lambda ds: ds["mslp"].sel(time=f"{year}-{month:02d}-01", method="nearest").load(),
+            describe=f"obs var=mslp {year}-{month:02d}",
+        )
         da = da.where(np.abs(da) < 1e30)
         da = da.rename({"lat": "latitude", "lon": "longitude"})
         da.attrs["_pyre_obs_source"] = "R2-monthly"

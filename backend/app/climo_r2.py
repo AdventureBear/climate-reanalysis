@@ -231,6 +231,49 @@ def _save_disk_monthly(r2_var: str, level: int, month: int, result: dict[str, xr
 
 # ── Surgical OPeNDAP fetch ───────────────────────────────────────────────────
 
+def dap_fetch_with_retries(url: str, extract, *, describe: str, max_retries: int = 4):
+    """Open a PSL OPeNDAP dataset and return extract(ds), retrying transient failures.
+
+    Every OPeNDAP fetch in the backend goes through this loop. PSL's nginx
+    answers bursts with 429, and a rate-limited/failed DAP response can still
+    "open" but with an undecoded numeric time axis — selecting by date string
+    then dies with a misleading dtype ValueError (#94). Both are treated as
+    the fetch failures they are and retried with backoff.
+
+    extract(ds) runs inside the open dataset context and must .load() what it
+    returns. describe appears in logs and the final error message.
+    """
+    for attempt in range(max_retries):
+        try:
+            # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
+            with open_netcdf(url, engine="netcdf4") as ds:
+                if "time" in ds and not np.issubdtype(ds["time"].dtype, np.datetime64):
+                    raise OSError(
+                        "time axis undecoded (rate-limited or corrupt DAP "
+                        f"response: {url})"
+                    )
+                return extract(ds)
+        except (OSError, ValueError) as exc:
+            if attempt == max_retries - 1:
+                raise RuntimeError(
+                    f"R2 OPeNDAP failed after {max_retries} attempts: {url} "
+                    f"({describe})\n"
+                    f"PSL THREDDS may be down or rate-limiting (HTTP 429) — "
+                    f"try again in a few minutes.\n"
+                    f"Underlying error: {exc}"
+                ) from exc
+            wait = 5 * (2 ** attempt)
+            # PSL's nginx answers bursts with 429; back off harder for those.
+            if "429" in str(exc) or "undecoded" in str(exc):
+                wait = max(wait, 15 * (attempt + 1))
+            log.warning(
+                "CLIMO_R2  OPeNDAP error  %s  attempt=%d/%d retry in %ds  (%s)",
+                describe, attempt + 1, max_retries, wait, exc,
+            )
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
+
+
 def _fetch_one_year(
     r2_var: str,
     year: int,
@@ -257,47 +300,21 @@ def _fetch_one_year(
     url = _daily_url(file_stem or r2_var, year, dataset)
     date_str = f"{year}-{month:02d}-{day:02d}"
 
-    for attempt in range(max_retries):
-        try:
-            # .sel() with a date string + level value constructs an OPeNDAP
-            # constraint expression; .load() issues the single small request.
-            # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
-            with open_netcdf(url, engine="netcdf4") as ds:
-                da = ds[r2_var]
-                # A rate-limited/failed DAP response (PSL 429/502) can still
-                # "open", but with an undecoded numeric time axis — selecting
-                # by date string then dies with a misleading dtype ValueError
-                # (#94). Treat it as the fetch failure it is, so it retries.
-                if not np.issubdtype(ds["time"].dtype, np.datetime64):
-                    raise OSError(
-                        f"time axis undecoded (rate-limited or corrupt DAP "
-                        f"response for {year})"
-                    )
-                if "level" in da.dims:
-                    da = da.sel(level=level, method="nearest")
-                da = da.sel(time=date_str, method="nearest").load()
-            # Mask R2 fill value (-9.96921e36) and upcast to float64
-            da = da.where(np.abs(da) < 1e30).astype(np.float64)
-            return da
-        except (OSError, ValueError) as exc:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"R2 OPeNDAP failed after {max_retries} attempts: {url} "
-                    f"({date_str} @ {level} hPa)\n"
-                    f"PSL THREDDS may be down or rate-limiting (HTTP 429) — "
-                    f"try again in a few minutes.\n"
-                    f"Underlying error: {exc}"
-                ) from exc
-            wait = 5 * (2 ** attempt)
-            # PSL's nginx answers bursts with 429; back off harder for those.
-            if "429" in str(exc) or "undecoded" in str(exc):
-                wait = max(wait, 15 * (attempt + 1))
-            log.warning(
-                "CLIMO_R2  OPeNDAP error  var=%s year=%d attempt=%d/%d retry in %ds",
-                r2_var, year, attempt + 1, max_retries, wait,
-            )
-            time.sleep(wait)
-    raise RuntimeError("unreachable")
+    def extract(ds):
+        # .sel() with a date string + level value constructs an OPeNDAP
+        # constraint expression; .load() issues the single small request.
+        da = ds[r2_var]
+        if "level" in da.dims:
+            da = da.sel(level=level, method="nearest")
+        return da.sel(time=date_str, method="nearest").load()
+
+    da = dap_fetch_with_retries(
+        url, extract,
+        describe=f"var={r2_var} {date_str} @ {level} hPa",
+        max_retries=max_retries,
+    )
+    # Mask R2 fill value (-9.96921e36) and upcast to float64
+    return da.where(np.abs(da) < 1e30).astype(np.float64)
 
 
 def _fetch_scalar_climo(
@@ -421,17 +438,22 @@ def _fetch_r2m_monthly_scalar(
     """
     url = _monthly_url(file_stem or r2_var, dataset)
     t0 = time.perf_counter()
-    with open_netcdf(url, engine="netcdf4") as ds:
+
+    def extract(ds):
         time_slice = _r2m_climo_time_slice(ds, month)
         log.info(
             "CLIMO_R2M  fetching  var=%s  level=%dhPa  month=%02d  "
             "t_slice=[%d:%d:12]  url=%s",
             file_stem or r2_var, level, month, time_slice.start, time_slice.stop, url,
         )
-        da_30yr = ds[r2_var]
-        if "level" in da_30yr.dims:
-            da_30yr = da_30yr.sel(level=level, method="nearest")
-        da_30yr = da_30yr.isel(time=time_slice).load()
+        da = ds[r2_var]
+        if "level" in da.dims:
+            da = da.sel(level=level, method="nearest")
+        return da.isel(time=time_slice).load()
+
+    da_30yr = dap_fetch_with_retries(
+        url, extract, describe=f"monthly var={file_stem or r2_var} @ {level} hPa month={month:02d}",
+    )
     log.info("CLIMO_R2M  fetched in %.1fs  shape=%s", time.perf_counter() - t0, da_30yr.shape)
 
     da_30yr = da_30yr.where(np.abs(da_30yr) < 1e30).astype(np.float64)
@@ -454,16 +476,19 @@ def _fetch_r2m_monthly_wind_speed(level: int, month: int) -> dict[str, xr.DataAr
     """
     log.info("CLIMO_R2M  fetching wind speed  level=%dhPa  month=%02d", level, month)
     t0 = time.perf_counter()
-    with open_netcdf(_monthly_url("uwnd", "pressure"), engine="netcdf4") as ds_u:
-        u_30yr = (
-            ds_u["uwnd"].sel(level=level, method="nearest")
-            .isel(time=_r2m_climo_time_slice(ds_u, month)).load()
+
+    def component(var: str) -> xr.DataArray:
+        return dap_fetch_with_retries(
+            _monthly_url(var, "pressure"),
+            lambda ds: (
+                ds[var].sel(level=level, method="nearest")
+                .isel(time=_r2m_climo_time_slice(ds, month)).load()
+            ),
+            describe=f"monthly var={var} @ {level} hPa month={month:02d}",
         )
-    with open_netcdf(_monthly_url("vwnd", "pressure"), engine="netcdf4") as ds_v:
-        v_30yr = (
-            ds_v["vwnd"].sel(level=level, method="nearest")
-            .isel(time=_r2m_climo_time_slice(ds_v, month)).load()
-        )
+
+    u_30yr = component("uwnd")
+    v_30yr = component("vwnd")
     log.info("CLIMO_R2M  fetched in %.1fs", time.perf_counter() - t0)
 
     u_30yr = u_30yr.where(np.abs(u_30yr) < 1e30).astype(np.float64)
@@ -548,11 +573,16 @@ def _fetch_single_level_monthly(spec: dict, month: int) -> dict[str, xr.DataArra
 
 def _fetch_r2m_30yr(spec: dict, month: int) -> xr.DataArray:
     """One strided OPeNDAP request for the 30 climo-period values of a month."""
-    with open_netcdf(_monthly_url(spec["file"], spec["dataset"]), engine="netcdf4") as ds:
+    def extract(ds):
         da = ds[spec["var"]]
         if "level" in da.dims:
             da = da.isel(level=0)
-        da = da.isel(time=_r2m_climo_time_slice(ds, month)).load()
+        return da.isel(time=_r2m_climo_time_slice(ds, month)).load()
+
+    da = dap_fetch_with_retries(
+        _monthly_url(spec["file"], spec["dataset"]), extract,
+        describe=f"monthly var={spec['var']} month={month:02d}",
+    )
     return da.where(np.abs(da) < 1e30).astype(np.float64)
 
 
