@@ -149,6 +149,15 @@ _WIND_COLORS = [
     '#faf061', '#faf061', '#8b5a2b', '#a15d0a',
 ]
 
+_WIND_LOW_LEVEL_ANCHORS_KT = [15, 17, 19, 21, 24, 27, 31, 34, 37, 41, 46, 52, 58, 64, 70, 74, 77, 80]
+_WIND_LOW_LEVEL_COLORS = [
+    '#ecfbe5', '#c9f0b8', '#8fdfb2', '#5fcfe1',
+    '#5aa6e8', '#687bdd', '#7b55ce', '#a875d8',
+    '#d07bd2', '#bd36b4', '#d11b75', '#df1f3d',
+    '#f05a3c', '#f6a33d', '#f3e85a', '#a9d95a',
+    '#3fbf9e', '#005c9e',
+]
+
 # Stratospheric candidate: do not stretch the tropospheric wind ladder into
 # 150mb-and-above maps. Those fields can run from nearly calm to 250+ kt in
 # polar-night jet cases, so fixed anchors keep important thresholds stable
@@ -161,7 +170,9 @@ _WIND_STRAT_COLORS = [
     '#238b45', '#0f6f45', '#085a3a', '#06452f', '#032818',
 ]
 
-# Tropospheric wind scales keep the original Pivotal-inspired defaults while
+# Pressure-level winds from 1000mb through 700mb use their own full 15-80 kt
+# scale after review against seasonal 700/850mb cases. Other tropospheric wind
+# scales keep the original Pivotal-inspired defaults for now, while
 # stratospheric levels use their own fixed-anchor ladder.
 _KT_TO_MS = 0.51444
 _MM_TO_IN = 0.03937007874
@@ -175,6 +186,14 @@ _WIND_SCALE_CONFIGS: dict[str, dict] = {
         "key_breakpoints": [],
     },
     "low": {
+        "mapping": "fixed_anchors",
+        "domain_min": 15,
+        "domain_max": 80,
+        "anchor_values": _WIND_LOW_LEVEL_ANCHORS_KT,
+        "anchor_colors": _WIND_LOW_LEVEL_COLORS,
+        "key_breakpoints": [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80],
+    },
+    "low_legacy": {
         "mapping": "scaled",
         "domain_min": 20,
         "domain_max": 80,
@@ -300,6 +319,7 @@ def _make_wind_scale(
     level: int,
     step_kt: int = 1,
     scale_overrides: dict[str, float] | None = None,
+    variable: str = "wind_speed",
 ) -> tuple[list[float], list[tuple], int, int]:
     """
     Interpolate wind colors at step_kt resolution across the level's kt range.
@@ -307,7 +327,7 @@ def _make_wind_scale(
     and last anchor colors occupy their full bins instead of appearing visually
     compressed toward the center of the bar.
     """
-    _, scale_cfg = _resolved_wind_scale_config(level, scale_overrides)
+    _, scale_cfg = _resolved_wind_scale_config(level, scale_overrides, variable=variable)
     min_kt = scale_cfg["domain_min"]
     max_kt = scale_cfg["domain_max"]
     anchor_kt = _resolve_anchor_values(scale_cfg)
@@ -1129,11 +1149,13 @@ def _anomaly_to_display_with_unit(
     return values
 
 
-def _wind_group(level: int) -> str:
+def _wind_group(level: int, variable: str = "wind_speed") -> str:
     if level == 1000:
-        return "surface"
-    if level in (925, 850, 700, 600):
+        return "surface" if variable == "wind_10m" else "low"
+    if level in (925, 850, 700):
         return "low"
+    if level == 600:
+        return "low_legacy"
     if level in (500, 400):
         return "mid"
     if level in (300, 250, 200):
@@ -1141,8 +1163,8 @@ def _wind_group(level: int) -> str:
     return "strat"  # 150mb and up: winds decrease above the 200mb jet max
 
 
-def _resolved_wind_scale_config(level: int, scale_overrides: dict[str, float] | None = None) -> tuple[str, dict]:
-    group = _wind_group(level)
+def _resolved_wind_scale_config(level: int, scale_overrides: dict[str, float] | None = None, variable: str = "wind_speed") -> tuple[str, dict]:
+    group = _wind_group(level, variable)
     scale_cfg = dict(_WIND_SCALE_CONFIGS[group])
     if scale_overrides:
         if scale_overrides.get("domain_min") is not None:
@@ -1251,14 +1273,20 @@ def _custom_scale_from_spec(
         return _format_scale_value(value)
 
     native_boundaries = [to_native(v) for v in boundaries]
-    tick_count = min(9, len(boundaries))
-    tick_idx = np.linspace(0, len(boundaries) - 1, tick_count).round().astype(int).tolist()
-    tick_idx = sorted(set(tick_idx))
+    try:
+        tick_values = [float(v) for v in spec.get("ticks", [])]
+    except (TypeError, ValueError):
+        tick_values = []
+    if not tick_values:
+        tick_count = min(9, len(boundaries))
+        tick_idx = np.linspace(0, len(boundaries) - 1, tick_count).round().astype(int).tolist()
+        tick_idx = sorted(set(tick_idx))
+        tick_values = [boundaries[idx] for idx in tick_idx]
     return {
         "boundaries": native_boundaries,
         "colors": colors,
-        "ticks": [native_boundaries[idx] for idx in tick_idx],
-        "ticklabels": [label_value(boundaries[idx]) for idx in tick_idx],
+        "ticks": [to_native(value) for value in tick_values],
+        "ticklabels": [label_value(value) for value in tick_values],
         "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit),
     }
 
@@ -1341,12 +1369,17 @@ def describe_color_scale(
 
     if variable in {"wind_speed", "wind_10m"}:
         scale_level = _render_level(variable, level)
-        group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides)
+        group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides, variable=variable)
         min_kt = scale_cfg["domain_min"]
         max_kt = scale_cfg["domain_max"]
         anchor_kt = _resolve_anchor_values(scale_cfg)
         effective_step = _wind_boundary_step(group, color_step)
-        boundaries_ms, interval_colors, _, _ = _make_wind_scale(scale_level, step_kt=effective_step, scale_overrides=scale_overrides)
+        boundaries_ms, interval_colors, _, _ = _make_wind_scale(
+            scale_level,
+            step_kt=effective_step,
+            scale_overrides=scale_overrides,
+            variable=variable,
+        )
         boundaries = [_wind_display_value(b, wind_unit) for b in boundaries_ms]
         data_vals = np.asarray(data_array.values, dtype=float) * _wind_unit_factor(wind_unit) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1693,7 +1726,8 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         boundaries = custom_scale["boundaries"]
         colors = custom_scale["colors"]
         cmap = mcolors.ListedColormap(colors)
-        cmap.set_under(colors[0])
+        if extend in ("min", "both"):
+            cmap.set_under(colors[0])
         cmap.set_over(colors[-1])
         norm = mcolors.BoundaryNorm(boundaries, ncolors=len(colors))
         plot_obj = ax.contourf(
@@ -1784,13 +1818,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         # field and its colorbar; the overlay phase draws the layers.
         if fill_mode == "none":
             pass
-        elif not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='both'):
+        elif not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='max'):
             breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
                 scale_level,
-                step_kt=_wind_boundary_step(_wind_group(scale_level), color_step),
+                step_kt=_wind_boundary_step(_wind_group(scale_level, variable), color_step),
                 scale_overrides=scale_overrides,
+                variable=variable,
             )
-            scale_group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides)
+            scale_group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides, variable=variable)
             cmap = mcolors.ListedColormap(interval_colors)
             cmap.set_over(mcolors.to_rgb(scale_cfg["anchor_colors"][-1]))
             norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
