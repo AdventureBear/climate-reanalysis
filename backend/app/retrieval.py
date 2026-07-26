@@ -11,11 +11,33 @@ from functools import lru_cache
 import numpy as np
 import requests
 import xarray as xr
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 
 log = logging.getLogger("pyre.retrieval")
+
+# ── Shared HTTP session ───────────────────────────────────────────────────────
+# A long composite makes 1000+ archive requests. Bare requests.get() opened a
+# fresh TLS connection per call and had no retries, so one transient timeout
+# out of 1500 killed the whole composite. This session pools connections and
+# retries connect errors, read timeouts, and 5xx responses (3 attempts,
+# exponential backoff). 404 is never retried and, with raise_on_status=False,
+# the final response is returned as-is — the missing-data policy (#95) and
+# every existing status-code check behave exactly as before.
+_retries = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=(500, 502, 503, 504),
+    allowed_methods=frozenset({"GET", "HEAD"}),
+    raise_on_status=False,
+)
+_adapter = HTTPAdapter(max_retries=_retries, pool_connections=4, pool_maxsize=32)
+_session = requests.Session()
+_session.mount("https://", _adapter)
+_session.mount("http://", _adapter)
 
 
 class DataUnavailableError(RuntimeError):
@@ -104,9 +126,9 @@ def _gcs_index_exists(valid_date: str, valid_hour: str) -> bool:
     url = _gcs_index_url(valid_date, valid_hour)
     r = None
     try:
-        r = requests.head(url, timeout=10)
+        r = _session.head(url, timeout=10)
         if r.status_code == 405:
-            r = requests.get(url, timeout=10, stream=True)
+            r = _session.get(url, timeout=10, stream=True)
         if r.status_code == 404:
             return False
         r.raise_for_status()
@@ -132,9 +154,9 @@ def _gcs_flx_index_exists(valid_date: str, valid_hour: str) -> bool:
     url = _gcs_flx_index_url(valid_date, valid_hour)
     r = None
     try:
-        r = requests.head(url, timeout=10)
+        r = _session.head(url, timeout=10)
         if r.status_code == 405:
-            r = requests.get(url, timeout=10, stream=True)
+            r = _session.get(url, timeout=10, stream=True)
         if r.status_code == 404:
             return False
         r.raise_for_status()
@@ -223,7 +245,7 @@ def fetch_index(date: str, hour: str) -> list[IndexRecord]:
     url = _gcs_index_url(date, hour)
     log.debug("IDX      GET %s", url)
     t0 = time.perf_counter()
-    r = requests.get(url, timeout=15)
+    r = _session.get(url, timeout=15)
     if r.status_code == 404:
         raise DataUnavailableError(
             f"CORe pgb data are not available for {date} {hour}z — "
@@ -246,7 +268,7 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
     log.debug("FLX_IDX  GET %s", gcs_idx_url)
     t0 = time.perf_counter()
     try:
-        r = requests.get(gcs_idx_url, timeout=15)
+        r = _session.get(gcs_idx_url, timeout=15)
         r.raise_for_status()
         grib_url = _gcs_flx_url(date, hour)
     except requests.HTTPError as exc:
@@ -254,7 +276,7 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
             raise
         nomads_idx_url = _nomads_flx_index_url(date, hour)
         log.debug("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
-        r = requests.get(nomads_idx_url, timeout=15)
+        r = _session.get(nomads_idx_url, timeout=15)
         if r.status_code == 404:
             raise DataUnavailableError(
                 f"CORe flx data are not available for {date} {hour}z — "
@@ -293,7 +315,7 @@ def _fetch_record_by_level(grib_url: str, records: list[IndexRecord], variable: 
               grib_url, variable, level_name, range_header,
               f"{nbytes//1024}KB" if nbytes > 0 else "?KB")
     t0 = time.perf_counter()
-    r = requests.get(grib_url, headers={"Range": range_header}, timeout=30)
+    r = _session.get(grib_url, headers={"Range": range_header}, timeout=30)
     if r.status_code not in (200, 206):
         r.raise_for_status()
     log.debug("GRIB     received %dKB  %.2fs", len(r.content) // 1024, time.perf_counter() - t0)
@@ -723,7 +745,7 @@ def _pgb_monthly_index_url(year: int, month: int) -> str:
 def _fetch_monthly_index(year: int, month: int) -> list[IndexRecord]:
     url = _pgb_monthly_index_url(year, month)
     log.debug("IDX      GET %s", url)
-    r = requests.get(url, timeout=15)
+    r = _session.get(url, timeout=15)
     r.raise_for_status()
     return parse_index_text(r.text)
 

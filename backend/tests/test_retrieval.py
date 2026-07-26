@@ -16,7 +16,9 @@ Retrieval test suite — three tiers:
 """
 
 import os
+import socket
 import tempfile
+import threading
 
 import numpy as np
 import pytest
@@ -387,3 +389,75 @@ class TestSurgicalVsFullFile:
         assert t_min > 210, f"Temperature suspiciously cold: {t_min:.1f} K"
         assert t_max < 320, f"Temperature suspiciously warm: {t_max:.1f} K"
         print("Physical range check: ✓")
+
+
+# ── Unit: transient-failure retries ──────────────────────────────────────────────
+# A long composite makes 1000+ archive requests; one flaky connection must not
+# kill it. These tests run a tiny local HTTP server on 127.0.0.1 (no external
+# network) and point GCS_BASE at it.
+
+
+def _drop(conn):
+    """Close the connection without responding — looks like a network blip."""
+
+
+def _respond(body: str, status: str = "200 OK"):
+    def handler(conn):
+        payload = body.encode()
+        head = (
+            f"HTTP/1.1 {status}\r\n"
+            f"Content-Length: {len(payload)}\r\n"
+            "Connection: close\r\n\r\n"
+        )
+        conn.sendall(head.encode() + payload)
+    return handler
+
+
+def _run_script_server(behaviors):
+    """Serve exactly len(behaviors) connections, one behavior each, then stop.
+
+    Returns (port, hits, thread); hits grows by 1 per accepted connection.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(5)
+    port = srv.getsockname()[1]
+    hits = []
+
+    def loop():
+        for behavior in behaviors:
+            conn, _ = srv.accept()
+            hits.append(1)
+            try:
+                conn.recv(65536)
+                behavior(conn)
+            finally:
+                conn.close()
+        srv.close()
+
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    return port, hits, thread
+
+
+class TestTransientRetry:
+    def test_dropped_connection_is_retried(self, monkeypatch):
+        port, hits, thread = _run_script_server([_drop, _respond(GCS_INDEX_SAMPLE)])
+        monkeypatch.setattr(retrieval, "GCS_BASE", f"http://127.0.0.1:{port}")
+
+        records = fetch_index(KNOWN_DATE, KNOWN_HOUR)
+
+        thread.join(timeout=10)
+        assert len(hits) == 2  # first attempt dropped, retry succeeded
+        assert records[0].variable == "PRES"
+
+    def test_404_is_not_retried(self, monkeypatch):
+        port, hits, thread = _run_script_server([_respond("", status="404 Not Found")])
+        monkeypatch.setattr(retrieval, "GCS_BASE", f"http://127.0.0.1:{port}")
+
+        with pytest.raises(retrieval.DataUnavailableError):
+            fetch_index(KNOWN_DATE, KNOWN_HOUR)
+
+        thread.join(timeout=10)
+        assert len(hits) == 1  # missing data fails immediately, no retry
