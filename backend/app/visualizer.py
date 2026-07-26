@@ -149,9 +149,20 @@ _WIND_COLORS = [
     '#faf061', '#faf061', '#8b5a2b', '#a15d0a',
 ]
 
-# Same 13 colors for every level — only the kt range (min, max) changes.
-# 600mb defaults to the 700mb (low) range; try "mid" if winds look clipped.
-# 400mb defaults to the 500mb (mid) range; try "high" if winds look clipped.
+# Stratospheric candidate: do not stretch the tropospheric wind ladder into
+# 150mb-and-above maps. Those fields can run from nearly calm to 250+ kt in
+# polar-night jet cases, so fixed anchors keep important thresholds stable
+# while letting the palette leave the old brown high-end behind.
+_WIND_STRAT_ANCHORS_KT = [0, 5, 10, 20, 30, 40, 50, 60, 70, 80, 100, 125, 150, 175, 200, 225, 250]
+_WIND_STRAT_COLORS = [
+    '#ffffff', '#dff7ff', '#7fd8e8', '#6aa8f8',
+    '#8b6fe8', '#cf66c8', '#df4f86', '#f06a6a',
+    '#faf061', '#d5e84b', '#9bd43b', '#55b83c',
+    '#238b45', '#0f6f45', '#085a3a', '#06452f', '#032818',
+]
+
+# Tropospheric wind scales keep the original Pivotal-inspired defaults while
+# stratospheric levels use their own fixed-anchor ladder.
 _KT_TO_MS = 0.51444
 _MM_TO_IN = 0.03937007874
 
@@ -183,6 +194,14 @@ _WIND_SCALE_CONFIGS: dict[str, dict] = {
         "domain_max": 170,
         "anchor_colors": _WIND_COLORS,
         "key_breakpoints": [],
+    },
+    "strat": {
+        "mapping": "fixed_anchors",
+        "domain_min": 0,
+        "domain_max": 250,
+        "anchor_values": _WIND_STRAT_ANCHORS_KT,
+        "anchor_colors": _WIND_STRAT_COLORS,
+        "key_breakpoints": [20, 40, 60, 80, 100, 150, 200, 250],
     },
 }
 
@@ -268,10 +287,12 @@ def _quiver_scale(level: int) -> int:
     """
     if level in (500, 400):
         max_kt = _WIND_SCALE_CONFIGS["mid"]["domain_max"]
-    elif level not in (925, 850, 700, 600, 1000):
+    elif level in (300, 250, 200):
         max_kt = _WIND_SCALE_CONFIGS["high"]["domain_max"]
-    else:
+    elif level in (925, 850, 700, 600, 1000):
         max_kt = _WIND_SCALE_CONFIGS["low"]["domain_max"]
+    else:
+        max_kt = _WIND_SCALE_CONFIGS["strat"]["domain_max"]
     return round(_QUIVER_BASE_SCALE * max_kt / _WIND_SCALE_CONFIGS["low"]["domain_max"])
 
 
@@ -299,6 +320,18 @@ def _make_wind_scale(
 
     breakpoints_ms = [round(kt * _KT_TO_MS, 3) for kt in steps_kt]
     return breakpoints_ms, colors, min_kt, max_kt
+
+
+def _wind_colorbar_tick_step(group: str, color_step: int) -> int:
+    if group == "strat":
+        return max(color_step, 25)
+    return max(color_step, 5)
+
+
+def _wind_boundary_step(group: str, color_step: int) -> int:
+    if group == "strat":
+        return max(color_step, 5)
+    return color_step
 
 
 # ── Temperature scales ────────────────────────────────────────────────────────────
@@ -1103,7 +1136,9 @@ def _wind_group(level: int) -> str:
         return "low"
     if level in (500, 400):
         return "mid"
-    return "high"
+    if level in (300, 250, 200):
+        return "high"
+    return "strat"  # 150mb and up: winds decrease above the 200mb jet max
 
 
 def _resolved_wind_scale_config(level: int, scale_overrides: dict[str, float] | None = None) -> tuple[str, dict]:
@@ -1310,7 +1345,8 @@ def describe_color_scale(
         min_kt = scale_cfg["domain_min"]
         max_kt = scale_cfg["domain_max"]
         anchor_kt = _resolve_anchor_values(scale_cfg)
-        boundaries_ms, interval_colors, _, _ = _make_wind_scale(scale_level, step_kt=color_step, scale_overrides=scale_overrides)
+        effective_step = _wind_boundary_step(group, color_step)
+        boundaries_ms, interval_colors, _, _ = _make_wind_scale(scale_level, step_kt=effective_step, scale_overrides=scale_overrides)
         boundaries = [_wind_display_value(b, wind_unit) for b in boundaries_ms]
         data_vals = np.asarray(data_array.values, dtype=float) * _wind_unit_factor(wind_unit) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1327,7 +1363,7 @@ def describe_color_scale(
             "scale_kind": "fixed-wind",
             "group": group,
             "unit": _wind_unit_label(wind_unit),
-            "step": color_step,
+            "step": effective_step,
             "boundaries": boundaries,
             "interval_mids": _interval_midpoints(boundaries),
             "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
@@ -1751,18 +1787,19 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         elif not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='both'):
             breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
                 scale_level,
-                step_kt=color_step,
+                step_kt=_wind_boundary_step(_wind_group(scale_level), color_step),
                 scale_overrides=scale_overrides,
             )
+            scale_group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides)
             cmap = mcolors.ListedColormap(interval_colors)
-            cmap.set_over(mcolors.to_rgb(_WIND_COLORS[-1]))
+            cmap.set_over(mcolors.to_rgb(scale_cfg["anchor_colors"][-1]))
             norm = mcolors.BoundaryNorm(breakpoints_ms, ncolors=len(interval_colors))
             plot_obj = ax.contourf(
                 data_array.longitude, data_array.latitude, data_array.values,
                 levels=breakpoints_ms, cmap=cmap, norm=norm,
                 transform=ccrs.PlateCarree(), extend='max',
             )
-            tick_step = max(color_step, 5)
+            tick_step = _wind_colorbar_tick_step(scale_group, color_step)
             tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
             if abs(tick_kt[-1] - max_kt) > 1e-9:
                 tick_kt.append(float(max_kt))
@@ -2134,7 +2171,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 cbar.set_ticks(cbar_cfg['ticks'])
             cbar.set_ticklabels(labels)
         cbar.ax.set_ylabel(cbar_cfg['ylabel'], fontsize=9)
+        cbar.ax.minorticks_off()
         cbar.ax.tick_params(labelsize=8)
+        cbar.ax.tick_params(which='minor', left=False, right=False)
 
     # Data source credit below the map
     credit = 'Data: CORe Reanalysis  ·  NCEP/CPC'

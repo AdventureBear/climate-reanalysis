@@ -314,7 +314,8 @@ export function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFami
       { key: 'surface', label: 'Surface', levels: [1000], description: 'Surface wind scale.' },
       { key: 'low', label: 'Low', levels: [925, 850, 700, 600], description: 'Lower-tropospheric wind scale.' },
       { key: 'mid', label: 'Mid', levels: [500, 400], description: 'Mid-level wind scale.' },
-      { key: 'high', label: 'High', levels: [300, 250, 200, 150, 100, 70, 50, 20, 10], description: 'Upper-level wind scale.' },
+      { key: 'high', label: 'High', levels: [300, 250, 200], description: 'Jet-level wind scale.' },
+      { key: 'strat', label: 'Stratosphere', levels: [150, 100, 70, 50, 20, 10], description: 'Stratospheric wind scale.' },
     ]
   }
 
