@@ -158,6 +158,9 @@ _WIND_LOW_LEVEL_COLORS = [
     '#3fbf9e', '#005c9e',
 ]
 
+_WIND_SURFACE_ANCHORS_KT = [8, 10, 11.5, 13, 15, 17.5, 20, 22.5, 25, 28, 32, 37, 42, 47, 52, 55, 58, 60]
+_WIND_SURFACE_COLORS = _WIND_LOW_LEVEL_COLORS
+
 # Stratospheric candidate: do not stretch the tropospheric wind ladder into
 # 150mb-and-above maps. Those fields can run from nearly calm to 250+ kt in
 # polar-night jet cases, so fixed anchors keep important thresholds stable
@@ -179,11 +182,13 @@ _MM_TO_IN = 0.03937007874
 
 _WIND_SCALE_CONFIGS: dict[str, dict] = {
     "surface": {
-        "mapping": "scaled",
-        "domain_min": 10,
+        "mapping": "fixed_anchors",
+        "domain_min": 8,
         "domain_max": 60,
-        "anchor_colors": _WIND_COLORS,
-        "key_breakpoints": [],
+        "anchor_values": _WIND_SURFACE_ANCHORS_KT,
+        "anchor_colors": _WIND_SURFACE_COLORS,
+        "tick_values": [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
+        "key_breakpoints": [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
     },
     "low": {
         "mapping": "fixed_anchors",
@@ -1835,7 +1840,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 transform=ccrs.PlateCarree(), extend='max',
             )
             tick_step = _wind_colorbar_tick_step(scale_group, color_step)
-            tick_kt = np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
+            tick_kt = scale_cfg.get("tick_values") or np.arange(min_kt, max_kt + tick_step / 2, tick_step, dtype=float).tolist()
             if abs(tick_kt[-1] - max_kt) > 1e-9:
                 tick_kt.append(float(max_kt))
             tick_display = [_wind_scale_display_value(kt, wind_unit) for kt in tick_kt]
