@@ -18,6 +18,25 @@ import {
   type ScaleSegmentMode,
 } from './scaleModel'
 
+// Everything about the designer state that affects the rendered scale, as a
+// comparable string. Used to detect whether the admin actually edited the
+// scale: an untouched designer equals the backend default, and attaching that
+// to a request would only bloat the URL (the backend renders the same map
+// without it).
+function designerSignature(anchors: ScaleAnchor[], segments: ScaleSegment[]): string {
+  const ordered = activeAnchors(anchors)
+  const orderedSegments = segmentsFromAnchors(ordered, segments)
+  return JSON.stringify({
+    anchors: ordered.map(anchor => [anchor.value, anchor.color.toLowerCase()]),
+    segments: orderedSegments.map(segment => [
+      segment.mode,
+      segment.mode === 'palette' ? segment.paletteId : null,
+      segment.mode === 'palette' ? segment.reverse : null,
+      segment.mode === 'palette' ? segment.samples : null,
+    ]),
+  })
+}
+
 
 export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
   enabled: boolean
@@ -44,6 +63,8 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
   const [showOriginalScale, setShowOriginalScale] = useState(false)
   const [scaleInfoOpen, setScaleInfoOpen] = useState(false)
   const scalePreviewRef = useRef<HTMLDivElement | null>(null)
+  // Signature of the untouched backend-seeded scale; see designerSignature.
+  const pristineSignatureRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!enabled) return
@@ -90,12 +111,16 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
     const backendAnchors = anchorsFromScaleMeta(scaleMeta)
     if (backendAnchors.length) {
       const defaultMode: ScaleSegmentMode = scaleMeta?.scale_kind === 'vector-anomaly-magnitude' ? 'bucket' : 'linear_rgb'
+      const defaultSegments = segmentsFromAnchors(backendAnchors, [], defaultMode)
       setScaleAnchors(backendAnchors)
-      setScaleSegments(segmentsFromAnchors(backendAnchors, [], defaultMode))
+      setScaleSegments(defaultSegments)
+      pristineSignatureRef.current = designerSignature(backendAnchors, defaultSegments)
       setScalePreset('backend')
       setAnchorValueDrafts({})
       setAnchorColorDrafts({})
       setShowOriginalScale(false)
+    } else {
+      pristineSignatureRef.current = null
     }
   }, [scaleMeta])
 
@@ -130,6 +155,11 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
       String(labLevel) === String(target.apiLevel) &&
       activeAnchors(scaleAnchors).length > 1
     if (!labScaleApplies) return
+
+    // Only an actually-edited scale is worth sending: the auto-seeded default
+    // reproduces the backend's built-in scale, so skip it and keep request
+    // params and share URLs short.
+    if (designerSignature(scaleAnchors, scaleSegments) === pristineSignatureRef.current) return
 
     const labAnchors = activeAnchors(scaleAnchors)
     const labSegments = segmentsFromAnchors(labAnchors, scaleSegments)
