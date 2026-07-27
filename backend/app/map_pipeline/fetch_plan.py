@@ -19,6 +19,7 @@ from ..climo_r2 import (
     get_r2_monthly_climo_wind_speed,
 )
 from ..retrieval import (
+    _RunningMean,
     fetch_field,
     gather_composite_members,
     fetch_monthly_named_level_composite,
@@ -82,14 +83,13 @@ def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
     """Concurrent flx fetches averaged into one composite, under the shared
     missing-member policy (gather_composite_members, #95)."""
+    acc = _RunningMean()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(_flx_field, req, date, hour): f"{date} {hour}z"
                    for date, hour in date_hour_pairs}
-        results, missing = gather_composite_members(futures, skip_missing=bool(req.skip_missing))
-    arrays = [da.drop_vars("valid_time", errors="ignore") for da in results]
-    stacked = xr.concat(arrays, dim="composite_step")
-    mean = stacked.mean(dim="composite_step")
-    mean.attrs = arrays[0].attrs
+        _, missing = gather_composite_members(
+            futures, skip_missing=bool(req.skip_missing), consume=acc.add)
+    mean = acc.mean()
     if missing:
         mean.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
     return mean
@@ -98,16 +98,17 @@ def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -
 def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]], *, skip_missing: bool = False):
     """Fetch 10m (U, V) once per (date, hour) pair concurrently, mean each
     component. Same shared missing-member policy; a pair is one member."""
+    u_acc, v_acc = _RunningMean(), _RunningMean()
+
+    def consume(pair):
+        u_acc.add(pair[0])
+        v_acc.add(pair[1])
+
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_flx_wind_components, date, hour): f"{date} {hour}z"
                    for date, hour in date_hour_pairs}
-        results, missing = gather_composite_members(futures, skip_missing=skip_missing)
-    u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
-    v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
-    u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
-    v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
-    u_mean.attrs = u_list[0].attrs
-    v_mean.attrs = v_list[0].attrs
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=consume)
+    u_mean, v_mean = u_acc.mean(), v_acc.mean()
     if missing:
         skipped = ", ".join(sorted(missing))
         u_mean.attrs["_pyre_skipped_members"] = skipped

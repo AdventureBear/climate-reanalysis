@@ -427,7 +427,52 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
 # Composite (multi-date mean) helpers
 # ---------------------------------------------------------------------------
 
-def gather_composite_members(futures_map: dict, *, skip_missing: bool = False) -> tuple[list, list[str]]:
+class _RunningMean:
+    """Streaming mean: consume one composite member at a time, keep one grid.
+
+    Replaces the collect-all → xr.concat → .mean() pattern, whose memory grew
+    with (member count × grid size) plus a full concat copy — a 91-day flx
+    composite peaked over 400 MB and OOM-killed the Render instance. Here the
+    peak is one float64 accumulator grid regardless of date range.
+
+    Accumulates in float64 for precision across hundreds of members. add() is
+    only called from the single-threaded as_completed loop — no locking.
+    """
+
+    def __init__(self):
+        self._template: xr.DataArray | None = None
+        self._sum: np.ndarray | None = None
+        self._n = 0
+
+    def add(self, da: xr.DataArray) -> None:
+        if self._template is None:
+            # First arrival: its coords/dims/attrs shape the result (same
+            # semantics as the old cleaned[0].attrs).
+            self._template = da.drop_vars("valid_time", errors="ignore")
+            self._sum = da.values.astype(np.float64)
+        else:
+            if da.shape != self._template.shape:
+                raise ValueError(
+                    f"composite member shape {da.shape} does not match "
+                    f"first member {self._template.shape}"
+                )
+            self._sum += da.values
+        self._n += 1
+
+    def mean(self) -> xr.DataArray:
+        if self._template is None:
+            raise ValueError("no composite members were added")
+        return xr.DataArray(
+            self._sum / self._n,
+            coords=self._template.coords,
+            dims=self._template.dims,
+            attrs=self._template.attrs,
+        )
+
+
+def gather_composite_members(
+    futures_map: dict, *, skip_missing: bool = False, consume=None
+) -> tuple[list, list[str]]:
     """The one missing-member policy for every composite (#95).
 
     futures_map maps each Future to its member label ("20260614 21z").
@@ -443,20 +488,32 @@ def gather_composite_members(futures_map: dict, *, skip_missing: bool = False) -
     labels go to the log and onto the map's bottom margin. More than 5%
     still fails — 3 of 4 synoptic times is not a daily mean.
 
+    consume, when given, receives each successful member as it completes
+    (e.g. _RunningMean.add) instead of the member being kept; the returned
+    results list stays empty so memory never scales with member count.
+
     Returns (results in completion order, missing labels).
     """
     results, missing = [], []
+    n_ok = 0
     for fut in as_completed(futures_map):
         label = futures_map[fut]
         try:
-            results.append(fut.result())
+            member = fut.result()
         except ValueError:  # record absent from an existing file's index
             missing.append(label)
+            continue
         except DataUnavailableError:  # whole file absent (not yet published)
             missing.append(label)
+            continue
+        n_ok += 1
+        if consume is not None:
+            consume(member)
+        else:
+            results.append(member)
     total = len(futures_map)
     if missing:
-        if not skip_missing or not results or len(missing) > total // 20:
+        if not skip_missing or n_ok == 0 or len(missing) > total // 20:
             raise DataUnavailableError(
                 f"CORe records missing for {len(missing)} of {total} "
                 f"composite members: {', '.join(sorted(missing))}",
@@ -481,15 +538,13 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args, skip_missing: bool = 
     """
     log.debug("COMPOSITE  %d dates  hour=%sz  (concurrent)", len(dates), hour)
     t0 = time.perf_counter()
+    acc = _RunningMean()
     with ThreadPoolExecutor(max_workers=min(len(dates), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, hour, *args): f"{d} {hour}z" for d in dates}
-        arrays, missing = gather_composite_members(futures, skip_missing=skip_missing)
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=acc.add)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
-    cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
-    stacked = xr.concat(cleaned, dim="composite_date")
-    mean = stacked.mean(dim="composite_date")
-    mean.attrs = cleaned[0].attrs
+    mean = acc.mean()
     _stamp_skipped(mean, missing)
     return mean
 
@@ -501,14 +556,12 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args, skip
     """
     log.debug("COMPOSITE  %d (date×hour) pairs  (concurrent)", len(date_hour_pairs))
     t0 = time.perf_counter()
+    acc = _RunningMean()
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_fn, d, h, *args): f"{d} {h}z" for d, h in date_hour_pairs}
-        arrays, missing = gather_composite_members(futures, skip_missing=skip_missing)
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=acc.add)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
-    cleaned = [da.drop_vars("valid_time", errors="ignore") for da in arrays]
-    stacked = xr.concat(cleaned, dim="composite_step")
-    mean = stacked.mean(dim="composite_step")
-    mean.attrs = cleaned[0].attrs
+    mean = acc.mean()
     _stamp_skipped(mean, missing)
     return mean
 
@@ -535,18 +588,19 @@ def _mean_wind_components_of_pairs(
     missing, the whole (date, hour) is skipped under the shared policy."""
     log.debug("COMPOSITE  U+V for %d (date×hour) pairs  (concurrent, single fetch per pair)", len(date_hour_pairs))
     t0 = time.perf_counter()
+    u_acc, v_acc = _RunningMean(), _RunningMean()
+
+    def consume(pair):
+        u_acc.add(pair[0])
+        v_acc.add(pair[1])
+
     with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
         futures = {pool.submit(fetch_wind_components, d, h, level): f"{d} {h}z"
                    for d, h in date_hour_pairs}
-        results, missing = gather_composite_members(futures, skip_missing=skip_missing)
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=consume)
     log.debug("COMPOSITE  done  %.1fs", time.perf_counter() - t0)
 
-    u_list = [u.drop_vars("valid_time", errors="ignore") for u, _ in results]
-    v_list = [v.drop_vars("valid_time", errors="ignore") for _, v in results]
-    u_mean = xr.concat(u_list, dim="composite_step").mean(dim="composite_step")
-    v_mean = xr.concat(v_list, dim="composite_step").mean(dim="composite_step")
-    u_mean.attrs = u_list[0].attrs
-    v_mean.attrs = v_list[0].attrs
+    u_mean, v_mean = u_acc.mean(), v_acc.mean()
     _stamp_skipped(u_mean, missing)
     _stamp_skipped(v_mean, missing)
     return u_mean, v_mean
@@ -823,16 +877,14 @@ def _compute_monthly_from_synoptic(
     log.info("SYNOPTIC %s %d  computing monthly mean from %d synoptic steps  (concurrent)",
              _cal.month_abbr[month], year, len(specs))
     t0 = time.perf_counter()
+    acc = _RunningMean()
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {pool.submit(fetch_synoptic_fn, date, hour, *args): (date, hour)
                    for date, hour in specs}
-        arrays = [f.result().drop_vars("valid_time", errors="ignore")
-                  for f in as_completed(futures)]
+        for f in as_completed(futures):
+            acc.add(f.result())
     log.info("SYNOPTIC done  %.1fs", time.perf_counter() - t0)
-    stacked = xr.concat(arrays, dim="composite_step")
-    mean = stacked.mean(dim="composite_step")
-    mean.attrs = arrays[0].attrs
-    return mean
+    return acc.mean()
 
 
 def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr.DataArray:

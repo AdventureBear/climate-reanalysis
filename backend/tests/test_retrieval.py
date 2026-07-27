@@ -461,3 +461,95 @@ class TestTransientRetry:
 
         thread.join(timeout=10)
         assert len(hits) == 1  # missing data fails immediately, no retry
+
+
+# ── Unit: streaming composite mean ───────────────────────────────────────────────
+# Composites consume members into a running sum instead of holding every grid
+# (a 91-day request OOM-killed the Render instance). These tests prove the
+# streaming mean is arithmetically identical to the old concat-then-mean and
+# that the #95 missing-member policy is unchanged in consume mode.
+
+def _member(values, date="20260101"):
+    da = xr.DataArray(
+        np.asarray(values, dtype=np.float32),
+        dims=("latitude", "longitude"),
+        coords={"latitude": [10.0, 20.0], "longitude": [30.0, 40.0]},
+        attrs={"_pyre_grib_variable": "TMP", "_pyre_obs_date": date},
+    )
+    return da.assign_coords(valid_time=np.datetime64(f"{date[:4]}-{date[4:6]}-{date[6:]}"))
+
+
+class TestRunningMean:
+    def test_matches_concat_mean(self):
+        members = [_member([[1, 2], [3, 4]]), _member([[5, 6], [7, 8]]), _member([[0, 0], [1, 1]])]
+        acc = retrieval._RunningMean()
+        for m in members:
+            acc.add(m)
+        expected = xr.concat(
+            [m.drop_vars("valid_time") for m in members], dim="s"
+        ).mean(dim="s")
+        assert np.allclose(acc.mean().values, expected.values)
+
+    def test_attrs_come_from_first_member(self):
+        acc = retrieval._RunningMean()
+        acc.add(_member([[1, 1], [1, 1]], date="20260101"))
+        acc.add(_member([[3, 3], [3, 3]], date="20260110"))
+        mean = acc.mean()
+        assert mean.attrs["_pyre_obs_date"] == "20260101"
+        assert "valid_time" not in mean.coords  # per-member coord dropped
+
+    def test_shape_mismatch_raises(self):
+        acc = retrieval._RunningMean()
+        acc.add(_member([[1, 2], [3, 4]]))
+        bad = xr.DataArray(np.zeros((3, 3), dtype=np.float32), dims=("latitude", "longitude"))
+        with pytest.raises(ValueError, match="shape"):
+            acc.add(bad)
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError, match="no composite members"):
+            retrieval._RunningMean().mean()
+
+
+class TestGatherConsumeMode:
+    """gather_composite_members(consume=...) keeps the exact #95 policy."""
+
+    def _futures(self, pool, dates, fail):
+        def fetch(d):
+            if d in fail:
+                raise ValueError(f"TMP at 500 mb not found in index ({d})")
+            return _member([[1, 1], [1, 1]], date=d)
+        return {pool.submit(fetch, d): f"{d} 00z" for d in dates}
+
+    def test_missing_member_still_fails_with_names(self):
+        from concurrent.futures import ThreadPoolExecutor
+        acc = retrieval._RunningMean()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = self._futures(pool, ["20260101", "20260102"], fail={"20260102"})
+            with pytest.raises(retrieval.DataUnavailableError) as exc_info:
+                retrieval.gather_composite_members(futures, consume=acc.add)
+        assert exc_info.value.missing == ["20260102 00z"]
+        assert exc_info.value.total == 2
+
+    def test_skip_missing_within_5_percent_returns_missing_list(self):
+        from concurrent.futures import ThreadPoolExecutor
+        dates = [f"202601{d:02d}" for d in range(1, 22)]  # 21 members, 1 missing = 4.8%
+        acc = retrieval._RunningMean()
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = self._futures(pool, dates, fail={"20260121"})
+            results, missing = retrieval.gather_composite_members(
+                futures, skip_missing=True, consume=acc.add)
+        assert results == []          # consume mode never accumulates a list
+        assert missing == ["20260121 00z"]
+        assert acc.mean().values[0][0] == 1.0  # 20 good members averaged
+
+    def test_mean_of_stamps_skipped_members(self, monkeypatch):
+        dates = [f"202601{d:02d}" for d in range(1, 22)]
+
+        def fake_fetch(d, hour):
+            if d == "20260105":
+                raise ValueError("TMP at 500 mb not found in index")
+            return _member([[2, 2], [2, 2]], date=d)
+
+        mean = retrieval._mean_of(fake_fetch, dates, "00", skip_missing=True)
+        assert mean.attrs["_pyre_skipped_members"] == "20260105 00z"
+        assert np.allclose(mean.values, 2.0)

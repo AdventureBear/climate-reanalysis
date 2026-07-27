@@ -131,10 +131,16 @@ class TestBothInputsContribute:
 
 @pytest.mark.composite
 class TestArithmeticMean:
-    """(A + B) / 2 must equal the composite value at every grid point."""
+    """(A + B) / 2 must equal the composite value at every grid point.
+
+    Expected values are computed in float64 because composites accumulate in
+    float64 (_RunningMean); a float32 expected value is off by one float32
+    rounding step (~0.00024 at 5000 m heights), which exceeds ATOL.
+    """
 
     def test_hgt_arithmetic_mean(self, hgt_data):
-        expected = (hgt_data["a"].values + hgt_data["b"].values) / 2
+        expected = (hgt_data["a"].values.astype(np.float64)
+                    + hgt_data["b"].values.astype(np.float64)) / 2
         diff = np.abs(hgt_data["comp2"].values - expected)
         assert diff.max() < ATOL, (
             f"HGT composite deviates from arithmetic mean: "
@@ -142,7 +148,8 @@ class TestArithmeticMean:
         )
 
     def test_wind_speed_arithmetic_mean(self, wind_data):
-        expected = (wind_data["a"].values + wind_data["b"].values) / 2
+        expected = (wind_data["a"].values.astype(np.float64)
+                    + wind_data["b"].values.astype(np.float64)) / 2
         diff = np.abs(wind_data["comp2"].values - expected)
         assert diff.max() < ATOL, (
             f"Wind speed composite deviates from arithmetic mean: "
@@ -150,7 +157,8 @@ class TestArithmeticMean:
         )
 
     def test_rh_arithmetic_mean(self, rh_data):
-        expected = (rh_data["a"].values + rh_data["b"].values) / 2
+        expected = (rh_data["a"].values.astype(np.float64)
+                    + rh_data["b"].values.astype(np.float64)) / 2
         diff = np.abs(rh_data["comp2"].values - expected)
         assert diff.max() < ATOL, (
             f"RH composite deviates from arithmetic mean: "
