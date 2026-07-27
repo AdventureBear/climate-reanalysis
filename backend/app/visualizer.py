@@ -944,27 +944,23 @@ _ANOMALY_SCALES: dict[str, tuple[float, float]] = {
     "olr":              (60.0, 5.0),    # W/m²
 }
 
-# Temperature anomaly scale (Pivotal Weather-style), in display units.
-# ±40 °F (±20 °C): ±1 white; warm side ramps to red by +20, deep burgundy to
-# +30, rolling over to light gray at +40; cold side through royal blue (−15)
-# and deep purple (−20) to burgundy (−30), rolling over to light blue at −40.
-# Compresses the view for ordinary days while keeping extremes readable.
-_TEMP_ANOMALY_ANCHORS_F = [-40, -30, -20, -15, -10, -5, -1, 1, 5, 10, 15, 20, 30, 40]
+# Temperature anomaly scale, in display units. The same anchor colors are used
+# for surface and pressure-level temperature anomalies; pressure-level Celsius
+# maps use half the Fahrenheit anchor values, and monthly anomalies halve the
+# range again. ±2 keeps ordinary departures white, while the extremes stay at
+# ±40°F with cleaner cold/warm endpoints than the previous rollover colors.
+_TEMP_ANOMALY_ANCHORS_F = [-40, -30, -20, -10, -2, 2, 10, 20, 30, 40]
 _TEMP_ANOMALY_HEX = [
-    "#a6cee3",  # -40  light blue (rollover)
-    "#67001f",  # -30  deep burgundy
-    "#3f007d",  # -20  deep purple
-    "#4169e1",  # -15  royal blue
-    "#74a9cf",  # -10  medium blue
-    "#cfe8f3",  # -5   pale blue
-    "#ffffff",  # -1
-    "#ffffff",  # +1
-    "#fee391",  # +5   pale orange
-    "#fe9929",  # +10  orange
-    "#f03b20",  # +15  orange-red
-    "#cb181d",  # +20  red
-    "#67001f",  # +30  deep burgundy
-    "#d9d9d9",  # +40  light gray (rollover)
+    "#2d1688",  # -40  purplish blue
+    "#3454c4",  # -30  cool blue
+    "#5aa6e8",  # -20  medium blue
+    "#cfe8f3",  # -10  pale blue
+    "#ffffff",  # -2
+    "#ffffff",  # +2
+    "#fee391",  # +10  pale orange
+    "#f68b2d",  # +20  orange
+    "#df3b2f",  # +30  red
+    "#67001f",  # +40  deep burgundy
 ]
 
 
