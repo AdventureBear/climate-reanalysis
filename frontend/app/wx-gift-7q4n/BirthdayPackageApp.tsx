@@ -414,7 +414,7 @@ export default function BirthdayPackageApp() {
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-white">Create Package</h2>
-                <p className="mt-1 text-sm text-slate-300">Date, place, and optional birth time.</p>
+                <p className="mt-1 text-sm text-slate-300">Date, place, and birthday time.</p>
               </div>
               <button
                 type="button"
@@ -474,7 +474,7 @@ export default function BirthdayPackageApp() {
 
             <label className="mb-4 block">
               <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-200">
-                <Clock size={16} /> Local Time
+                <Clock size={16} /> Birthday Time
               </span>
               <input
                 type="time"

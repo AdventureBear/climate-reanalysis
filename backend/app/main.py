@@ -234,11 +234,18 @@ def get_birthday_package_file(job_id: str, filename: str):
 
 @app.get("/api/birthday-packages/{job_id}/download")
 def download_birthday_package(job_id: str):
+    job = get_job(job_id)
+    if job is None or job.status != "done":
+        raise HTTPException(status_code=404, detail="birthday package not found")
     try:
         buf = build_zip(job_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="birthday package not found") from exc
-    headers = {"Content-Disposition": f'attachment; filename="birthday-package-{job_id}.zip"'}
+    request = job.request
+    date_part = str(request.get("date") or job_id)
+    time_part = str(request.get("time") or "").replace(":", "")
+    stamp = f"{date_part}-{time_part}" if time_part else date_part
+    headers = {"Content-Disposition": f'attachment; filename="{stamp}-map-package.zip"'}
     return StreamingResponse(buf, media_type="application/zip", headers=headers)
 
 
