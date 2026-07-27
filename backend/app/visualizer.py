@@ -140,13 +140,13 @@ def _apply_polar_boundary(ax) -> None:
     ax.set_boundary(circle, transform=ax.transAxes)
 
 # ── Wind speed scale ─────────────────────────────────────────────────────────────
-# Source: Pivotal Weather. Same color sequence for all levels; only the m/s
-# thresholds at each step change. See .claude/planning/COLOR_SCALES.md.
+# Source: Pivotal Weather-inspired base ramp, with reviewed top-end colors for
+# 600mb through 200mb winds to avoid the brown high-speed bands.
 
 _WIND_COLORS = [
     '#f2f9ff', '#87cefa', '#6b5acc', '#e695db', '#c95bbe',
     '#a11397', '#c90028', '#de2a3c', '#f04f4f',
-    '#faf061', '#faf061', '#8b5a2b', '#a15d0a',
+    '#faf061', '#a9d95a', '#3fbf9e', '#005c9e',
 ]
 
 _WIND_LOW_LEVEL_ANCHORS_KT = [15, 17, 19, 21, 24, 27, 31, 34, 37, 41, 46, 52, 58, 64, 70, 74, 77, 80]
@@ -174,9 +174,10 @@ _WIND_STRAT_COLORS = [
 ]
 
 # Pressure-level winds from 1000mb through 700mb use their own full 15-80 kt
-# scale after review against seasonal 700/850mb cases. Other tropospheric wind
-# scales keep the original Pivotal-inspired defaults for now, while
-# stratospheric levels use their own fixed-anchor ladder.
+# scale after review against seasonal 700/850mb cases. The 600mb through
+# 200mb scales keep their current start and ceiling values, with the reviewed
+# yellow-green/teal/deep-blue top-end transition. Stratospheric levels use
+# their own fixed-anchor ladder.
 _KT_TO_MS = 0.51444
 _MM_TO_IN = 0.03937007874
 
@@ -198,7 +199,7 @@ _WIND_SCALE_CONFIGS: dict[str, dict] = {
         "anchor_colors": _WIND_LOW_LEVEL_COLORS,
         "key_breakpoints": [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80],
     },
-    "low_legacy": {
+    "low_current": {
         "mapping": "scaled",
         "domain_min": 20,
         "domain_max": 80,
@@ -1160,7 +1161,7 @@ def _wind_group(level: int, variable: str = "wind_speed") -> str:
     if level in (925, 850, 700):
         return "low"
     if level == 600:
-        return "low_legacy"
+        return "low_current"
     if level in (500, 400):
         return "mid"
     if level in (300, 250, 200):
