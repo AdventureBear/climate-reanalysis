@@ -6,7 +6,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 # Load .env before importing app modules: config.CACHE_ROOT (and anything else
 # read at module import time) must see .env values, not just process env.
@@ -19,6 +19,15 @@ from .api_options import (
     VALID_WIND_UNITS,
     scale_overrides_from_query,
     supported_modes,
+)
+from .birthday_packages import (
+    BirthdayPackageRequest,
+    birthday_file_path,
+    build_zip,
+    create_job,
+    get_job,
+    run_job,
+    serialize_job,
 )
 from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology, valid_levels
 from .map_pipeline.request import MapRequest
@@ -187,6 +196,50 @@ def get_scale_meta(
         pwat_unit=pwat_unit,
         temp_unit=temp_unit,
     )
+
+
+@app.post("/api/birthday-packages", status_code=202)
+def create_birthday_package(
+    request: BirthdayPackageRequest,
+    background_tasks: BackgroundTasks,
+):
+    job = create_job(request)
+    background_tasks.add_task(run_job, job.id)
+    return serialize_job(job)
+
+
+@app.get("/api/birthday-packages/{job_id}")
+def get_birthday_package(job_id: str):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="birthday package not found")
+    return serialize_job(job)
+
+
+@app.get("/api/birthday-packages/{job_id}/files/{filename}")
+def get_birthday_package_file(job_id: str, filename: str):
+    try:
+        path = birthday_file_path(job_id, filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="birthday package file not found") from exc
+    media_type = {
+        ".gif": "image/gif",
+        ".png": "image/png",
+        ".txt": "text/plain; charset=utf-8",
+        ".md": "text/markdown; charset=utf-8",
+        ".json": "application/json",
+    }.get(path.suffix.lower(), "application/octet-stream")
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@app.get("/api/birthday-packages/{job_id}/download")
+def download_birthday_package(job_id: str):
+    try:
+        buf = build_zip(job_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="birthday package not found") from exc
+    headers = {"Content-Disposition": f'attachment; filename="birthday-package-{job_id}.zip"'}
+    return StreamingResponse(buf, media_type="application/zip", headers=headers)
 
 
 @app.get("/api/map")
