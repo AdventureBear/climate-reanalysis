@@ -39,3 +39,4 @@ backend/app/*.grib2
 backend/app/*.idx
 frontend/next-env.d.ts
 frontend/tsconfig.tsbuildinfo
+backend/scripts/birthday-maps/out/

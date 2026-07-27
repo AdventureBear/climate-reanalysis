@@ -25,6 +25,8 @@ class RenderRequest(Protocol):
     isotachs: int
     centers: int
     contours: str
+    marker: str
+    title_note: str
 
 
 def render_map_product(
@@ -89,4 +91,6 @@ def render_map_product(
         centers_array=centers_array,
         contour_overlays=contour_overlays,
         monthly_anomaly=monthly_anomaly,
+        marker=req.marker,
+        title_note=req.title_note,
     )

@@ -43,8 +43,6 @@ and arrays are cast to float64 before computing statistics to prevent overflow.
 
 from __future__ import annotations
 
-import ctypes
-import ctypes.util
 import logging
 import os
 import threading
@@ -60,41 +58,9 @@ from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 log = logging.getLogger("pyre.climo_r2")
 
 
-def _silence_hdf5_errors() -> None:
-    """Disable HDF5's default C-level error printing globally (thread-safe, one-time).
-
-    When xr.open_dataset opens an OPeNDAP URL with engine='netcdf4', HDF5
-    probes the URL as a local HDF5 file before falling back to the DAP protocol.
-    This is normal/successful but generates HDF5-DIAG spam on stderr for every
-    request. H5Eset_auto2(H5E_DEFAULT=0, NULL, NULL) disables the printer;
-    Python exceptions from netCDF4 still propagate normally.
-    """
-    candidates: list[str] = []
-    # The HDF5 actually loaded in-process is usually the wheel-bundled copy
-    # next to netCDF4 (macOS: .dylibs/, Linux: ../netCDF4.libs/) — system
-    # lookups miss it entirely, which left the spam on.
-    try:
-        import glob
-        import netCDF4
-        pkg = os.path.dirname(netCDF4.__file__)
-        for pattern in (".dylibs/libhdf5*.dylib", "../netCDF4.libs/libhdf5*.so*"):
-            candidates.extend(sorted(glob.glob(os.path.join(pkg, pattern))))
-    except Exception:
-        pass
-    for name in ("hdf5", "hdf5_serial", "hdf5_openmpi"):
-        path = ctypes.util.find_library(name)
-        if path:
-            candidates.append(path)
-    candidates.extend(("libhdf5.dylib", "libhdf5.so"))
-    for path in candidates:
-        try:
-            ctypes.CDLL(path).H5Eset_auto2(0, None, None)
-            return
-        except Exception:
-            continue
-
-
-_silence_hdf5_errors()
+# HDF5-DIAG stderr suppression lives in disk_cache (per-thread, inside
+# open_netcdf/atomic_write_netcdf) — the printer setting is per-thread state,
+# so a one-time module-level call here silenced only the importing thread.
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

@@ -1685,7 +1685,7 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = ""):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = ""):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1695,10 +1695,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
             centers_array=centers_array, contour_overlays=contour_overlays,
             monthly_anomaly=monthly_anomaly, missing_note=missing_note,
+            marker=marker, title_note=title_note,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = ""):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = ""):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -2100,6 +2101,15 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
     if centers_array is not None:
         _draw_pressure_centers(ax, centers_array)
 
+    if marker:
+        # "lat,lon" — a red star at a point of interest (birthday maps).
+        mlat, mlon = (float(p) for p in marker.split(","))
+        ax.plot(
+            mlon, mlat, marker='*', markersize=18,
+            color='red', markeredgecolor='white', markeredgewidth=1.0,
+            zorder=12, transform=ccrs.PlateCarree(),
+        )
+
     lon0, lon1, lat0, lat1 = _REGION_EXTENTS.get(
         region,
         (region_bounds["lon"][0], region_bounds["lon"][1],
@@ -2145,6 +2155,14 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         ha='left', va='bottom',
         transform=fig.transFigure,
     )
+    if title_note:
+        fig.text(
+            pos.x1, pos.y1 + 0.045,
+            title_note,
+            fontsize=11, color='#b00020', fontweight='bold',
+            ha='right', va='bottom',
+            transform=fig.transFigure,
+        )
     if title_lines:
         fig.text(
             pos.x0, pos.y1 + 0.026,

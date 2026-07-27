@@ -40,3 +40,8 @@ class MapRequest:
     # 1 = user-confirmed retry: skip missing composite members (max 5%),
     # disclosed on the map's bottom margin (#95). Never the default.
     skip_missing: int = 0
+    # In-process extras (scripts/birthday-maps) — not exposed on /api/map:
+    # "lat,lon" draws a red star at that point; title_note prints on the
+    # title bar's right side.
+    marker: str = ""
+    title_note: str = ""
