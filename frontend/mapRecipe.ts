@@ -43,7 +43,10 @@ export type MapRecipe = {
     on: boolean
     step: string
     type: WindOverlayType
-    anomalyOverlay: WindAnomalyOverlay
+    // Legacy (pre-#47): saved recipes stored the anomaly glyph choice in a
+    // separate field. New recipes never set it — the map mode decides the
+    // glyph quantity (raw → actual wind, anomaly → anomaly wind).
+    anomalyOverlay?: WindAnomalyOverlay
     isotachs?: boolean
     // Wind-variable maps only: false renders isotachs/glyphs without the
     // shaded speed field (fill_mode=none).
@@ -237,17 +240,21 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   Object.assign(params, timeParams.params)
 
   if (recipe.wind) {
-    if (recipe.wind.anomalyOverlay !== 'none') {
+    // The backend decides the glyph quantity from the map mode (#47) — no
+    // wind_overlay_mode param. Legacy recipes' anomalyOverlay folds into the
+    // single glyph on/type model.
+    const legacyAnomalyGlyph =
+      recipe.wind.anomalyOverlay && recipe.wind.anomalyOverlay !== 'none'
+        ? recipe.wind.anomalyOverlay
+        : null
+    if (legacyAnomalyGlyph) {
       params.wind_step = recipe.wind.step
-      params.wind_type = recipe.wind.anomalyOverlay
-      params.wind_overlay_mode = 'anomaly'
+      params.wind_type = legacyAnomalyGlyph
     } else if (recipe.wind.on) {
       params.wind_step = recipe.wind.step
       params.wind_type = recipe.wind.type
-      params.wind_overlay_mode = 'actual'
     }
-    // Isotachs combine with (or replace) glyphs; not offered on anomaly overlays.
-    if (recipe.wind.isotachs && recipe.wind.anomalyOverlay === 'none') {
+    if (recipe.wind.isotachs && !legacyAnomalyGlyph) {
       params.isotachs = '1'
     }
     if (recipe.wind.shading === false && (variable === 'wind_speed' || variable === 'wind_10m')) {
@@ -381,7 +388,6 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   // wind_step=0 (or junk) in a URL means "no glyph overlay", never "density
   // zero" — builder state must not hold a sub-minimum density (#57).
   const windStepUsable = Number(windStep) > 0
-  const windOverlayMode = params.get('wind_overlay_mode')
   const parsedColorStep = params.get('color_step')
 
   return {
@@ -390,11 +396,12 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     displayMode: displayMode(params.get('mode')),
     climoSource: climoSource(params.get('climo_source')),
     time: timeRecipeFromUrl(params),
+    // Old links may carry wind_overlay_mode; the glyph quantity now follows
+    // the map mode (#47), so glyphs-on is all the URL needs to express.
     wind: windStep === null && params.get('isotachs') !== '1' ? undefined : {
-      on: windOverlayMode !== 'anomaly' && windStepUsable,
+      on: windStepUsable,
       step: windStepUsable ? windStep! : '2',
       type: parsedWindType,
-      anomalyOverlay: windOverlayMode === 'anomaly' ? parsedWindType : 'none',
       isotachs: params.get('isotachs') === '1',
       shading: params.get('fill_mode') !== 'none',
     },

@@ -1,6 +1,8 @@
-// Analysis card: raw/anomaly/normalized selection, the anomaly-wind option,
-// and the Generate submit button with its composite-aware label.
-import { dateRange, monthRange, type DisplayMode, type WindAnomalyOverlay } from '../../../mapRecipe'
+// Analysis card: raw/anomaly/normalized selection and the Generate submit
+// button with its composite-aware label. Wind glyph styling lives with the
+// variable (VariableLevelPanel) — the map mode alone decides whether glyphs
+// show actual or anomaly wind (#47).
+import { dateRange, monthRange, type DisplayMode } from '../../../mapRecipe'
 import { CardRow, Section, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState } from './useCompositeRecipe'
 
@@ -11,9 +13,6 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
     dateSubMode, startDate, endDate, customDates,
     displayMode, setDisplayMode,
     rawOnlyVariable,
-    canUseWindAnomalyOverlay,
-    windAnomalyOverlay, setWindAnomalyOverlay,
-    setWindOn,
   } = recipe
 
   function generateLabel(): string {
@@ -57,36 +56,12 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
                   { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable },
                 ]}
                 value={displayMode}
-                onChange={v => {
-                  const next = v as DisplayMode
-                  setDisplayMode(next)
-                  if (next !== 'anomaly') setWindAnomalyOverlay('none')
-                }}
+                onChange={v => setDisplayMode(v as DisplayMode)}
                 fullWidth
               />
             )}
             </VariableDisplayControl>
             </CardRow>
-            {canUseWindAnomalyOverlay && (
-              <CardRow>
-                <VariableDisplayControl label="Anomaly Wind">
-                  <TabStrip
-                    options={[
-                      { value: 'none', label: 'Shading' },
-                      { value: 'vectors', label: 'Vectors' },
-                      { value: 'barbs', label: 'Barbs' },
-                    ]}
-                    value={windAnomalyOverlay}
-                    onChange={v => {
-                      const next = v as WindAnomalyOverlay
-                      setWindAnomalyOverlay(next)
-                      if (next !== 'none') setWindOn(false)
-                    }}
-                    fullWidth
-                  />
-                </VariableDisplayControl>
-              </CardRow>
-            )}
             <CardRow>
             <VariableDisplayControl label="Render">
             <button type="submit" disabled={loading}

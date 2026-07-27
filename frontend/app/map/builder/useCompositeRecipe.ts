@@ -12,7 +12,6 @@ import {
   type SubMode,
   type TimeRecipe,
   type TimeScale,
-  type WindAnomalyOverlay,
   type WindOverlayType,
   type WindUnit,
 } from '../../../mapRecipe'
@@ -61,7 +60,6 @@ export function useCompositeRecipe() {
   const [windOn,    setWindOn]    = useState(true)
   const [windStep,  setWindStep]  = useState('2')
   const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
-  const [windAnomalyOverlay, setWindAnomalyOverlay] = useState<WindAnomalyOverlay>('none')
   const [isotachsOn, setIsotachsOn] = useState(false)
   const [windShading, setWindShading] = useState(true)
   const [windMaster, setWindMaster] = useState(true)
@@ -83,9 +81,9 @@ export function useCompositeRecipe() {
   const monthlyUnavailable = MONTHLY_UNAVAILABLE_API_VARIABLES.has(apiVariable)
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
   // Wind maps style themselves (shaded/barbs/vectors/isotachs) — a separate
-  // "wind overlay" on a wind map would draw the same data twice.
+  // "wind overlay" on a wind map would draw the same data twice. The map mode
+  // decides the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
   const isWindVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
-  const canUseWindAnomalyOverlay = apiVariable === 'wind_speed' && !isClimo && displayMode === 'anomaly'
 
   function currentTimeRecipe(): TimeRecipe {
     if (isClimo) {
@@ -107,7 +105,6 @@ export function useCompositeRecipe() {
   }
 
   function currentMapRecipe(): MapRecipe {
-    const activeWindAnomaly = canUseWindAnomalyOverlay ? windAnomalyOverlay : 'none'
     return {
       variable,
       level,
@@ -117,11 +114,10 @@ export function useCompositeRecipe() {
       time: currentTimeRecipe(),
       wind: windStep
         ? {
-            on: activeWindAnomaly === 'none' && windMaster && windOn,
+            on: windMaster && windOn,
             step: windStep,
             type: windType,
-            anomalyOverlay: activeWindAnomaly,
-            isotachs: activeWindAnomaly === 'none' && windMaster && isotachsOn,
+            isotachs: windMaster && isotachsOn,
             // Master off = default rendering: wind maps keep their shading.
             shading: windMaster ? windShading : true,
           }
@@ -193,12 +189,18 @@ export function useCompositeRecipe() {
       // Legacy saved recipes may hold step '0'; state never holds a
       // sub-minimum density (#57).
       setWindStep(Number(recipe.wind.step) > 0 ? recipe.wind.step : '2')
-      setWindType(recipe.wind.type)
-      setWindOn(recipe.wind.on)
-      setWindAnomalyOverlay(recipe.wind.anomalyOverlay)
+      // Pre-#47 recipes stored the anomaly glyph choice in a separate field;
+      // fold it into the single wind model (the map mode picks the quantity).
+      const legacyAnomalyGlyph =
+        recipe.wind.anomalyOverlay && recipe.wind.anomalyOverlay !== 'none'
+          ? recipe.wind.anomalyOverlay
+          : null
+      setWindType(legacyAnomalyGlyph ?? recipe.wind.type)
+      const glyphsOn = recipe.wind.on || Boolean(legacyAnomalyGlyph)
+      setWindOn(glyphsOn)
       setIsotachsOn(Boolean(recipe.wind.isotachs))
       setWindShading(recipe.wind.shading !== false)
-      setWindMaster(recipe.wind.on || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
+      setWindMaster(glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
     }
   }
 
@@ -246,7 +248,6 @@ export function useCompositeRecipe() {
     windOn, setWindOn,
     windStep, setWindStep,
     windType, setWindType,
-    windAnomalyOverlay, setWindAnomalyOverlay,
     isotachsOn, setIsotachsOn,
     windShading, setWindShading,
     windMaster, setWindMaster,
@@ -260,7 +261,7 @@ export function useCompositeRecipe() {
     climoSource, setClimoSource,
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
-    monthlyUnavailable, rawOnlyVariable, isWindVariable, canUseWindAnomalyOverlay,
+    monthlyUnavailable, rawOnlyVariable, isWindVariable,
     currentMapRecipe, applyRecipeToState,
   }
 }

@@ -1,12 +1,12 @@
-// Overlays card: the WIND master switch with its layer buttons and density,
-// plus H/L center and contour-overlay toggles.
+// Overlays card: the wind controls, H/L centers, and contour overlays. On a
+// wind-variable map the wind controls style the map's own wind; the map mode
+// picks the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
 import { SlidersHorizontal } from 'lucide-react'
 import { Label, Section, ToggleButton, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState } from './useCompositeRecipe'
 
 export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
   const {
-    canUseWindAnomalyOverlay, windAnomalyOverlay,
     windMaster, setWindMaster,
     windOn, setWindOn,
     windStep, setWindStep,
@@ -16,7 +16,7 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
     isWindVariable, displayMode,
     hlCenters, setHlCenters,
     contourOverlays, setContourOverlays,
-    apiVariable, setWindAnomalyOverlay,
+    apiVariable,
   } = recipe
 
   return (
@@ -28,7 +28,7 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
             <div className="grid gap-3 md:grid-cols-2">
             {/* WIND master switch gates all wind layers (off = no wind fetches;
                 wind-variable maps keep their intrinsic shading). */}
-            <div className={`flex flex-col gap-1 pt-2 border-t border-slate-700/40 transition-opacity ${canUseWindAnomalyOverlay && windAnomalyOverlay !== 'none' ? 'opacity-30 pointer-events-none' : ''}`}>
+            <div className="flex flex-col gap-1 pt-2 border-t border-slate-700/40">
               <div className="flex items-center gap-2">
                 <Label>Wind</Label>
                 <button type="button" role="switch" aria-checked={windMaster}
@@ -68,7 +68,6 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
                         }
                         setWindOn(true)
                         setWindType(t)
-                        setWindAnomalyOverlay('none')
                       }}
                     >
                       {t === 'barbs' ? 'Barbs' : 'Vectors'}

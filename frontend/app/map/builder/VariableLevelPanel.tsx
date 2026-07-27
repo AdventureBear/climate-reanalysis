@@ -20,7 +20,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
     pwatUnit, setPwatUnit,
     temperatureUnit, setTemperatureUnit,
     fillMode, setFillMode,
-    setWindOn, setWindType, setWindAnomalyOverlay,
+    setWindOn, setWindType,
   } = recipe
 
   return (
@@ -38,7 +38,6 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                     if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel))) {
                       setWindOn(true)
                       setWindType('barbs')
-                      setWindAnomalyOverlay('none')
                     }
                 }}
                 wrapperClassName="flex flex-col gap-1 flex-1 min-w-0"
@@ -52,7 +51,6 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                   if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel))) {
                     setWindOn(true)
                     setWindType('barbs')
-                    setWindAnomalyOverlay('none')
                   }
                 }}
                 className="input"
