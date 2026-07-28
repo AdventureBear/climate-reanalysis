@@ -20,6 +20,7 @@ import {
   RAW_ONLY_API_VARIABLES,
   apiLevelForSelection,
   apiVariableForSelection,
+  levelForVariableChange,
   levelOptionsForVariable,
   shouldDefaultWindOverlay,
 } from '../../../variableConfig'
@@ -216,9 +217,9 @@ export function useCompositeRecipe() {
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {
-      setLevel(levelOptions[0]?.value ?? '850')
+      setLevel(levelForVariableChange(variable, level))
     }
-  }, [level, levelOptions])
+  }, [level, levelOptions, variable])
 
   useEffect(() => {
     if (shouldDefaultWindOverlay(apiVariable)) {

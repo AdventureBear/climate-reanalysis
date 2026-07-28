@@ -5,7 +5,7 @@ import {
   SURFACE_LEVELS,
   VARIABLES,
   apiVariableForSelection,
-  levelOptionsForVariable,
+  levelForVariableChange,
   shouldDefaultWindOverlay,
 } from '../../../variableConfig'
 import { CardRow, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
@@ -33,7 +33,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                 options={VARIABLES}
                 onChange={nextVariable => {
                     setVariable(nextVariable)
-                    const nextLevel = levelOptionsForVariable(nextVariable)[0]?.value ?? '850'
+                    const nextLevel = levelForVariableChange(nextVariable, level)
                     setLevel(nextLevel)
                     if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel))) {
                       setWindOn(true)

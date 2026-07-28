@@ -7,6 +7,8 @@ type VariableLevelConfig = {
   label: string
   apiVariable: string
   apiLevel: string
+  levelKind?: 'pressure' | 'surface' | 'column' | 'layer' | 'toa'
+  pressureMb?: number
 }
 
 type VariableConfig = {
@@ -20,6 +22,8 @@ function pressureLevels(apiVariable: string): VariableLevelConfig[] {
     label: String(level),
     apiVariable,
     apiLevel: String(level),
+    levelKind: 'pressure',
+    pressureMb: level,
   }))
 }
 
@@ -30,21 +34,21 @@ const VARIABLE_CONFIG = {
   wind_speed: {
     label: 'Wind Speed',
     levels: [
-      { value: 'surface_10m', label: 'Surface (10m)', apiVariable: 'wind_10m', apiLevel: '1000' },
+      { value: 'surface_10m', label: 'Surface (10m)', apiVariable: 'wind_10m', apiLevel: '1000', levelKind: 'surface' },
       ...pressureLevels('wind_speed'),
     ],
   },
   temp: {
     label: 'Temperature',
     levels: [
-      { value: 'surface_2m', label: 'Surface (2m)', apiVariable: 'temp_2m', apiLevel: '1000' },
+      { value: 'surface_2m', label: 'Surface (2m)', apiVariable: 'temp_2m', apiLevel: '1000', levelKind: 'surface' },
       ...pressureLevels('temp'),
     ],
   },
   pressure: {
     label: 'Mean Sea Level Pressure',
     levels: [
-      { value: 'surface_mslp', label: 'Surface (MSLP)', apiVariable: 'surface_pressure', apiLevel: '1000' },
+      { value: 'surface_mslp', label: 'Surface (MSLP)', apiVariable: 'surface_pressure', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
   height: {
@@ -62,7 +66,7 @@ const VARIABLE_CONFIG = {
   precipitable_water: {
     label: 'Precipitable Water',
     levels: [
-      { value: 'total_column', label: 'Total column', apiVariable: 'precipitable_water', apiLevel: '1000' },
+      { value: 'total_column', label: 'Total column', apiVariable: 'precipitable_water', apiLevel: '1000', levelKind: 'column' },
     ],
   },
   omega: {
@@ -77,35 +81,35 @@ const VARIABLE_CONFIG = {
   precip_rate: {
     label: 'Precipitation Rate',
     levels: [
-      { value: 'surface_prate', label: 'Surface', apiVariable: 'precip_rate', apiLevel: '1000' },
+      { value: 'surface_prate', label: 'Surface', apiVariable: 'precip_rate', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
   olr: {
     label: 'Outgoing Longwave Radiation',
     levels: [
-      { value: 'toa_olr', label: 'Top of atmosphere', apiVariable: 'olr', apiLevel: '1000' },
+      { value: 'toa_olr', label: 'Top of atmosphere', apiVariable: 'olr', apiLevel: '1000', levelKind: 'toa' },
     ],
   },
   cape: {
     label: 'CAPE',
     levels: [
-      { value: 'surface_cape', label: 'Surface-based', apiVariable: 'cape', apiLevel: '1000' },
-      { value: 'ml_cape', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cape_ml', apiLevel: '1000' },
-      { value: 'mu_cape', label: 'Most-unstable (255-0 mb)', apiVariable: 'cape_mu', apiLevel: '1000' },
+      { value: 'surface_cape', label: 'Surface-based', apiVariable: 'cape', apiLevel: '1000', levelKind: 'surface' },
+      { value: 'ml_cape', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cape_ml', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'mu_cape', label: 'Most-unstable (255-0 mb)', apiVariable: 'cape_mu', apiLevel: '1000', levelKind: 'layer' },
     ],
   },
   cin: {
     label: 'CIN',
     levels: [
-      { value: 'surface_cin', label: 'Surface-based', apiVariable: 'cin', apiLevel: '1000' },
-      { value: 'ml_cin', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cin_ml', apiLevel: '1000' },
-      { value: 'mu_cin', label: 'Most-unstable (255-0 mb)', apiVariable: 'cin_mu', apiLevel: '1000' },
+      { value: 'surface_cin', label: 'Surface-based', apiVariable: 'cin', apiLevel: '1000', levelKind: 'surface' },
+      { value: 'ml_cin', label: 'Mixed-layer (180-0 mb)', apiVariable: 'cin_ml', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'mu_cin', label: 'Most-unstable (255-0 mb)', apiVariable: 'cin_mu', apiLevel: '1000', levelKind: 'layer' },
     ],
   },
   dewpoint_2m: {
     label: '2m Dewpoint',
     levels: [
-      { value: 'surface_2m_dpt', label: 'Surface (2m)', apiVariable: 'dewpoint_2m', apiLevel: '1000' },
+      { value: 'surface_2m_dpt', label: 'Surface (2m)', apiVariable: 'dewpoint_2m', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
   absv: {
@@ -115,7 +119,7 @@ const VARIABLE_CONFIG = {
   snow_depth: {
     label: 'Snow Depth',
     levels: [
-      { value: 'surface_snod', label: 'Surface', apiVariable: 'snow_depth', apiLevel: '1000' },
+      { value: 'surface_snod', label: 'Surface', apiVariable: 'snow_depth', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
 } as const satisfies Record<string, VariableConfig>
@@ -192,10 +196,45 @@ for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {
 }
 
 export function levelOptionsForVariable(variable: string): SelectOption[] {
-  return (VARIABLE_CONFIG[variable as UiVariableKey]?.levels ?? pressureLevels(variable)).map(({ value, label }) => ({
+  return levelConfigsForVariable(variable).map(({ value, label }) => ({
     value,
     label,
   }))
+}
+
+function levelConfigsForVariable(variable: string): VariableLevelConfig[] {
+  return [...(VARIABLE_CONFIG[variable as UiVariableKey]?.levels ?? pressureLevels(variable))]
+}
+
+function defaultPressureLevel(options: VariableLevelConfig[]): string {
+  return (
+    options.find(option => option.value === '850') ??
+    options.find(option => option.levelKind === 'pressure') ??
+    options[0]
+  )?.value ?? '850'
+}
+
+export function levelForVariableChange(nextVariable: string, currentLevel: string): string {
+  const options = levelConfigsForVariable(nextVariable)
+  const exact = options.find(option => option.value === currentLevel)
+  if (exact) return exact.value
+
+  const currentPressure = Number(currentLevel)
+  if (Number.isFinite(currentPressure)) {
+    const pressureOptions = options.filter(option => option.levelKind === 'pressure' && typeof option.pressureMb === 'number')
+    const closest = pressureOptions.reduce<VariableLevelConfig | null>((best, option) => {
+      if (!best) return option
+      return Math.abs(option.pressureMb! - currentPressure) < Math.abs(best.pressureMb! - currentPressure)
+        ? option
+        : best
+    }, null)
+    return closest?.value ?? options[0]?.value ?? '850'
+  }
+
+  return (
+    options.find(option => option.levelKind && option.levelKind !== 'pressure') ??
+    { value: defaultPressureLevel(options) }
+  )?.value ?? '850'
 }
 
 export function apiVariableForSelection(variable: string, level: string): string {
