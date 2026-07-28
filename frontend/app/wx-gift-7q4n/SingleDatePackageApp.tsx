@@ -226,6 +226,16 @@ export default function SingleDatePackageApp() {
   }, [completionPromptJobId, job])
 
   useEffect(() => {
+    if (!job || job.status !== 'failed' || job.id !== completionPromptJobId) return
+    setError(job.error || 'The package failed to render.')
+    setFormOpen(true)
+    setJob(null)
+    replacePackageParam(null)
+    setCompletionPromptJobId(null)
+    setRecoverableLink('')
+  }, [completionPromptJobId, job])
+
+  useEffect(() => {
     if (!job || job.status === 'done' || job.status === 'failed') return
     let cancelled = false
     const timer = window.setInterval(async () => {
