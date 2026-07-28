@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 
@@ -32,6 +32,13 @@ from .single_date_packages import (
 from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology, valid_levels
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
+from .rate_limit import (
+    PACKAGE_CREATE_LIMIT,
+    PACKAGE_FILE_LIMIT,
+    PACKAGE_STATUS_LIMIT,
+    PUBLIC_MAP_LIMIT,
+    enforce_rate_limit,
+)
 from .retrieval import DataUnavailableError, VALID_HOURS
 from .visualizer import describe_color_scale
 
@@ -50,6 +57,7 @@ app = FastAPI(title="PyRe Climate Reanalysis API")
 # so unbounded lists let one URL monopolize the service.
 MAX_COMPOSITE_DATES = 93    # one season of daily composites
 MAX_COMPOSITE_MONTHS = 60   # five years of monthly means
+MAX_DAILY_COMPOSITE_FETCHES = MAX_COMPOSITE_DATES * 4
 
 cors_origins = os.getenv("CORS_ORIGINS", "")
 # Browser Origin headers never carry a trailing slash; strip any configured by
@@ -205,16 +213,19 @@ def get_scale_meta(
 
 @app.post("/api/single-date-packages", status_code=202)
 def create_single_date_package(
-    request: SingleDatePackageRequest,
+    request: Request,
+    package_request: SingleDatePackageRequest,
     background_tasks: BackgroundTasks,
 ):
-    job = create_job(request)
+    enforce_rate_limit(request, PACKAGE_CREATE_LIMIT)
+    job = create_job(package_request)
     background_tasks.add_task(run_job, job.id)
     return serialize_job(job)
 
 
 @app.get("/api/single-date-packages/{job_id}")
-def get_single_date_package(job_id: str):
+def get_single_date_package(request: Request, job_id: str):
+    enforce_rate_limit(request, PACKAGE_STATUS_LIMIT)
     job = get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="map package not found")
@@ -222,7 +233,8 @@ def get_single_date_package(job_id: str):
 
 
 @app.get("/api/single-date-packages/{job_id}/files/{filename}")
-def get_single_date_package_file(job_id: str, filename: str):
+def get_single_date_package_file(request: Request, job_id: str, filename: str):
+    enforce_rate_limit(request, PACKAGE_FILE_LIMIT)
     try:
         path = package_file_path(job_id, filename)
     except FileNotFoundError as exc:
@@ -238,7 +250,8 @@ def get_single_date_package_file(job_id: str, filename: str):
 
 
 @app.get("/api/single-date-packages/{job_id}/download")
-def download_single_date_package(job_id: str):
+def download_single_date_package(request: Request, job_id: str):
+    enforce_rate_limit(request, PACKAGE_FILE_LIMIT)
     job = get_job(job_id)
     if job is None or job.status != "done":
         raise HTTPException(status_code=404, detail="map package not found")
@@ -256,6 +269,7 @@ def download_single_date_package(job_id: str):
 
 @app.get("/api/map")
 def get_map(
+    request: Request,
     date: str = "",
     dates: str = "",
     date_mode: str = "",
@@ -283,6 +297,7 @@ def get_map(
     contours: str = "",
     skip_missing: int = 0,
 ):
+    enforce_rate_limit(request, PUBLIC_MAP_LIMIT)
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
         wind_type, wind_step, isotachs = "vectors", 0, 1
@@ -312,20 +327,42 @@ def get_map(
         invalid_hours = [h for h in parsed_hours if h not in VALID_HOURS]
         if invalid_hours:
             raise HTTPException(status_code=422, detail=f"hours contains invalid values: {invalid_hours}; valid hours are {VALID_HOURS}")
+        if len(parsed_hours) > len(VALID_HOURS):
+            raise HTTPException(
+                status_code=422,
+                detail=f"too many hours ({len(parsed_hours)}); hourly composites are limited to {len(VALID_HOURS)} synoptic hours per day",
+            )
+        if len(set(parsed_hours)) != len(parsed_hours):
+            raise HTTPException(status_code=422, detail="hours contains duplicate synoptic times")
+    parsed_dates: list[str] = []
     if dates:
-        n_dates = len([d for d in dates.split(",") if d.strip()])
+        parsed_dates = [d.strip() for d in dates.split(",") if d.strip()]
+        n_dates = len(parsed_dates)
         if n_dates > MAX_COMPOSITE_DATES:
             raise HTTPException(
                 status_code=422,
                 detail=f"too many dates ({n_dates}); composites are limited to {MAX_COMPOSITE_DATES} dates per map",
             )
+        if len(set(parsed_dates)) != len(parsed_dates):
+            raise HTTPException(status_code=422, detail="dates contains duplicate dates")
+        if hours and n_dates * len(parsed_hours) > MAX_DAILY_COMPOSITE_FETCHES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"too many date/hour pairs ({n_dates * len(parsed_hours)}); "
+                    f"daily composites are limited to {MAX_DAILY_COMPOSITE_FETCHES} fetches per map"
+                ),
+            )
     if months:
-        n_months = len([m for m in months.split(",") if m.strip()])
+        parsed_months = [m.strip() for m in months.split(",") if m.strip()]
+        n_months = len(parsed_months)
         if n_months > MAX_COMPOSITE_MONTHS:
             raise HTTPException(
                 status_code=422,
                 detail=f"too many months ({n_months}); composites are limited to {MAX_COMPOSITE_MONTHS} months per map",
             )
+        if len(set(parsed_months)) != len(parsed_months):
+            raise HTTPException(status_code=422, detail="months contains duplicate months")
     if region not in REGIONS:
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
