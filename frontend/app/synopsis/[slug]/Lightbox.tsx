@@ -1,22 +1,33 @@
 'use client'
 
-// Lightbox for post images (#36): article images show at their chosen size;
-// clicking one opens the full-resolution file in an overlay. Click anywhere
-// or press Escape to close. Works by listening for clicks on any image
-// inside the post body, so the static page needs no per-image wiring.
+// Lightbox for scoped image groups. Synopsis posts use regular images;
+// generated package results use explicit data-lightbox-src triggers.
 import { useEffect, useState } from 'react'
 
-export function Lightbox() {
+type LightboxProps = {
+  rootSelector?: string
+}
+
+export function Lightbox({ rootSelector = '.faq-doc' }: LightboxProps) {
   const [src, setSrc] = useState<string | null>(null)
   const [alt, setAlt] = useState('')
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const target = e.target as HTMLElement
-      if (target instanceof HTMLImageElement && target.closest('.faq-doc')) {
+      const trigger = target.closest<HTMLElement>('[data-lightbox-src]')
+      const image = target instanceof HTMLImageElement ? target : null
+      if (!target.closest(rootSelector)) return
+      if (trigger) {
         e.preventDefault()
-        setSrc(target.src)
-        setAlt(target.alt)
+        const nextSrc = trigger.dataset.lightboxSrc
+        if (!nextSrc) return
+        setSrc(nextSrc)
+        setAlt(trigger.dataset.lightboxAlt || '')
+      } else if (image) {
+        e.preventDefault()
+        setSrc(image.src)
+        setAlt(image.alt)
       }
     }
     function onKey(e: KeyboardEvent) {
@@ -28,7 +39,7 @@ export function Lightbox() {
       document.removeEventListener('click', onClick)
       document.removeEventListener('keydown', onKey)
     }
-  }, [])
+  }, [rootSelector])
 
   if (!src) return null
   return (

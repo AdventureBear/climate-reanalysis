@@ -12,10 +12,12 @@ import {
   Loader2,
   MapPin,
   Play,
+  Save,
   Sparkles,
   X,
 } from 'lucide-react'
 import { API_BASE } from '../../lib/api'
+import { Lightbox } from '../synopsis/[slug]/Lightbox'
 
 type SingleDateJobStatus = 'queued' | 'running' | 'done' | 'failed'
 
@@ -322,10 +324,18 @@ export default function SingleDatePackageApp() {
             </div>
 
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
-              <section className="grid gap-5 md:grid-cols-2">
+              <section className="single-date-package-results grid gap-5 md:grid-cols-2">
                 {result.animation_url && (
                   <article className="rounded-lg border border-slate-700 bg-slate-900 shadow-xl md:col-span-2">
-                    <img src={apiUrl(result.animation_url)} alt="Single-date weather animation" className="w-full rounded-t-lg bg-white object-contain" />
+                    <button
+                      type="button"
+                      data-lightbox-src={apiUrl(result.animation_url)}
+                      data-lightbox-alt="Single-date weather animation"
+                      className="block w-full cursor-zoom-in rounded-t-lg bg-white"
+                      aria-label="Open animation full size"
+                    >
+                      <img src={apiUrl(result.animation_url)} alt="Single-date weather animation" className="w-full rounded-t-lg object-contain" />
+                    </button>
                     <div className="p-3">
                       <h3 className="text-sm font-semibold text-white">Animation</h3>
                     </div>
@@ -334,7 +344,15 @@ export default function SingleDatePackageApp() {
 
                 {result.maps.map(map => (
                   <article key={map.filename} className="rounded-lg border border-slate-700 bg-slate-900 shadow-xl">
-                    <img src={apiUrl(map.url)} alt={map.title} className="w-full rounded-t-lg bg-white object-contain" />
+                    <button
+                      type="button"
+                      data-lightbox-src={apiUrl(map.url)}
+                      data-lightbox-alt={map.title}
+                      className="block w-full cursor-zoom-in rounded-t-lg bg-white"
+                      aria-label={`Open ${map.title} full size`}
+                    >
+                      <img src={apiUrl(map.url)} alt={map.title} className="w-full rounded-t-lg object-contain" />
+                    </button>
                     <div className="flex flex-wrap items-center justify-between gap-2 p-3">
                       <div>
                         <h3 className="text-sm font-semibold text-white">{map.title}</h3>
@@ -343,11 +361,10 @@ export default function SingleDatePackageApp() {
                       <div className="flex items-center gap-2">
                         <a
                           href={apiUrl(map.url)}
-                          target="_blank"
-                          rel="noreferrer"
+                          download={map.filename}
                           className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-600 px-2.5 text-xs text-slate-200 hover:bg-slate-800"
                         >
-                          <ImageIcon size={14} /> PNG
+                          <Save size={14} /> Save Image
                         </a>
                         <a
                           href={map.live_url}
@@ -361,6 +378,7 @@ export default function SingleDatePackageApp() {
                     </div>
                   </article>
                 ))}
+                <Lightbox rootSelector=".single-date-package-results" />
               </section>
 
               <aside className="flex flex-col gap-4 xl:sticky xl:top-4 xl:self-start">
