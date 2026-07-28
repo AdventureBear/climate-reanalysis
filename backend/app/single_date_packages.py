@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import shutil
 import threading
 import uuid
 import zipfile
@@ -17,15 +18,19 @@ from zoneinfo import ZoneInfo
 import requests
 from pydantic import BaseModel, Field, field_validator
 
+from .config import CACHE_ROOT
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import DataUnavailableError
 
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
-BIRTHDAY_ROOT = Path(os.getenv("PYRE_BIRTHDAY_DIR", BACKEND_ROOT / "birthday-packages"))
-GEOCODE_CACHE = BIRTHDAY_ROOT / "geocode_cache.json"
+PACKAGE_CACHE_ROOT = Path(CACHE_ROOT) / "map_packages"
+PACKAGE_ROOT = PACKAGE_CACHE_ROOT / "single_date"
+GEOCODE_CACHE = PACKAGE_CACHE_ROOT / "geocode_cache.json"
 SITE_BASE = os.getenv("PYRE_SITE_BASE", "https://pyreweather.org").rstrip("/")
 SYNOPTIC_HOURS = "00,06,12,18"
+PACKAGE_TTL = timedelta(hours=24)
+CLEANUP_INTERVAL = timedelta(minutes=30)
+JOB_STATE_FILE = "job.json"
 
 TRIG_NORM_ANOM_SIGMA = 2.0
 TRIG_MSLP_MIN_HPA = 990.0
@@ -48,11 +53,11 @@ TRIG_CAPPED_CIN = 100.0
 WINDOW_DEG = 10.0
 
 
-class BirthdayPackageRequest(BaseModel):
-    date: str = Field(..., description="Birth date as YYYY-MM-DD or YYYYMMDD.")
+class SingleDatePackageRequest(BaseModel):
+    date: str = Field(..., description="Package date as YYYY-MM-DD or YYYYMMDD.")
     place: str = Field(..., min_length=2, max_length=160)
     name: str = Field(default="", max_length=80)
-    time: str = Field(default="", description="Optional birthplace-local time as HH:MM.")
+    time: str = Field(default="", description="Optional location-local time as HH:MM.")
     animate: bool = False
 
     @field_validator("date")
@@ -92,7 +97,7 @@ JobStatus = Literal["queued", "running", "done", "failed"]
 
 
 @dataclass
-class BirthdayJob:
+class SingleDateJob:
     id: str
     status: JobStatus
     step: int
@@ -104,17 +109,20 @@ class BirthdayJob:
     error: str = ""
 
 
-_JOBS: dict[str, BirthdayJob] = {}
+_JOBS: dict[str, SingleDateJob] = {}
 _JOBS_LOCK = threading.Lock()
 _GEOCODE_LOCK = threading.Lock()
+_CLEANUP_LOCK = threading.Lock()
+_LAST_CLEANUP = datetime.min.replace(tzinfo=timezone.utc)
 
 
-def create_job(request: BirthdayPackageRequest) -> BirthdayJob:
-    BIRTHDAY_ROOT.mkdir(parents=True, exist_ok=True)
+def create_job(request: SingleDatePackageRequest) -> SingleDateJob:
+    cleanup_expired_packages()
+    PACKAGE_ROOT.mkdir(parents=True, exist_ok=True)
     job_id = uuid.uuid4().hex
-    out_dir = BIRTHDAY_ROOT / job_id
+    out_dir = PACKAGE_ROOT / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    job = BirthdayJob(
+    job = SingleDateJob(
         id=job_id,
         status="queued",
         step=0,
@@ -128,18 +136,21 @@ def create_job(request: BirthdayPackageRequest) -> BirthdayJob:
     return job
 
 
-def get_job(job_id: str) -> BirthdayJob | None:
+def get_job(job_id: str) -> SingleDateJob | None:
     if not _valid_job_id(job_id):
         return None
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if job is not None:
         return job
+    state = _read_job_state(job_id)
+    if state is not None:
+        return state
     manifest = _job_dir(job_id) / "manifest.json"
     if not manifest.exists():
         return None
     result = json.loads(manifest.read_text())
-    return BirthdayJob(
+    return SingleDateJob(
         id=job_id,
         status="done",
         step=result.get("progress", {}).get("total", 10),
@@ -151,15 +162,15 @@ def get_job(job_id: str) -> BirthdayJob | None:
     )
 
 
-def serialize_job(job: BirthdayJob) -> dict[str, Any]:
+def serialize_job(job: SingleDateJob) -> dict[str, Any]:
     payload = asdict(job)
-    payload["status_url"] = f"/api/birthday-packages/{job.id}"
+    payload["status_url"] = f"/api/single-date-packages/{job.id}"
     if job.result is not None:
         payload["result"] = _with_file_urls(job.id, job.result)
     return payload
 
 
-def birthday_file_path(job_id: str, filename: str) -> Path:
+def package_file_path(job_id: str, filename: str) -> Path:
     if not _valid_job_id(job_id):
         raise FileNotFoundError(job_id)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", filename):
@@ -180,6 +191,8 @@ def build_zip(job_id: str) -> io.BytesIO:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(out_dir.iterdir()):
+            if path.name == JOB_STATE_FILE:
+                continue
             if path.suffix.lower() in {".png", ".gif", ".txt", ".md", ".json"}:
                 zf.write(path, path.name)
     buf.seek(0)
@@ -190,26 +203,26 @@ def run_job(job_id: str) -> None:
     job = get_job(job_id)
     if job is None:
         return
-    request = BirthdayPackageRequest(**job.request)
+    request = SingleDatePackageRequest(**job.request)
     out_dir = Path(job.output_dir)
 
     try:
-        _set_progress(job_id, "running", 1, 10, "Finding the birthplace")
+        _set_progress(job_id, "running", 1, 10, "Finding the location")
         lat, lon, place_display = geocode(request.place)
 
         _set_progress(job_id, "running", 2, 10, "Resolving local time")
         zone = timezone_for(lat, lon)
-        time_params, valid_label, center = birthday_time_context(request.date, request.time, zone)
+        time_params, valid_label, center = package_time_context(request.date, request.time, zone)
 
-        _set_progress(job_id, "running", 3, 10, "Reading the birthday atmosphere")
+        _set_progress(job_id, "running", 3, 10, "Reading the date atmosphere")
         diagnostics = compute_diagnostics(request.date, lat, lon, zone)
         fired = evaluate_triggers(diagnostics, time_params)
 
         maps = base_maps(time_params)
         for _, extras in fired:
             maps.extend(extras)
-        birthday_extras = birthday_render_extras(request, lat, lon)
-        maps = [(slug, title, {**params, **birthday_extras}) for slug, title, params in maps]
+        package_extras = package_render_extras(request, lat, lon)
+        maps = [(slug, title, {**params, **package_extras}) for slug, title, params in maps]
 
         rendered: list[dict[str, Any]] = []
         total = len(maps) + (2 if request.animate else 1)
@@ -231,7 +244,7 @@ def run_job(job_id: str) -> None:
         animation_filename = ""
         if request.animate:
             _set_progress(job_id, "running", len(maps) + 1, total, "Rendering animation")
-            animation_filename = render_animation(center, out_dir, birthday_extras) or ""
+            animation_filename = render_animation(center, out_dir, package_extras) or ""
 
         highlights = [line for line, _ in fired]
         summary_text = summary_lines(diagnostics, highlights, request.place, request.date)
@@ -261,6 +274,37 @@ def run_job(job_id: str) -> None:
         _fail_job(job_id, str(exc))
 
 
+def cleanup_expired_packages(now: datetime | None = None, *, force: bool = False) -> None:
+    global _LAST_CLEANUP
+    now = now or datetime.now(timezone.utc)
+    if not force and now - _LAST_CLEANUP < CLEANUP_INTERVAL:
+        return
+    with _CLEANUP_LOCK:
+        if not force and now - _LAST_CLEANUP < CLEANUP_INTERVAL:
+            return
+        _LAST_CLEANUP = now
+        if not PACKAGE_ROOT.exists():
+            return
+        cutoff = now - PACKAGE_TTL
+        for path in PACKAGE_ROOT.iterdir():
+            if not path.is_dir() or not _valid_job_id(path.name):
+                continue
+            marker = path / JOB_STATE_FILE
+            if not marker.exists():
+                marker = path / "manifest.json"
+            if not marker.exists():
+                marker = path
+            try:
+                touched = datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)
+            except OSError:
+                continue
+            if touched >= cutoff:
+                continue
+            shutil.rmtree(path, ignore_errors=True)
+            with _JOBS_LOCK:
+                _JOBS.pop(path.name, None)
+
+
 def daily_time_params(date: str) -> dict[str, Any]:
     return {"date": date, "date_mode": "single", "hours": SYNOPTIC_HOURS}
 
@@ -269,10 +313,10 @@ def moment_time_params(date: str, hour: str) -> dict[str, Any]:
     return {"date": date, "date_mode": "single", "hour": hour}
 
 
-def birthday_time_context(date: str, hhmm: str, zone: str) -> tuple[dict[str, Any], str, datetime]:
+def package_time_context(date: str, hhmm: str, zone: str) -> tuple[dict[str, Any], str, datetime]:
     if hhmm:
         moment_date, moment_hour = local_time_to_analysis(date, hhmm, zone)
-        label = f"maps valid at the analysis nearest the birth moment: {moment_date} {moment_hour}z ({hhmm} local)"
+        label = f"maps valid at the analysis nearest the selected time: {moment_date} {moment_hour}z ({hhmm} local)"
         center = datetime(
             int(moment_date[:4]),
             int(moment_date[4:6]),
@@ -354,7 +398,7 @@ def base_maps(time_params: dict[str, Any]) -> list[tuple[str, str, dict[str, Any
 
 
 def geocode(place: str) -> tuple[float, float, str]:
-    BIRTHDAY_ROOT.mkdir(parents=True, exist_ok=True)
+    PACKAGE_ROOT.mkdir(parents=True, exist_ok=True)
     key = place.strip().lower()
     with _GEOCODE_LOCK:
         cache: dict[str, Any] = {}
@@ -367,7 +411,7 @@ def geocode(place: str) -> tuple[float, float, str]:
         response = requests.get(
             "https://nominatim.openstreetmap.org/search",
             params={"q": place, "format": "json", "limit": 1},
-            headers={"User-Agent": "PyRe-birthday-packages/1.0 (https://pyreweather.org)"},
+            headers={"User-Agent": "PyRe-single-date-packages/1.0 (https://pyreweather.org)"},
             timeout=30,
         )
         response.raise_for_status()
@@ -532,7 +576,7 @@ def evaluate_triggers(
     if diag["mslp_min_hpa"] <= TRIG_MSLP_MIN_HPA:
         fired.append(
             (
-                f"Deep low nearby: {diag['mslp_min_hpa']:.0f} hPa within {WINDOW_DEG:.0f} degrees of the birthplace",
+                f"Deep low nearby: {diag['mslp_min_hpa']:.0f} hPa within {WINDOW_DEG:.0f} degrees of the location",
                 [
                     (
                         "storm_closeup",
@@ -556,7 +600,7 @@ def evaluate_triggers(
 
     if diag["precip_mm_day"] >= TRIG_PRECIP_MM_DAY:
         extras = [("precip", "Precipitation Rate", {**time_params, "variable": "precip_rate", "region": "CONUS"})]
-        line = f"Wet day: {diag['precip_mm_day']:.0f} mm/day at the birthplace"
+        line = f"Wet day: {diag['precip_mm_day']:.0f} mm/day at the location"
         if diag["t2m_c"] <= TRIG_SNOW_TEMP_C:
             extras.append(snow_map)
             snow_map_added = True
@@ -565,10 +609,7 @@ def evaluate_triggers(
 
     if diag["snow_depth_in"] >= TRIG_SNOWPACK_IN:
         fired.append(
-            (
-                f"Born onto a snow-covered world: {diag['snow_depth_in']:.0f} in on the ground",
-                [] if snow_map_added else [snow_map],
-            )
+            (f"Snow-covered location: {diag['snow_depth_in']:.0f} in on the ground", [] if snow_map_added else [snow_map])
         )
 
     if diag["cape_jkg"] >= TRIG_CAPE_JKG:
@@ -597,7 +638,7 @@ def evaluate_triggers(
         shape = "monster ridge" if diag["h500_sigma"] > 0 else "deep trough"
         fired.append(
             (
-                f"Born under a {shape}: 500mb heights {diag['h500_sigma']:+.1f} sigma from normal",
+                f"Pattern highlight: {shape}, with 500mb heights {diag['h500_sigma']:+.1f} sigma from normal",
                 [
                     (
                         "500mb_height_anomaly",
@@ -633,7 +674,7 @@ def evaluate_triggers(
     if diag["wind10_kt"] is not None and diag["wind10_kt"] >= TRIG_WIND_KT:
         fired.append(
             (
-                f"Windy day: 10m wind averaged {diag['wind10_kt']:.0f} kt at the birthplace",
+                f"Windy day: 10m wind averaged {diag['wind10_kt']:.0f} kt at the location",
                 [
                     (
                         "wind_10m",
@@ -657,7 +698,7 @@ def evaluate_triggers(
     return fired
 
 
-def render_animation(center: datetime, out_dir: Path, birthday_extras: dict[str, Any]) -> str | None:
+def render_animation(center: datetime, out_dir: Path, package_extras: dict[str, Any]) -> str | None:
     from PIL import Image
 
     frames = []
@@ -677,7 +718,7 @@ def render_animation(center: datetime, out_dir: Path, birthday_extras: dict[str,
                     date=t.strftime("%Y%m%d"),
                     date_mode="single",
                     hour=t.strftime("%H"),
-                    **birthday_extras,
+                    **package_extras,
                 )
             ).getvalue()
         except DataUnavailableError:
@@ -685,7 +726,7 @@ def render_animation(center: datetime, out_dir: Path, birthday_extras: dict[str,
         frames.append(Image.open(io.BytesIO(png)).convert("P", palette=Image.ADAPTIVE))
     if len(frames) < 2:
         return None
-    filename = "birthday.gif"
+    filename = "package.gif"
     frames[0].save(out_dir / filename, save_all=True, append_images=frames[1:], duration=600, loop=0)
     return filename
 
@@ -693,7 +734,7 @@ def render_animation(center: datetime, out_dir: Path, birthday_extras: dict[str,
 def summary_lines(diag: dict[str, Any], highlights: list[str], place: str, date: str) -> str:
     temp_f = diag["t2m_c"] * 9 / 5 + 32
     lines = [
-        f"Your birthday in numbers - {date[:4]}-{date[4:6]}-{date[6:]} at {place}",
+        f"Your date in numbers - {date[:4]}-{date[4:6]}-{date[6:]} at {place}",
         "",
         f"2m temperature      : {temp_f:.0f} F ({diag['t2m_c']:.1f} C)",
         f"vs normal           : {diag['t2m_anom_c'] * 9 / 5:+.0f} F ({diag['t2m_sigma']:+.1f} sigma)",
@@ -720,7 +761,7 @@ def summary_lines(diag: dict[str, Any], highlights: list[str], place: str, date:
 
 
 def links_text(rendered: list[dict[str, Any]], valid_label: str) -> str:
-    lines = ["# Birthday maps - open any map live", "", f"_{valid_label}_", ""]
+    lines = ["# Map package - open any map live", "", f"_{valid_label}_", ""]
     for item in rendered:
         lines.append(f"- [{item['title']}]({item['live_url']})")
     return "\n".join(lines)
@@ -731,7 +772,7 @@ def live_map_url(params: dict[str, Any]) -> str:
     return f"{SITE_BASE}/map?{urlencode(link_params)}"
 
 
-def birthday_render_extras(request: BirthdayPackageRequest, lat: float, lon: float) -> dict[str, str]:
+def package_render_extras(request: SingleDatePackageRequest, lat: float, lon: float) -> dict[str, str]:
     y, mo, d = int(request.date[:4]), int(request.date[4:6]), int(request.date[6:])
     if request.time:
         h, mi = (int(p) for p in request.time.split(":"))
@@ -741,7 +782,7 @@ def birthday_render_extras(request: BirthdayPackageRequest, lat: float, lon: flo
     who = f"{request.name.strip().title()}'s" if request.name else "A"
     return {
         "marker": f"{lat:.3f},{lon:.3f}",
-        "title_note": f"{who} Birthday - {when}",
+        "title_note": f"{who} - {when}",
     }
 
 
@@ -789,20 +830,21 @@ def _with_file_urls(job_id: str, result: dict[str, Any]) -> dict[str, Any]:
     maps = []
     for item in result.get("maps", []):
         with_url = dict(item)
-        with_url["url"] = f"/api/birthday-packages/{job_id}/files/{item['filename']}"
+        with_url["url"] = f"/api/single-date-packages/{job_id}/files/{item['filename']}"
         maps.append(with_url)
     updated["maps"] = maps
     if result.get("animation_filename"):
-        updated["animation_url"] = f"/api/birthday-packages/{job_id}/files/{result['animation_filename']}"
-    updated["download_url"] = f"/api/birthday-packages/{job_id}/download"
-    updated["summary_url"] = f"/api/birthday-packages/{job_id}/files/summary.txt"
-    updated["links_url"] = f"/api/birthday-packages/{job_id}/files/links.md"
+        updated["animation_url"] = f"/api/single-date-packages/{job_id}/files/{result['animation_filename']}"
+    updated["download_url"] = f"/api/single-date-packages/{job_id}/download"
+    updated["summary_url"] = f"/api/single-date-packages/{job_id}/files/summary.txt"
+    updated["links_url"] = f"/api/single-date-packages/{job_id}/files/links.md"
     return updated
 
 
-def _save_job(job: BirthdayJob) -> None:
+def _save_job(job: SingleDateJob) -> None:
     with _JOBS_LOCK:
         _JOBS[job.id] = job
+    _write_job_state(job)
 
 
 def _set_progress(job_id: str, status: JobStatus, step: int, total: int, message: str) -> None:
@@ -812,6 +854,7 @@ def _set_progress(job_id: str, status: JobStatus, step: int, total: int, message
         job.step = step
         job.total = total
         job.message = message
+    _write_job_state(job)
 
 
 def _finish_job(job_id: str, result: dict[str, Any]) -> None:
@@ -822,6 +865,7 @@ def _finish_job(job_id: str, result: dict[str, Any]) -> None:
         job.total = result["progress"]["total"]
         job.message = "Complete"
         job.result = result
+    _write_job_state(job)
 
 
 def _fail_job(job_id: str, error: str) -> None:
@@ -830,6 +874,7 @@ def _fail_job(job_id: str, error: str) -> None:
         job.status = "failed"
         job.message = "Failed"
         job.error = error
+    _write_job_state(job)
 
 
 def _valid_job_id(job_id: str) -> bool:
@@ -839,4 +884,34 @@ def _valid_job_id(job_id: str) -> bool:
 def _job_dir(job_id: str) -> Path:
     if not _valid_job_id(job_id):
         raise FileNotFoundError(job_id)
-    return BIRTHDAY_ROOT / job_id
+    return PACKAGE_ROOT / job_id
+
+
+def _job_state_path(job_id: str) -> Path:
+    return _job_dir(job_id) / JOB_STATE_FILE
+
+
+def _read_job_state(job_id: str) -> SingleDateJob | None:
+    path = _job_state_path(job_id)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+        job = SingleDateJob(**data)
+    except (OSError, TypeError, ValueError):
+        return None
+    if job.result is None and job.status in {"queued", "running"}:
+        job.status = "failed"
+        job.message = "Interrupted"
+        job.error = "Package generation was interrupted. Please start a new package."
+        _write_job_state(job)
+    return job
+
+
+def _write_job_state(job: SingleDateJob) -> None:
+    out_dir = Path(job.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / JOB_STATE_FILE
+    tmp = out_dir / f"{JOB_STATE_FILE}.{uuid.uuid4().hex}.tmp"
+    tmp.write_text(json.dumps(asdict(job), indent=2) + "\n")
+    os.replace(tmp, path)

@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
-import BirthdayPackageApp from './BirthdayPackageApp'
+import SingleDatePackageApp from './SingleDatePackageApp'
 
 export const metadata: Metadata = {
-  title: 'Birthday Maps | PyRe Weather',
-  description: 'Generate a PyRe map package for one date and birthplace.',
+  title: 'Single Date Map Package | PyRe Weather',
+  description: 'Generate a PyRe map package for one date and location.',
   robots: {
     index: false,
     follow: false,
@@ -16,6 +16,6 @@ export const metadata: Metadata = {
   },
 }
 
-export default function BirthdayPage() {
-  return <BirthdayPackageApp />
+export default function SingleDatePage() {
+  return <SingleDatePackageApp />
 }

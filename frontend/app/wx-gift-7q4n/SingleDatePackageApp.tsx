@@ -17,9 +17,9 @@ import {
 } from 'lucide-react'
 import { API_BASE } from '../../lib/api'
 
-type BirthdayJobStatus = 'queued' | 'running' | 'done' | 'failed'
+type SingleDateJobStatus = 'queued' | 'running' | 'done' | 'failed'
 
-type BirthdayMap = {
+type SingleDateMap = {
   slug: string
   title: string
   filename: string
@@ -28,7 +28,7 @@ type BirthdayMap = {
   url: string
 }
 
-type BirthdayResult = {
+type SingleDateResult = {
   id: string
   date: string
   place: string
@@ -37,7 +37,7 @@ type BirthdayResult = {
   lon: number
   timezone: string
   valid_label: string
-  maps: BirthdayMap[]
+  maps: SingleDateMap[]
   animation_url?: string
   download_url: string
   summary_url: string
@@ -46,15 +46,15 @@ type BirthdayResult = {
   highlights: string[]
 }
 
-type BirthdayJob = {
+type SingleDateJob = {
   id: string
-  status: BirthdayJobStatus
+  status: SingleDateJobStatus
   step: number
   total: number
   message: string
   status_url: string
   error?: string
-  result?: BirthdayResult
+  result?: SingleDateResult
 }
 
 type FormState = {
@@ -80,7 +80,7 @@ const generationMessages = [
   'Convincing the jet stream to hold still for one flattering portrait...',
   'Sorting clouds by dramatic potential...',
   'Checking whether the atmosphere had main-character energy that day...',
-  'Polishing the birthplace marker until it looks historically important...',
+  'Polishing the location marker until it looks historically important...',
   'Interviewing every nearby contour line for relevance...',
   'Shaking the snow-depth drawer to see if anything interesting falls out...',
   'Measuring wind barbs with unnecessary confidence...',
@@ -90,7 +90,7 @@ const generationMessages = [
   'Looking for atmospheric plot twists within ten degrees...',
   'Making the map margins behave themselves...',
   'Untangling the calendar from UTC, local time, and historical time zones...',
-  'Checking whether the birthday sky was doing jazz...',
+  'Checking whether the date sky was doing jazz...',
   "Letting the diagnostics rummage through the day's pockets...",
   'Trying to determine if the dewpoint was being weird on purpose...',
   'Putting the contour labels through finishing school...',
@@ -102,12 +102,12 @@ const generationMessages = [
   'Checking for suspiciously dramatic vorticity...',
   'Consulting the synoptic hours like a tiny weather jury...',
   'Letting the color scales warm up backstage...',
-  'Finding the part of the map that knows where the birthday happened...',
+  'Finding the part of the map that knows where the map package happened...',
   'Putting wind, temperature, and pressure in the same room politely...',
   'Asking the atmosphere what it remembers...',
   'Organizing the weather into keepsake form...',
   'Looking for a storm with a flair for entrances...',
-  'Checking whether the jet streak sent a birthday card...',
+  'Checking whether the jet streak sent a map package memo...',
   'Making sure the summary has numbers and not vibes alone...',
   'Waiting for Cartopy to draw the borders without complaining...',
   'Putting the map package in a neat little stack...',
@@ -146,9 +146,9 @@ function errorMessage(payload: unknown, fallback: string) {
   return fallback
 }
 
-export default function BirthdayPackageApp() {
+export default function SingleDatePackageApp() {
   const [form, setForm] = useState<FormState>(initialForm)
-  const [job, setJob] = useState<BirthdayJob | null>(null)
+  const [job, setJob] = useState<SingleDateJob | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -167,7 +167,7 @@ export default function BirthdayPackageApp() {
       try {
         const response = await fetch(apiUrl(job.status_url), { cache: 'no-store' })
         if (!response.ok) throw new Error(await response.text())
-        const nextJob = await response.json() as BirthdayJob
+        const nextJob = await response.json() as SingleDateJob
         if (!cancelled) setJob(nextJob)
       } catch (err) {
         if (!cancelled) {
@@ -195,7 +195,7 @@ export default function BirthdayPackageApp() {
     setSubmitting(true)
     setMessageIndex(Math.floor(Math.random() * generationMessages.length))
     try {
-      const response = await fetch(apiUrl('/api/birthday-packages'), {
+      const response = await fetch(apiUrl('/api/single-date-packages'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -207,11 +207,11 @@ export default function BirthdayPackageApp() {
         }),
       })
       const payload = await response.json()
-      if (!response.ok) throw new Error(errorMessage(payload, 'Could not start the birthday package.'))
-      setJob(payload as BirthdayJob)
+      if (!response.ok) throw new Error(errorMessage(payload, 'Could not start the map package.'))
+      setJob(payload as SingleDateJob)
       setFormOpen(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start the birthday package.')
+      setError(err instanceof Error ? err.message : 'Could not start the map package.')
     } finally {
       setSubmitting(false)
     }
@@ -325,7 +325,7 @@ export default function BirthdayPackageApp() {
               <section className="grid gap-5 md:grid-cols-2">
                 {result.animation_url && (
                   <article className="rounded-lg border border-slate-700 bg-slate-900 shadow-xl md:col-span-2">
-                    <img src={apiUrl(result.animation_url)} alt="Birthday weather animation" className="w-full rounded-t-lg bg-white object-contain" />
+                    <img src={apiUrl(result.animation_url)} alt="Single-date weather animation" className="w-full rounded-t-lg bg-white object-contain" />
                     <div className="p-3">
                       <h3 className="text-sm font-semibold text-white">Animation</h3>
                     </div>
@@ -414,7 +414,7 @@ export default function BirthdayPackageApp() {
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-white">Create Package</h2>
-                <p className="mt-1 text-sm text-slate-300">Date, place, and birthday time.</p>
+                <p className="mt-1 text-sm text-slate-300">Date, location, optional time. (No time will create a daily composite).</p>
               </div>
               <button
                 type="button"
@@ -449,7 +449,7 @@ export default function BirthdayPackageApp() {
 
             <label className="mb-3 block">
               <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-200">
-                <MapPin size={16} /> Birthplace
+                <MapPin size={16} /> Location
               </span>
               <input
                 type="text"
@@ -474,7 +474,7 @@ export default function BirthdayPackageApp() {
 
             <label className="mb-4 block">
               <span className="mb-1.5 flex items-center gap-2 text-sm font-medium text-slate-200">
-                <Clock size={16} /> Birthday Time
+                <Clock size={16} /> Optional Time
               </span>
               <input
                 type="time"

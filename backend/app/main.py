@@ -20,9 +20,9 @@ from .api_options import (
     scale_overrides_from_query,
     supported_modes,
 )
-from .birthday_packages import (
-    BirthdayPackageRequest,
-    birthday_file_path,
+from .single_date_packages import (
+    SingleDatePackageRequest,
+    package_file_path,
     build_zip,
     create_job,
     get_job,
@@ -198,9 +198,9 @@ def get_scale_meta(
     )
 
 
-@app.post("/api/birthday-packages", status_code=202)
-def create_birthday_package(
-    request: BirthdayPackageRequest,
+@app.post("/api/single-date-packages", status_code=202)
+def create_single_date_package(
+    request: SingleDatePackageRequest,
     background_tasks: BackgroundTasks,
 ):
     job = create_job(request)
@@ -208,20 +208,20 @@ def create_birthday_package(
     return serialize_job(job)
 
 
-@app.get("/api/birthday-packages/{job_id}")
-def get_birthday_package(job_id: str):
+@app.get("/api/single-date-packages/{job_id}")
+def get_single_date_package(job_id: str):
     job = get_job(job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="birthday package not found")
+        raise HTTPException(status_code=404, detail="map package not found")
     return serialize_job(job)
 
 
-@app.get("/api/birthday-packages/{job_id}/files/{filename}")
-def get_birthday_package_file(job_id: str, filename: str):
+@app.get("/api/single-date-packages/{job_id}/files/{filename}")
+def get_single_date_package_file(job_id: str, filename: str):
     try:
-        path = birthday_file_path(job_id, filename)
+        path = package_file_path(job_id, filename)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="birthday package file not found") from exc
+        raise HTTPException(status_code=404, detail="map package file not found") from exc
     media_type = {
         ".gif": "image/gif",
         ".png": "image/png",
@@ -232,15 +232,15 @@ def get_birthday_package_file(job_id: str, filename: str):
     return FileResponse(path, media_type=media_type, filename=path.name)
 
 
-@app.get("/api/birthday-packages/{job_id}/download")
-def download_birthday_package(job_id: str):
+@app.get("/api/single-date-packages/{job_id}/download")
+def download_single_date_package(job_id: str):
     job = get_job(job_id)
     if job is None or job.status != "done":
-        raise HTTPException(status_code=404, detail="birthday package not found")
+        raise HTTPException(status_code=404, detail="map package not found")
     try:
         buf = build_zip(job_id)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="birthday package not found") from exc
+        raise HTTPException(status_code=404, detail="map package not found") from exc
     request = job.request
     date_part = str(request.get("date") or job_id)
     time_part = str(request.get("time") or "").replace(":", "")
