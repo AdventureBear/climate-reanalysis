@@ -37,6 +37,7 @@ import { POST_IMAGE_BASE, resolvePostImage } from '../../../lib/posts'
 import { TEXT_LINK } from '../../../ui/linkStyles'
 import { EditorGate } from '../shared'
 import { MapPickerModal } from './MapPickerModal'
+import { listAllMaps } from '../../../lib/library'
 
 type Status = 'draft' | 'published' | 'scheduled'
 
@@ -64,10 +65,28 @@ function narrowImages(body: string): string {
   return POST_IMAGE_BASE ? body.split(POST_IMAGE_BASE).join('') : body
 }
 
+function builderHref(recipe: SavedMap['recipe']): string | null {
+  if (!recipe || typeof recipe !== 'object' || Array.isArray(recipe)) return null
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(recipe)) {
+    if (value === null || value === undefined) continue
+    params.set(key, String(value))
+  }
+  const query = params.toString()
+  return query ? `/map?${query}` : null
+}
+
+function savedMapIdFromPostImage(url: unknown): string | null {
+  if (typeof url !== 'string') return null
+  const match = url.match(/(?:^|\/)map-([0-9a-f-]{36})\.png(?:$|[?#])/i)
+  return match?.[1] ?? null
+}
+
 // Size buttons inside the popup toolbar that appears on a selected image —
 // sizing happens at the image, no scrolling to the top of the page.
 function ImageSizeToolbarButtons({ onReplaceMap }: {
   onReplaceMap: (blockId: string, currentPx: number | undefined) => void
+  onAddBuilderLink: (blockId: string) => void
 }) {
   const editor = useBlockNoteEditor()
   const Components = useComponentsContext()!
@@ -88,6 +107,13 @@ function ImageSizeToolbarButtons({ onReplaceMap }: {
           {p.label === 'Full width' ? 'Full' : p.label}
         </Components.FormattingToolbar.Button>
       ))}
+      <Components.FormattingToolbar.Button
+        label="Add builder link"
+        mainTooltip="Add a builder link below this saved map"
+        onClick={() => onAddBuilderLink(image.id)}
+      >
+        Builder link
+      </Components.FormattingToolbar.Button>
       <Components.FormattingToolbar.Button
         label="Replace map"
         mainTooltip="Swap this image for another saved map"
@@ -281,8 +307,8 @@ export default function EditorApp() {
           'after',
         )
       }
-      if (linkToBuilder && map.recipe && typeof map.recipe === 'object') {
-        const href = `/map?${new URLSearchParams(map.recipe as Record<string, string>).toString()}`
+      const href = builderHref(map.recipe)
+      if (linkToBuilder && href) {
         editor.insertBlocks(
           [{ type: 'paragraph', content: [{ type: 'link', href, content: 'Open this map in the builder' }] }],
           editor.getTextCursorPosition().block,
@@ -291,6 +317,35 @@ export default function EditorApp() {
       }
       setPickerOpen(false)
       setReplaceTargetId(null)
+    } catch (e) {
+      say(String((e as Error).message ?? e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleAddBuilderLink(blockId: string) {
+    const image = editor.getBlock(blockId)
+    const mapId = savedMapIdFromPostImage((image?.props as { url?: unknown } | undefined)?.url)
+    if (!image || !mapId) {
+      say('That image is not tied to a saved map in the library.')
+      return
+    }
+    setBusy(true)
+    try {
+      const maps = await listAllMaps()
+      const map = maps.find(m => m.id === mapId)
+      const href = map ? builderHref(map.recipe) : null
+      if (!map || !href) {
+        say('Could not find a builder recipe for that saved map.')
+        return
+      }
+      editor.insertBlocks(
+        [{ type: 'paragraph', content: [{ type: 'link', href, content: 'Open this map in the builder' }] }],
+        image,
+        'after',
+      )
+      say('Builder link added.')
     } catch (e) {
       say(String((e as Error).message ?? e))
     } finally {
@@ -370,6 +425,7 @@ export default function EditorApp() {
                           setPickerInitialPx(currentPx)
                           setPickerOpen(true)
                         }}
+                        onAddBuilderLink={blockId => void handleAddBuilderLink(blockId)}
                       />
                     </FormattingToolbar>
                   )}
