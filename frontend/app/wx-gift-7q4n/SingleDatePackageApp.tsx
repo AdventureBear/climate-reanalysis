@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Copy,
   Download,
   ExternalLink,
   ImageIcon,
@@ -74,6 +75,8 @@ const initialForm: FormState = {
   time: '',
   animate: false,
 }
+
+const PACKAGE_ID_PATTERN = /^[a-f0-9]{32}$/
 
 const generationMessages = [
   'Unfolding a very wrinkled weather map from the archives...',
@@ -148,6 +151,22 @@ function errorMessage(payload: unknown, fallback: string) {
   return fallback
 }
 
+function packageUrl(jobId: string) {
+  const url = new URL(window.location.href)
+  url.searchParams.set('package', jobId)
+  return url.toString()
+}
+
+function replacePackageParam(jobId: string | null) {
+  const url = new URL(window.location.href)
+  if (jobId) {
+    url.searchParams.set('package', jobId)
+  } else {
+    url.searchParams.delete('package')
+  }
+  window.history.replaceState(null, '', url)
+}
+
 export default function SingleDatePackageApp() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [job, setJob] = useState<SingleDateJob | null>(null)
@@ -155,12 +174,43 @@ export default function SingleDatePackageApp() {
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [messageIndex, setMessageIndex] = useState(0)
+  const [copiedLink, setCopiedLink] = useState(false)
 
   const progress = useMemo(() => {
     if (!job || !job.total) return 0
     return Math.min(100, Math.round((job.step / job.total) * 100))
   }, [job])
   const activeJobId = job && job.status !== 'done' && job.status !== 'failed' ? job.id : ''
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const packageId = params.get('package') || ''
+    if (!packageId) return
+    if (!PACKAGE_ID_PATTERN.test(packageId)) {
+      setError('That package link is not valid.')
+      return
+    }
+
+    let cancelled = false
+    async function restorePackage() {
+      setError('')
+      try {
+        const response = await fetch(apiUrl(`/api/single-date-packages/${packageId}`), { cache: 'no-store' })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(errorMessage(payload, 'That package link has expired or is no longer available.'))
+        if (!cancelled) setJob(payload as SingleDateJob)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'That package link has expired or is no longer available.')
+        }
+      }
+    }
+
+    void restorePackage()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!job || job.status === 'done' || job.status === 'failed') return
@@ -210,7 +260,9 @@ export default function SingleDatePackageApp() {
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(errorMessage(payload, 'Could not start the map package.'))
-      setJob(payload as SingleDateJob)
+      const nextJob = payload as SingleDateJob
+      setJob(nextJob)
+      replacePackageParam(nextJob.id)
       setFormOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the map package.')
@@ -223,7 +275,20 @@ export default function SingleDatePackageApp() {
     setJob(null)
     setError('')
     setFormOpen(true)
+    replacePackageParam(null)
+    setCopiedLink(false)
     setMessageIndex(Math.floor(Math.random() * generationMessages.length))
+  }
+
+  async function copyPackageLink() {
+    if (!job) return
+    try {
+      await navigator.clipboard.writeText(packageUrl(job.id))
+      setCopiedLink(true)
+      window.setTimeout(() => setCopiedLink(false), 1600)
+    } catch {
+      setError('Could not copy the package link.')
+    }
   }
 
   const result = job?.result
@@ -402,6 +467,13 @@ export default function SingleDatePackageApp() {
                     >
                       <Download size={16} /> Download ZIP
                     </a>
+                    <button
+                      type="button"
+                      onClick={copyPackageLink}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded border border-slate-600 px-3 text-sm text-slate-200 hover:bg-slate-800"
+                    >
+                      <Copy size={16} /> {copiedLink ? 'Copied' : 'Copy Link'}
+                    </button>
                     <a
                       href={apiUrl(result.summary_url)}
                       target="_blank"
