@@ -1,4 +1,4 @@
-export type SelectOption = { value: string; label: string; disabled?: boolean }
+export type SelectOption = { value: string; label: string; disabled?: boolean; group?: string }
 
 export const PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10] as const
 
@@ -13,7 +13,7 @@ type VariableLevelConfig = {
 
 type VariableConfig = {
   label: string
-  levels: VariableLevelConfig[]
+  levels: readonly VariableLevelConfig[]
 }
 
 function pressureLevels(apiVariable: string): VariableLevelConfig[] {
@@ -76,6 +76,8 @@ const VARIABLE_CONFIG = {
       label: String(level),
       apiVariable: 'omega',
       apiLevel: String(level),
+      levelKind: 'pressure',
+      pressureMb: level,
     })),
   },
   precip_rate: {
@@ -126,10 +128,23 @@ const VARIABLE_CONFIG = {
 
 export type UiVariableKey = keyof typeof VARIABLE_CONFIG
 
-export const VARIABLES: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => ({
+const BUILDER_VARIABLE_GROUPS = {
+  multi: 'Multi-level variables',
+  single: 'Surface / single-level variables',
+} as const
+
+const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => ({
   value,
   label: config.label,
+  group: config.levels.some(level => level.levelKind === 'pressure')
+    ? BUILDER_VARIABLE_GROUPS.multi
+    : BUILDER_VARIABLE_GROUPS.single,
 }))
+
+export const VARIABLES: SelectOption[] = [
+  ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.multi),
+  ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.single),
+]
 
 export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'wind_speed', label: 'Wind Speed' },

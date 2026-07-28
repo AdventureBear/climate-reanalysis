@@ -24,9 +24,9 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
   } = recipe
 
   return (
-          <Section>
+          <Section className="w-full">
             <CardRow>
-            <div className="flex gap-2 items-end">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_8rem] items-end gap-2">
               <SelectField
                 label="Variable"
                 value={variable === 'humidity' ? 'rel_humidity' : variable}
@@ -40,7 +40,8 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                       setWindType('barbs')
                     }
                 }}
-                wrapperClassName="flex flex-col gap-1 flex-1 min-w-0"
+                className="input w-full min-w-0"
+                wrapperClassName="flex min-w-0 flex-col gap-1"
               />
               <SelectField
                 label={levelOptions.every(opt => SURFACE_LEVELS.has(opt.value)) ? 'Level' : 'Level (mb)'}
@@ -53,8 +54,8 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                     setWindType('barbs')
                   }
                 }}
-                className="input"
-                wrapperClassName="flex flex-col gap-1 shrink-0"
+                className="input w-full min-w-0"
+                wrapperClassName="flex min-w-0 flex-col gap-1"
               />
 
             </div>

@@ -79,14 +79,26 @@ export function SelectField({
   className?: string
   wrapperClassName?: string
 }) {
+  const groups = Array.from(new Set(options.map(option => option.group).filter(Boolean)))
+  const ungroupedOptions = options.filter(option => !option.group)
+
   return (
     <div className={wrapperClassName}>
       {label && <Label>{label}</Label>}
       <select value={value} onChange={e => onChange(e.target.value)} className={className}>
-        {options.map(option => (
+        {ungroupedOptions.map(option => (
           <option key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
+        ))}
+        {groups.map(group => (
+          <optgroup key={group} label={group}>
+            {options.filter(option => option.group === group).map(option => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </div>
