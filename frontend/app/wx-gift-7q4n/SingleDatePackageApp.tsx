@@ -175,6 +175,10 @@ export default function SingleDatePackageApp() {
   const [formOpen, setFormOpen] = useState(false)
   const [messageIndex, setMessageIndex] = useState(0)
   const [copiedLink, setCopiedLink] = useState(false)
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
+  const [linkModalCopied, setLinkModalCopied] = useState(false)
+  const [completionPromptJobId, setCompletionPromptJobId] = useState<string | null>(null)
+  const [recoverableLink, setRecoverableLink] = useState('')
 
   const progress = useMemo(() => {
     if (!job || !job.total) return 0
@@ -198,7 +202,10 @@ export default function SingleDatePackageApp() {
         const response = await fetch(apiUrl(`/api/single-date-packages/${packageId}`), { cache: 'no-store' })
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(errorMessage(payload, 'That package link has expired or is no longer available.'))
-        if (!cancelled) setJob(payload as SingleDateJob)
+        if (!cancelled) {
+          setJob(payload as SingleDateJob)
+          setRecoverableLink(packageUrl(packageId))
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'That package link has expired or is no longer available.')
@@ -211,6 +218,12 @@ export default function SingleDatePackageApp() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!job || job.status !== 'done' || job.id !== completionPromptJobId) return
+    setLinkModalOpen(true)
+    setCompletionPromptJobId(null)
+  }, [completionPromptJobId, job])
 
   useEffect(() => {
     if (!job || job.status === 'done' || job.status === 'failed') return
@@ -263,6 +276,9 @@ export default function SingleDatePackageApp() {
       const nextJob = payload as SingleDateJob
       setJob(nextJob)
       replacePackageParam(nextJob.id)
+      setRecoverableLink(packageUrl(nextJob.id))
+      setCompletionPromptJobId(nextJob.id)
+      setLinkModalCopied(false)
       setFormOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the map package.')
@@ -277,15 +293,24 @@ export default function SingleDatePackageApp() {
     setFormOpen(true)
     replacePackageParam(null)
     setCopiedLink(false)
+    setLinkModalOpen(false)
+    setLinkModalCopied(false)
+    setCompletionPromptJobId(null)
+    setRecoverableLink('')
     setMessageIndex(Math.floor(Math.random() * generationMessages.length))
   }
 
-  async function copyPackageLink() {
+  async function copyPackageLink(source: 'sidebar' | 'modal' = 'sidebar') {
     if (!job) return
     try {
-      await navigator.clipboard.writeText(packageUrl(job.id))
-      setCopiedLink(true)
-      window.setTimeout(() => setCopiedLink(false), 1600)
+      const link = recoverableLink || packageUrl(job.id)
+      await navigator.clipboard.writeText(link)
+      if (source === 'modal') {
+        setLinkModalCopied(true)
+      } else {
+        setCopiedLink(true)
+        window.setTimeout(() => setCopiedLink(false), 1600)
+      }
     } catch {
       setError('Could not copy the package link.')
     }
@@ -469,7 +494,7 @@ export default function SingleDatePackageApp() {
                     </a>
                     <button
                       type="button"
-                      onClick={copyPackageLink}
+                      onClick={() => copyPackageLink()}
                       className="inline-flex h-9 items-center justify-center gap-2 rounded border border-slate-600 px-3 text-sm text-slate-200 hover:bg-slate-800"
                     >
                       <Copy size={16} /> {copiedLink ? 'Copied' : 'Copy Link'}
@@ -593,6 +618,72 @@ export default function SingleDatePackageApp() {
               Generate Package
             </button>
           </form>
+        </div>
+      )}
+
+      {linkModalOpen && result && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6">
+          <section
+            className="w-full max-w-lg rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="package-ready-title"
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm text-emerald-300">
+                  <CheckCircle2 size={16} /> Package ready
+                </div>
+                <h2 id="package-ready-title" className="text-lg font-semibold tracking-tight text-white">Your Map Package Is Ready</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkModalOpen(false)}
+                className="rounded p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm leading-6 text-slate-300">
+              {linkModalCopied
+                ? 'Link copied. Save it, bookmark it, or email it to yourself so you can get back to this package later.'
+                : 'Copy this link to return to your package and download it within the next 24 hours.'}
+            </p>
+
+            <div className="mt-4 flex items-stretch rounded border border-slate-700 bg-slate-950">
+              <input
+                value={recoverableLink}
+                readOnly
+                aria-label="Package link"
+                className="min-w-0 flex-1 rounded-l bg-transparent px-3 py-2 text-xs text-slate-200 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => copyPackageLink('modal')}
+                className="inline-flex items-center gap-2 rounded-r border-l border-slate-700 px-3 text-sm font-semibold text-cyan-200 hover:bg-slate-800"
+              >
+                <Copy size={16} /> {linkModalCopied ? 'Copied' : 'Copy Link'}
+              </button>
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <a
+                href={apiUrl(result.download_url)}
+                className="inline-flex h-10 items-center gap-2 rounded border border-cyan-400/70 px-4 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/10"
+              >
+                <Download size={16} /> Download ZIP
+              </a>
+              <button
+                type="button"
+                onClick={() => setLinkModalOpen(false)}
+                className="inline-flex h-10 items-center gap-2 rounded bg-cyan-400 px-4 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
+              >
+                View Package
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </main>
