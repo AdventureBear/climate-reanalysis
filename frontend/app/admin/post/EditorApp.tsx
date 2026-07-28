@@ -39,6 +39,18 @@ import { EditorGate } from '../shared'
 import { MapPickerModal } from './MapPickerModal'
 
 type Status = 'draft' | 'published' | 'scheduled'
+type AutosaveSnapshot = {
+  postId: string | null
+  title: string
+  slug: string
+  slugTouched: boolean
+  description: string
+  body: string
+  status: Status
+  publishedAt: string | null
+  scheduleAt: string
+  savedAt: number
+}
 
 // Image size presets (WordPress-style: named, pixels shown, chosen at
 // insert time). "Full width" fills the content column — stored as the
@@ -55,6 +67,8 @@ export type ImagePreset = (typeof IMAGE_PRESETS)[number]
 const PANEL = 'rounded-lg border border-[#2e4278]/60 bg-[#1b2a55]/70'
 const FIELD = 'w-full rounded-md border border-[#2e4278]/70 bg-[#131d3f] px-3 py-2 text-[15px] text-slate-200 outline-none transition-colors focus:border-sky-700'
 const BTN = 'rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-slate-700 disabled:opacity-50'
+const AUTOSAVE_PREFIX = 'pyre:synopsis-editor:auto:'
+const AUTOSAVE_DELAY_MS = 5000
 
 // Image targets: paths in the database, full addresses in the editor.
 function widenImages(body: string): string {
@@ -62,6 +76,42 @@ function widenImages(body: string): string {
 }
 function narrowImages(body: string): string {
   return POST_IMAGE_BASE ? body.split(POST_IMAGE_BASE).join('') : body
+}
+function autosaveKey(postId: string | null): string {
+  return `${AUTOSAVE_PREFIX}${postId ?? 'new'}`
+}
+function readAutosave(key: string): AutosaveSnapshot | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const snapshot = JSON.parse(raw) as Partial<AutosaveSnapshot>
+    return typeof snapshot.savedAt === 'number' ? snapshot as AutosaveSnapshot : null
+  } catch {
+    return null
+  }
+}
+function clearAutosave(postId: string | null) {
+  try {
+    window.localStorage.removeItem(autosaveKey(postId))
+  } catch {
+    // Local recovery is best-effort; publishing should not fail because of it.
+  }
+}
+function hasDraftContent(snapshot: AutosaveSnapshot): boolean {
+  return Boolean(
+    snapshot.title.trim() ||
+    snapshot.slug.trim() ||
+    snapshot.description.trim() ||
+    snapshot.body.trim(),
+  )
+}
+function formatAutosaveTime(savedAt: number): string {
+  return new Date(savedAt).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 // Size buttons inside the popup toolbar that appears on a selected image —
@@ -122,7 +172,10 @@ export default function EditorApp() {
   const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null)
   const [pickerInitialPx, setPickerInitialPx] = useState<number | undefined>(undefined)
   const [linkToBuilder, setLinkToBuilder] = useState(false)
+  const [recoverableDraft, setRecoverableDraft] = useState<AutosaveSnapshot | null>(null)
+  const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null)
   const photoRef = useRef<HTMLInputElement>(null)
+  const promptedAutosaveKey = useRef<string | null>(null)
 
   const ready = authEnabled && user && isAdmin
 
@@ -167,13 +220,98 @@ export default function EditorApp() {
     }).catch(e => setNotice(String(e.message ?? e)))
   }, [ready, loaded, editor])
 
+  useEffect(() => {
+    if (!loaded) return
+    const key = autosaveKey(postId)
+    if (promptedAutosaveKey.current === key) return
+    promptedAutosaveKey.current = key
+    const snapshot = readAutosave(key)
+    if (!snapshot) return
+    if (!hasDraftContent(snapshot)) {
+      clearAutosave(postId)
+      return
+    }
+    const unchanged =
+      snapshot.title === title &&
+      snapshot.slug === slug &&
+      snapshot.slugTouched === slugTouched &&
+      snapshot.description === description &&
+      snapshot.body === body &&
+      snapshot.status === status &&
+      snapshot.publishedAt === publishedAt &&
+      snapshot.scheduleAt === scheduleAt
+    if (!unchanged) setRecoverableDraft(snapshot)
+  }, [loaded, postId, title, slug, slugTouched, description, body, status, publishedAt, scheduleAt])
+
+  useEffect(() => {
+    if (!loaded || recoverableDraft) return
+    const snapshot: AutosaveSnapshot = {
+      postId,
+      title,
+      slug,
+      slugTouched,
+      description,
+      body,
+      status,
+      publishedAt,
+      scheduleAt,
+      savedAt: Date.now(),
+    }
+    if (!hasDraftContent(snapshot)) return
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(autosaveKey(postId), JSON.stringify(snapshot))
+        setLastAutosavedAt(snapshot.savedAt)
+      } catch {
+        // Ignore quota/private-mode failures; the manual save flow still works.
+      }
+    }, AUTOSAVE_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [loaded, recoverableDraft, postId, title, slug, slugTouched, description, body, status, publishedAt, scheduleAt])
+
   function say(msg: string) {
     setNotice(msg)
     window.setTimeout(() => setNotice(null), 8000)
   }
 
+  async function applyEditorBody(nextBody: string) {
+    const widened = widenImages(nextBody).trimStart()
+    if (widened.startsWith('[')) {
+      editor.replaceBlocks(editor.document, JSON.parse(widened))
+    } else {
+      const blocks = await editor.tryParseMarkdownToBlocks(widened)
+      editor.replaceBlocks(editor.document, blocks)
+    }
+    setBody(narrowImages(JSON.stringify(editor.document)))
+  }
+
+  async function restoreAutosave() {
+    if (!recoverableDraft) return
+    setTitle(recoverableDraft.title)
+    setSlug(recoverableDraft.slug)
+    setSlugTouched(recoverableDraft.slugTouched)
+    setDescription(recoverableDraft.description)
+    setStatus(recoverableDraft.status)
+    setPublishedAt(recoverableDraft.publishedAt)
+    setScheduleAt(recoverableDraft.scheduleAt)
+    try {
+      await applyEditorBody(recoverableDraft.body)
+      setRecoverableDraft(null)
+      say('Unsaved draft restored.')
+    } catch (e) {
+      say(String((e as Error).message ?? e))
+    }
+  }
+
+  function discardAutosave() {
+    clearAutosave(postId)
+    setRecoverableDraft(null)
+    say('Autosaved draft discarded.')
+  }
+
   async function persist(fields: Partial<PostInput>): Promise<string | null> {
     if (!title.trim()) { say('A title is required.'); return null }
+    const previousPostId = postId
     const input: PostInput = {
       id: postId ?? undefined,
       slug: slug.trim() || slugify(title),
@@ -193,6 +331,10 @@ export default function EditorApp() {
       setDescription(row.description)
       setPublishedAt(row.published_at)
       window.history.replaceState(null, '', `?id=${row.id}`)
+      clearAutosave(previousPostId)
+      clearAutosave(row.id)
+      setLastAutosavedAt(null)
+      setRecoverableDraft(null)
       return row.id
     } catch (e) {
       say(String((e as Error).message ?? e))
@@ -239,6 +381,7 @@ export default function EditorApp() {
     setBusy(true)
     try {
       await deletePost(postId)
+      clearAutosave(postId)
       if (wasPublished) await updateLiveSite('Deleted.')
       window.location.href = '/admin/posts/'
     } catch (e) {
@@ -318,7 +461,32 @@ export default function EditorApp() {
               )}
             </span>
           )}
+          {!notice && lastAutosavedAt && (
+            <span className="text-sm text-slate-500">Autosaved {formatAutosaveTime(lastAutosavedAt)}</span>
+          )}
         </div>
+
+        {recoverableDraft && (
+          <div className={`${PANEL} mt-4 p-4`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium text-slate-200">Recover unsaved edits?</div>
+                <p className="mt-1 text-sm text-slate-400">
+                  Found a local backup from {formatAutosaveTime(recoverableDraft.savedAt)}.
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => void restoreAutosave()}
+                  className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-sky-500">
+                  Restore
+                </button>
+                <button type="button" onClick={discardAutosave} className={BTN}>
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
           {/* Writing column: minmax(0,...) + min-w-0 let it shrink instead of
