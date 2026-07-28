@@ -318,7 +318,7 @@ Recommended next step for Color Lab:
   - `cd backend && uv run pytest`
   - `cd frontend && npm run build`
   - `cd frontend && npm run lint`
-- Add a small smoke checklist for one map in each major time mode.
+- Use [docs/smoke-checklist.md](docs/smoke-checklist.md) for one-map smoke checks across the major render paths.
 - Reduce documentation drift by updating the smallest appropriate document for each change and avoiding duplicate long-form status sections.
 
 ### Phase 2: Scientific Rendering Hardening

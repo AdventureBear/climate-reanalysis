@@ -182,6 +182,7 @@ Key rules for first changes:
 - [PROJECT.md](PROJECT.md): canonical project context, current status, roadmap, known issues, and scientific decisions.
 - [AGENTS.md](AGENTS.md): Codex-specific operating guidance.
 - [CLAUDE.md](CLAUDE.md): Claude Code-specific operating guidance.
+- [docs/smoke-checklist.md](docs/smoke-checklist.md): repeatable local and Render smoke recipes for core map-rendering paths.
 
 Reference index samples live in `docs/reference/`. Older planning documents live in `docs/archive/` and may contain useful historical context, but `PROJECT.md` is the current project reference.
 
