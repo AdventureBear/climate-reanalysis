@@ -338,7 +338,7 @@ export default function SingleDatePackageApp() {
           </div>
           <button
             type="button"
-            onClick={() => setFormOpen(true)}
+            onClick={startAnother}
             className="inline-flex h-10 items-center gap-2 rounded bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-300"
           >
             <Sparkles size={16} /> New Package
@@ -407,13 +407,6 @@ export default function SingleDatePackageApp() {
                 <p className="mt-1 text-xs text-slate-400">{result.valid_label}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={startAnother}
-                  className="inline-flex h-9 items-center gap-2 rounded border border-slate-600 px-3 text-sm text-slate-200 hover:bg-slate-800"
-                >
-                  <Sparkles size={16} /> New
-                </button>
                 <a
                   href={apiUrl(result.download_url)}
                   className="inline-flex h-9 items-center gap-2 rounded border border-cyan-400/70 px-3 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/10"
@@ -678,13 +671,7 @@ export default function SingleDatePackageApp() {
               </button>
             </div>
 
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <a
-                href={apiUrl(result.download_url)}
-                className="inline-flex h-10 items-center gap-2 rounded border border-cyan-400/70 px-4 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/10"
-              >
-                <Download size={16} /> Download ZIP
-              </a>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
               <button
                 type="button"
                 onClick={() => setLinkModalOpen(false)}
