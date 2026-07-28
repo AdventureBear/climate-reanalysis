@@ -134,7 +134,7 @@ function savedMapIdFromPostImage(url: unknown): string | null {
 
 // Size buttons inside the popup toolbar that appears on a selected image —
 // sizing happens at the image, no scrolling to the top of the page.
-function ImageSizeToolbarButtons({ onReplaceMap }: {
+function ImageSizeToolbarButtons({ onReplaceMap, onAddBuilderLink }: {
   onReplaceMap: (blockId: string, currentPx: number | undefined) => void
   onAddBuilderLink: (blockId: string) => void
 }) {
