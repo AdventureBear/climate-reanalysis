@@ -13,6 +13,7 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
     dateSubMode, startDate, endDate, customDates,
     displayMode, setDisplayMode,
     rawOnlyVariable,
+    isThreeHourly,
   } = recipe
 
   function generateLabel(): string {
@@ -53,7 +54,9 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
                 options={[
                   { value: 'raw',        label: 'Raw Data'   },
                   { value: 'anomaly',    label: 'Anomaly', disabled: rawOnlyVariable },
-                  { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable },
+                  // A 3-hourly map has no standard deviation to divide by:
+                  // its baseline is the normal for that one hour (#72).
+                  { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable || isThreeHourly },
                 ]}
                 value={displayMode}
                 onChange={v => setDisplayMode(v as DisplayMode)}

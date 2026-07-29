@@ -130,8 +130,22 @@ function isConsecutiveDates(dates: string[]) {
   return dateRange(apiDateToIso(dates[0]), apiDateToIso(dates[dates.length - 1])).join(',') === dates.join(',')
 }
 
-function displayMode(value: string | null): DisplayMode | undefined {
-  return value === 'raw' || value === 'anomaly' || value === 'normalized' ? value : undefined
+/** True when a URL asks for normalized on a single-hour map.
+ *
+ * Normalized needs a standard deviation. A 3-hourly map is compared against
+ * the normal for that one hour, which is published as a mean only (#72), so
+ * there is nothing to divide by. Links saved before that change load as
+ * anomaly instead of failing, and the builder tells the reader it swapped. */
+export function normalizedUnavailableInUrl(params: URLSearchParams): boolean {
+  return params.get('mode') === 'normalized' && !params.get('hours') && !params.get('months')
+}
+
+function displayMode(value: string | null, params?: URLSearchParams): DisplayMode | undefined {
+  const mode = value === 'raw' || value === 'anomaly' || value === 'normalized' ? value : undefined
+  if (mode === 'normalized' && params && normalizedUnavailableInUrl(params)) {
+    return 'anomaly'
+  }
+  return mode
 }
 
 function climoSource(value: string | null): ClimoSource | undefined {
@@ -393,7 +407,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   return {
     ...uiSelection,
     region: params.get('region') ?? undefined,
-    displayMode: displayMode(params.get('mode')),
+    displayMode: displayMode(params.get('mode'), params),
     climoSource: climoSource(params.get('climo_source')),
     time: timeRecipeFromUrl(params),
     // Old links may carry wind_overlay_mode; the glyph quantity now follows

@@ -180,6 +180,7 @@ Current backend capabilities include:
 - MSLP plots MSLET (Eta/membrane reduction), not `PRES:mean sea level` — see the comment in `config.py`.
 - Wind speed, combinable wind overlays (shading/isotachs/barbs/vectors), H/L pressure centers, pressure/height/temp contour overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
 - All HDF5/netCDF access is serialized behind `disk_cache.HDF5_LOCK` (#51: the bundled HDF5 C library is not thread-safe and concurrent access segfaulted the Render service). Every netCDF open/read/write must hold it; the GRIB path (cfgrib/eccodes) intentionally stays concurrent.
+- `climo_r2.dap_fetch_with_retries` rejects a fetch whose time axis is **numeric** — that is a rate-limited/corrupt DAP response (#94). Do not "tighten" this to require `datetime64`: climatology files stamped on a placeholder year (the 4×-daily LTM files, #72) fall outside the `datetime64[ns]` range and decode to valid `cftime` objects, which that stricter test rejected — costing four retries and ~90s before failing.
 
 Current frontend capabilities include:
 - A public site shell: landing page (`/`), map builder (`/map`), About, FAQ, Terms/Privacy (markdown in `content/`), and the Synopsis blog (`/synopsis`).

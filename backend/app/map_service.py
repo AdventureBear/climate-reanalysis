@@ -156,7 +156,10 @@ def create_map_buffer(req: MapRequest):
             log.info("  V mean      : [%.3g, %.3g] m/s  (region subset)", float(climo_v_mean.min()), float(climo_v_mean.max()))
         else:
             climo_mean = select_region(climo_mean, bounds)
-            climo_std = select_region(climo_std, bounds)
+            # The per-hour baseline (#72) is mean-only; normalized mode is
+            # gated off for those products, so σ is simply absent here.
+            if climo_std is not None:
+                climo_std = select_region(climo_std, bounds)
             log.info("  climo grid  : %s", "×".join(str(s) for s in climo_mean.shape))
             log.info(
                 "  mean range  : [%.3g, %.3g] %s  (region subset)",
@@ -164,12 +167,13 @@ def create_map_buffer(req: MapRequest):
                 float(climo_mean.max()),
                 VARIABLES[req.variable].get("units", ""),
             )
-            log.info(
-                "  σ range     : [%.3g, %.3g] %s  (region subset)",
-                float(climo_std.min()),
-                float(climo_std.max()),
-                VARIABLES[req.variable].get("units", ""),
-            )
+            if climo_std is not None:
+                log.info(
+                    "  σ range     : [%.3g, %.3g] %s  (region subset)",
+                    float(climo_std.min()),
+                    float(climo_std.max()),
+                    VARIABLES[req.variable].get("units", ""),
+                )
 
     if req.mode == "climatology":
         subset = climo_mean

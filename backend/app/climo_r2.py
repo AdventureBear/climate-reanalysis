@@ -213,7 +213,12 @@ def dap_fetch_with_retries(url: str, extract, *, describe: str, max_retries: int
         try:
             # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
             with open_netcdf(url, engine="netcdf4") as ds:
-                if "time" in ds and not np.issubdtype(ds["time"].dtype, np.datetime64):
+                # A rate-limited response decodes to a NUMERIC time axis. Test
+                # for that, not for datetime64: the 4x-daily LTM files (#72)
+                # stamp a placeholder year 1, outside the datetime64[ns] range
+                # (1677-2262), so xarray hands back cftime objects — correctly
+                # decoded, and previously mistaken here for a failed fetch.
+                if "time" in ds and np.issubdtype(ds["time"].dtype, np.number):
                     raise OSError(
                         "time axis undecoded (rate-limited or corrupt DAP "
                         f"response: {url})"

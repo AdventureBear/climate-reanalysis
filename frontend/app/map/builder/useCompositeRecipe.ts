@@ -210,10 +210,14 @@ export function useCompositeRecipe() {
       if (displayMode !== 'raw') setDisplayMode('raw')
       if (timeScale === 'climatology') setTimeScale('3-hourly')
     }
+    // A 3-hourly map is compared against the normal for that hour, which is a
+    // mean with no standard deviation, so there is nothing to divide by (#72).
+    // Switching to 3-Hourly while Normalized is selected falls back to Anomaly.
+    if (isThreeHourly && displayMode === 'normalized') setDisplayMode('anomaly')
     // Monthly obs composites are not wired for most surface/named-level
     // fields (MSLP is exempt — its monthly archive record is wired).
     if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
-  }, [displayMode, rawOnlyVariable, monthlyUnavailable, timeScale])
+  }, [displayMode, rawOnlyVariable, monthlyUnavailable, timeScale, isThreeHourly])
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {

@@ -34,6 +34,9 @@ def map_date_label(
         "r2-daily": "R2-daily",
         "r2-monthly": "R2-monthly",
         "monthly-pgb": "PGB-monthly",
+        # Per-synoptic-hour baseline (#72). A different reanalysis than the
+        # daily/monthly baselines, so the title says so outright.
+        "r1-4xdaily": "R1 4×-daily",
     }
     obs_source_tag = f"  [{obs_source}]" if selection.monthly_mode and obs_source != "CORe-pgb" else ""
     mode_labels = {
@@ -68,13 +71,16 @@ def map_date_label(
 
     def climo_ref() -> str:
         source = climo_source_labels.get(climo_source, climo_source)
+        # The hourly baseline is specific to the analysis hour, so the label
+        # names it — "May 4 18z", not just "May 4" (#72).
+        hour_tag = f" {req.hour}z" if climo_source == "r1-4xdaily" else ""
         if selection.monthly_mode:
             return f"Baseline: {selection_months_label()} · {source} {climo_period}"
         if len(selection.date_list) > 1:
             if req.date_mode == "range":
-                return f"Baseline: matching calendar days · {source} {climo_period}"
-            return f"Baseline: listed calendar days · {source} {climo_period}"
-        return f"Baseline: {month_abbr} {selection.obs_day} · {source} {climo_period}"
+                return f"Baseline: matching calendar days{hour_tag} · {source} {climo_period}"
+            return f"Baseline: listed calendar days{hour_tag} · {source} {climo_period}"
+        return f"Baseline: {month_abbr} {selection.obs_day}{hour_tag} · {source} {climo_period}"
 
     def ym_label(ym: tuple[int, int]) -> str:
         return f"{cal.month_abbr[ym[1]]} {ym[0]}"

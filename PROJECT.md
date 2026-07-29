@@ -377,13 +377,24 @@ Recommended next step for Color Lab:
 
 ## 8. Known Issues and Open Questions
 
-### Climatology Source Mismatch
+### Climatology Baselines Come From a Different Dataset
 
-Sub-monthly anomalies currently use R2 daily climatology by policy. This is more appropriate than monthly means for daily/3-hourly normalized anomalies, but it mixes CORe observations with R2 climatology. A domain expert should explicitly approve or replace this choice.
+Observations come from CORe. The baselines they are compared against do not, and which one is used depends on the time scale (#72):
 
-### CORe Daily Climatology Not Built
+- Single-hour maps (3-hourly, and composites of several dates at the same hour) use R1 4x-daily long-term means, which carry one normal per synoptic hour.
+- Daily and monthly maps use R2 daily and monthly means.
 
-The long-term ideal is a CORe-native daily or 3-hourly climatology for 1991-2020. It requires substantial batch fetching, storage, and server-side persistence. This is deferred until deployment or a controlled compute environment exists.
+The per-hour split is deliberate. A daily-mean baseline subtracted from a single-hour observation leaves the normal day-night cycle inside the anomaly: measured on a quiet day, the hour-to-hour swing in domain-mean anomaly was 5.5F with a daily baseline and 2.0F with per-hour baselines. The difference between R1 and R2 as datasets is far smaller than that artifact, which is why the swap is worth making even though it mixes a third dataset in.
+
+Two consequences are documented on the maps and in the FAQ: the baseline line in each title names the dataset and hour, and 3-hourly normalized maps are not offered, because the per-hour files publish means without a spread.
+
+Reviewed and approved by the project owner, 2026-07-28.
+
+### CORe Climatology Not Built
+
+The long-term goal is a CORe-native climatology for 1991-2020 covering all eight 3-hourly analyses, computed once and served from disk (#70). It requires substantial batch fetching, storage, and server-side persistence, and is deferred until a controlled compute environment exists.
+
+It resolves three things at once: observations and baselines would finally come from the same dataset; the 03/09/15/21z interpolation between R1 hours goes away; and computing the spread alongside the mean restores 3-hourly normalized maps, which the R1 per-hour files cannot support.
 
 ### `cfsr-daily` Placeholder
 

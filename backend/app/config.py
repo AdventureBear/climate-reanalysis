@@ -194,7 +194,23 @@ R2_CLIMO_FIELDS: dict[str, dict] = {
     # no sub-monthly baseline and stays raw-only until one is wired.
 }
 
+# R1 4×-daily long-term means: one normal per synoptic hour (00/06/12/18z),
+# the baseline for 3-hourly anomalies (#72 — a daily mean leaves the diurnal
+# cycle inside the anomaly). Keyed by GRIB short name, mirroring
+# R2_CLIMO_FIELDS; "file" is the stem in {dataset}/{file}.4Xday.ltm.nc.
+R1_4XDAY_FIELDS: dict[str, dict] = {
+    "TMP":  {"file": "air",   "var": "air",   "dataset": "pressure"},
+    "HGT":  {"file": "hgt",   "var": "hgt",   "dataset": "pressure"},
+    "UGRD": {"file": "uwnd",  "var": "uwnd",  "dataset": "pressure"},
+    "VGRD": {"file": "vwnd",  "var": "vwnd",  "dataset": "pressure"},
+    "RH":   {"file": "rhum",  "var": "rhum",  "dataset": "pressure"},
+    "VVEL": {"file": "omega", "var": "omega", "dataset": "pressure"},
+    "SPFH": {"file": "shum",  "var": "shum",  "dataset": "pressure"},
+}
+
 # Every climatology source wired for standard pressure-level fields.
+# r1-4xdaily is resolved by climo_policy for 3-hourly anomalies rather than
+# chosen by the user, so it is not listed as a user-selectable source here.
 _PRESSURE_LEVEL_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily")
 
 # Surface/named-level fields have no monthly-pgb baseline (the monthly pgb
@@ -207,6 +223,12 @@ _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
 # climo_sources: climatology baselines wired for this variable. Empty tuple →
 # raw maps only; the API rejects climatology/anomaly/normalized modes and the
 # UI derives mode availability from the same fact (GET / → variable_modes).
+#
+# r1_4xday (single-level variables only): the 4×-daily LTM file providing the
+#   per-synoptic-hour baseline for 3-hourly anomalies (#72). Same field names
+#   as r2_climo; dataset is the ncep.reanalysis.derived subdirectory
+#   ("surface" 2.5°, "surface_gauss" T62). A variable without this spec keeps
+#   3-hourly anomalies unavailable rather than using a diurnally-biased one.
 #
 # r2_climo (single-level variables only): which R2 file provides the baseline.
 #   file:    filename stem on THREDDS (e.g. "air.2m" → air.2m.gauss.{year}.nc)
@@ -299,6 +321,7 @@ VARIABLES = {
         "display_level": "2 m above ground",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "air.2m", "var": "air", "dataset": "gaussian_grid"},
+        "r1_4xday": {"file": "air.2m", "var": "air", "dataset": "surface_gauss"},
         "normalized_mask_threshold": None,
     },
     "wind_10m": {
@@ -314,6 +337,12 @@ VARIABLES = {
             "stem": "wind.10m",   # cache filename identifier (no single source file)
             "u": {"file": "uwnd.10m", "var": "uwnd", "dataset": "gaussian_grid"},
             "v": {"file": "vwnd.10m", "var": "vwnd", "dataset": "gaussian_grid"},
+        },
+        "r1_4xday": {
+            "derive": "wind_speed",
+            "stem": "wind.10m",
+            "u": {"file": "uwnd.10m", "var": "uwnd", "dataset": "surface_gauss"},
+            "v": {"file": "vwnd.10m", "var": "vwnd", "dataset": "surface_gauss"},
         },
         "normalized_mask_threshold": None,
     },
@@ -336,6 +365,7 @@ VARIABLES = {
         "monthly_level_name": "MSL",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "mslp", "var": "mslp", "dataset": "surface"},
+        "r1_4xday": {"file": "slp", "var": "slp", "dataset": "surface"},
         "normalized_mask_threshold": None,
     },
     "precipitable_water": {
@@ -347,6 +377,7 @@ VARIABLES = {
         "display_level": "total column",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
+        "r1_4xday": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
         "normalized_mask_threshold": None,
     },
     "precip_rate": {
@@ -358,6 +389,7 @@ VARIABLES = {
         "display_level": "surface",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "prate.sfc", "var": "prate", "dataset": "gaussian_grid"},
+        "r1_4xday": {"file": "prate.sfc", "var": "prate", "dataset": "surface_gauss"},
         # ~1 mm/day in native units: a high-σ precip anomaly over an
         # essentially dry background is noise, not signal.
         "normalized_mask_threshold": 1.16e-5,
@@ -371,6 +403,7 @@ VARIABLES = {
         "display_level": "top of atmosphere",
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "gaussian_grid"},
+        "r1_4xday": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "other_gauss"},
         "normalized_mask_threshold": None,
     },
     # ── Raw-only case-study fields ─────────────────────────────────────────

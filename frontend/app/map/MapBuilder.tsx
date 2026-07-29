@@ -11,7 +11,7 @@ import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
 import { signedUrl } from '../../lib/storage'
 import { blobFromObjectUrl } from '../../lib/images'
 import { suggestedMapName } from './mapName'
-import { mapRecipeFromUrl, mapRecipeToParams, type MapRecipe } from '../../mapRecipe'
+import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl, type MapRecipe } from '../../mapRecipe'
 import { gapRetryFromGap } from './builder/useMapGeneration'
 import { normalizeColorStep } from '../../sharedOptions'
 import { getRegionLabel } from './builder/regionCatalog'
@@ -69,6 +69,8 @@ export default function MapBuilder() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [libraryOpen, setLibraryOpen] = useState(false)
+  // Explains a mode the builder had to change when opening a link (#72).
+  const [modeNotice, setModeNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -94,6 +96,11 @@ export default function MapBuilder() {
       const recipe = mapRecipeFromUrl(params)
       if (!recipe) return
       applyRecipeToState(recipe)
+      // A link asking for normalized on a single-hour map loads as anomaly
+      // (#72). Say so rather than quietly handing over a different map.
+      setModeNotice(normalizedUnavailableInUrl(params)
+        ? 'Normalized maps are not available for a single hour, so this opened as an anomaly map. Switch to Daily for a normalized map.'
+        : null)
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.
@@ -284,6 +291,7 @@ export default function MapBuilder() {
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
           retry={gapRetry ? { label: gapRetry.label, onClick: handleGapRetry } : null}
+          notice={modeNotice} onDismissNotice={() => setModeNotice(null)}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
 
