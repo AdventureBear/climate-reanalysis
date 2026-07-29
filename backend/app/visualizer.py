@@ -2,6 +2,7 @@ import io
 import json
 import os
 import threading
+from collections.abc import Callable
 
 import cartopy
 import cartopy.crs as ccrs
@@ -457,7 +458,7 @@ def _c_to_k(c: float) -> float:
     return c + 273.15
 
 
-def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple], callable]:
+def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple], Callable[[float], float]]:
     """
     Build a discrete temperature scale from a _TEMP_SCALES config entry.
     step controls bucket size in display units (1 = fine, 5 = coarse zones, etc.).
