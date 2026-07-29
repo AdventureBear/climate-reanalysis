@@ -48,6 +48,7 @@ backend/scripts/render_*_wind_scale_test.py
 backend/scripts/render_lower_level_wind_scale_tests.py
 backend/scripts/render_surface_temp_anomaly_scale_test.py
 backend/scripts/render_temp_anomaly_scale_sibling_tests.py
+backend/scripts/render_dewpoint_scale_test.py
 backend/scripts/wind_scale_level_test_common.py
 docs/monthly-flx-observation-composites-issue.md
 docs/public-backend-api-hardening-plan.md

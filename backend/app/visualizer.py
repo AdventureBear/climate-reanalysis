@@ -527,15 +527,15 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
 
 # ── Relative humidity scale ───────────────────────────────────────────────────────
 # 1 % steps, 0–100 %. Breakpoints are plain percentages (data is already in %).
-_RH_ANCHORS_PCT = [  0,   9,  49,  50,  89,  90, 100]
-_RH_ANCHOR_HEX  = ['#c87800', '#2d0d04', '#f0e8d0', '#c8f0c0', '#0f4c0f', '#0a3d0a', '#0a1860']
+_RH_ANCHORS_PCT = [  0,   9,  15,  59,  60,  89,  90, 100]
+_RH_ANCHOR_HEX  = ['#9f5f08', '#8e6f43', '#4f3a35', '#f0e8d0', '#c8f0c0', '#0f4c0f', '#235023', '#233070']
 _RH_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
     "domain_min": 0,
     "domain_max": 100,
     "anchor_values": _RH_ANCHORS_PCT,
     "anchor_colors": _RH_ANCHOR_HEX,
-    "key_breakpoints": [70, 90],
+    "key_breakpoints": [60, 90],
 }
 
 
