@@ -45,10 +45,11 @@ CORe is the designated successor to R1/R2 for NCEP operational reanalysis produc
 
 R2 is used as a **climatology baseline** — the reference against which we measure anomalies.
 
-- **For daily and 3-hourly modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
+- **For daily modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
 - **For monthly modes**: PyRe can use either the CORe-era monthly PGB climatology source or R2 **monthly** climatologies, depending on the selected climatology source. Monthly baselines are calendar-month means and standard deviations.
+- **For 3-hourly modes**: the baseline comes from R1 rather than R2, because it has to be specific to the hour as well as the day. See Q8.
 
-**Why R2 for sub-monthly climatology instead of CORe?** CORe is still relatively new and does not yet have a full 30-year daily/3-hourly climatology product wired into PyRe. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available 1991–2020 baseline for daily and 3-hourly anomaly maps.
+**Why R2 for sub-monthly climatology instead of CORe?** CORe is still relatively new and does not yet have a full 30-year daily/3-hourly climatology product wired into PyRe. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available 1991–2020 baseline for daily anomaly maps.
 
 ---
 
@@ -76,7 +77,7 @@ R2 is used as a **climatology baseline** — the reference against which we meas
 | Precipitable Water | Total-column water vapor | |
 | Precipitation Rate | Displayed mm/day | 0–3 h average forecast field, not instantaneous |
 | Outgoing Longwave Radiation | ULWRF at top of atmosphere | 0–3 h average forecast field |
-| CAPE / CIN | Three parcel variants each — see Q21 | Raw maps only |
+| CAPE / CIN | Three parcel variants each — see Q22 | Raw maps only |
 | 2m Dewpoint | Displayed °F | Raw maps only |
 | Snow Depth | Displayed inches | Raw maps only |
 
@@ -99,8 +100,8 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 | Time Scale | Observation Field | Climatology Baseline | Result |
 |---|---|---|---|
-| 3-hourly / single synoptic time | CORe field for the selected date and hour | R2 daily climatology for that calendar day | `obs - climo_mean` |
-| 3-hourly composite | CORe fields for multiple dates at the same selected hour | Mean of matching R2 daily climatologies | `composite - climo_mean` |
+| 3-hourly / single synoptic time | CORe field for the selected date and hour | R1 4×-daily normal for that calendar day **and that hour** | `obs - climo_mean` |
+| 3-hourly composite | CORe fields for multiple dates at the same selected hour | Mean of the matching R1 per-hour normals | `composite - climo_mean` |
 | Daily | CORe average across selected daily hours, currently 00z/06z/12z/18z | R2 daily climatology for that calendar day | `daily_mean - climo_mean` |
 | Daily composite | CORe average across dates and daily hours | Weighted/averaged matching R2 daily climatologies | `composite - climo_mean` |
 | Monthly | CORe monthly field/composite | Monthly climatology from `monthly-pgb` or `r2-monthly` | `monthly_value - climo_mean` |
@@ -113,9 +114,29 @@ Before subtraction, PyRe interpolates the coarser climatology grid onto the CORe
 
 Specific humidity and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
 
+Normalized anomaly is not offered on 3-hourly maps. See the next question.
+
 ---
 
-## 8. How are wind anomalies defined?
+## 8. Why does a 3-hourly map use a different baseline than a daily map?
+
+Because a single hour has to be compared against that same hour, not against the whole day.
+
+Afternoons are warmer than the daily average and nights are colder. That is true on a completely ordinary day. So if a 2 p.m. reading is compared against the average of the whole 24 hours, it looks warmer than normal even when nothing unusual is happening, and a 5 a.m. reading looks colder.
+
+On a map this is worse than a simple offset. One map covers many time zones at once, so the size of the error changes across the map, and it is near zero over the ocean, which barely warms or cools between day and night. The result looks like a weather pattern but is really a picture of the clock.
+
+Measured on a quiet day (May 4, 1986, CONUS 2m temperature), the average anomaly across the map swung 5.5°F between hours when compared against a daily average. Against per-hour normals, that swing dropped to 2.0°F, and the warm-afternoon, cold-night pattern disappeared.
+
+**Where the per-hour normals come from.** PSL publishes 4×-daily long-term means from R1 (Reanalysis 1), giving one normal per synoptic hour for each calendar day, averaged over 1991–2020. PyRe reads these for 00/06/12/18z and interpolates between neighbouring hours for 03/09/15/21z. The map title names the baseline and hour, for example `Baseline: May 4 18z · R1 4×-daily 1991–2020`.
+
+**Why mix in a third dataset.** Observations are CORe, daily and monthly baselines are R2, and per-hour baselines are R1. That is not ideal. But the difference between R1 and R2 as datasets is much smaller than the ±10°F artifact the daily baseline was introducing, so the swap is a clear improvement. A CORe-native climatology covering all eight 3-hourly analyses would remove the mixing entirely, and is planned.
+
+**Why normalized is unavailable for a single hour.** A normalized map divides by the standard deviation. The published per-hour files contain averages only, with no standard deviation, so there is nothing to divide by. Daily and monthly normalized maps are unaffected. A link that asks for a normalized single-hour map opens as an anomaly map and says so.
+
+---
+
+## 9. How are wind anomalies defined?
 
 PyRe treats wind anomalies as vector departures from climatology:
 
@@ -130,7 +151,7 @@ For example, if the climatological 850 mb wind is weak easterly and the observed
 
 ---
 
-## 9. How is the standard deviation (sigma) calculated?
+## 10. How is the standard deviation (sigma) calculated?
 
 For R2 climatology, PyRe computes sigma **itself** from the raw R2 time series — it is not pre-fetched from a file.
 
@@ -140,9 +161,11 @@ For R2 climatology, PyRe computes sigma **itself** from the raw R2 time series �
 
 **Do the R2 files contain pre-computed sigma?** No. The PSL THREDDS long-term mean (LTM) files contain only the mean field and a `valid_yr_count` variable — no sigma. PyRe computes R2 sigma from scratch and caches the result after the first request.
 
+The same is true of the R1 4×-daily per-hour files used for 3-hourly baselines: mean only, no sigma. Computing a per-hour sigma would mean assembling 30 years of data separately for each of the eight analysis hours, which is why 3-hourly normalized maps are not offered. See Q8.
+
 ---
 
-## 10. Why does PyRe mask low wind speeds on normalized anomaly maps?
+## 11. Why does PyRe mask low wind speeds on normalized anomaly maps?
 
 A normalized anomaly of +5σ at 850mb is meaningless if the actual wind speed is 3 m/s. The background flow is essentially calm — there is no jet or meaningful circulation to be anomalous. The σ denominator can be very small in regions of weak climatological flow, producing inflated sigma values that look dramatic but carry no physical significance.
 
@@ -164,7 +187,7 @@ Other variables (temperature, height, humidity) do not require this masking — 
 
 ---
 
-## 11. Why does CORe produce better maps than what PSL was showing?
+## 12. Why does CORe produce better maps than what PSL was showing?
 
 | Attribute | PSL (R1) | PyRe (CORe) |
 |---|---|---|
@@ -177,7 +200,7 @@ The practical effect: features like the low-level jet (LLJ), frontal boundaries,
 
 ---
 
-## 12. My CORe map looks different from the old PSL map for the same date. Which is right?
+## 13. My CORe map looks different from the old PSL map for the same date. Which is right?
 
 CORe, almost certainly. The differences are usually explained by:
 
@@ -189,7 +212,7 @@ The best independent validation for a specific historical date is **ERA5** (ECMW
 
 ---
 
-## 13. What data sources are researchers actually using for case studies?
+## 14. What data sources are researchers actually using for case studies?
 
 This varies by event date and paper vintage:
 
@@ -207,7 +230,7 @@ For the 2011 Super Outbreak, researchers most commonly use ERA5 or NARR. CORe at
 
 ---
 
-## 14. What is the R2 daily climatology, specifically?
+## 15. What is the R2 daily climatology, specifically?
 
 For a given calendar day (e.g., April 27), the R2 daily climatology is computed as follows:
 
@@ -220,13 +243,13 @@ The R2 daily climatology is the correct baseline for 3-hourly and daily mode ano
 
 ---
 
-## 15. Why is there no R2 February 29 climatology entry?
+## 16. Why is there no R2 February 29 climatology entry?
 
 The R2 daily climatology uses 1991–2020. Not every year has Feb 29. PyRe maps leap day observations (Feb 29) to Feb 28 for the purpose of climatology lookup. This is standard practice and introduces negligible error.
 
 ---
 
-## 16. What does the wind overlay show and does it cost extra fetches?
+## 17. What does the wind overlay show and does it cost extra fetches?
 
 The wind overlay draws vectors, barbs, or isotachs (labeled speed contours) on top of any scalar field. It requires U and V wind components, taken **at the map's own level** — 10m winds for surface/single-level fields — and the map title states which (e.g. "850mb Wind Barbs", "10m Wind Barbs").
 
@@ -242,7 +265,7 @@ The wind overlay draws vectors, barbs, or isotachs (labeled speed contours) on t
 
 ---
 
-## 17. What does "surgical byte-range extraction" mean?
+## 18. What does "surgical byte-range extraction" mean?
 
 PyRe never downloads an entire GRIB2 file. Instead:
 
@@ -254,7 +277,7 @@ This is the same technique NOMADS uses internally and what enables PyRe to respo
 
 ---
 
-## 18. Where is data cached and why?
+## 19. Where is data cached and why?
 
 Climatology data is cached to disk on the server after the first computation. This includes R2 daily climatology and R2 monthly climatology; monthly PGB climatology has its own retrieval path. Caching is appropriate because:
 
@@ -266,7 +289,7 @@ Observation data (CORe fields) is **not** disk-cached — it updates on a 3-hour
 
 ---
 
-## 19. Should PyRe pre-compute all climatology files in advance or compute on demand?
+## 20. Should PyRe pre-compute all climatology files in advance or compute on demand?
 
 **Short answer: pre-compute. Run the batch script once.**
 
@@ -294,7 +317,7 @@ The pre-computed files are in the same format the API already reads — no serve
 
 ---
 
-## 20. Why does the batch script use a 5-day window but the on-demand code uses 1 day per year?
+## 21. Why does the batch script use a 5-day window but the on-demand code uses 1 day per year?
 
 The batch script computes a ±2 day window (5 samples per year × 30 years = **150 samples** per DOY). The on-demand code was written for simplicity and uses the exact date only (**30 samples** per DOY).
 
@@ -302,7 +325,7 @@ The 5-day window is how PSL computed their own LTM values. It is strictly better
 
 ---
 
-## 21. What do the CAPE/CIN parcel options mean, and how do they compare to SPC's?
+## 22. What do the CAPE/CIN parcel options mean, and how do they compare to SPC's?
 
 CORe publishes three CAPE records (and matching CIN), exposed in the Level selector:
 
@@ -314,7 +337,7 @@ Labels state the layer depths explicitly so maps are honest about which definiti
 
 ---
 
-## 22. Why does PyRe's MSLP look weaker than GFS maps over the Rockies in summer?
+## 23. Why does PyRe's MSLP look weaker than GFS maps over the Rockies in summer?
 
 "Sea-level pressure" over high terrain is an extrapolation, and different reduction methods disagree most under strong surface heating. A concrete comparison for July 7 2026 18z (the Colorado thermal low):
 

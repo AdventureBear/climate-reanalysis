@@ -1,6 +1,8 @@
 from .config import supports_climatology
 
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
+# r1-4xdaily is resolved internally for 3-hourly anomalies (#72), never
+# requested directly, so it is not offered as a user-selectable source.
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
 VALID_WIND_UNITS = ("kt", "m/s")
 VALID_PWAT_UNITS = ("mm", "in")

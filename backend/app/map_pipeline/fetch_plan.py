@@ -47,7 +47,14 @@ from ..retrieval import (
     get_climatology_relative_humidity,
     get_climatology_wind_speed,
 )
+from ..climo_r1 import (
+    get_r1_hourly_climo,
+    get_r1_hourly_climo_field,
+    get_r1_hourly_climo_spec,
+    get_r1_hourly_climo_wind_speed,
+)
 from ..config import VARIABLES, is_surface_or_named_level
+from .climo_policy import HOURLY_CLIMO_SOURCE
 from .time_selection import TimeSelection
 
 
@@ -206,6 +213,18 @@ WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
 
 
 def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib_name: str):
+    # Per-synoptic-hour baseline for single-hour products (#72). Mean only —
+    # the LTM files carry no sigma, which is why 3-hourly normalized mode is
+    # not offered; std is returned as None and never read on this path.
+    if climo_source == HOURLY_CLIMO_SOURCE:
+        hour = int(req.hour)
+        hourly_spec = VARIABLES[req.variable].get("r1_4xday")
+        if hourly_spec is not None:
+            return get_r1_hourly_climo_spec(hourly_spec, req.level, month, day, hour), None
+        if req.variable == "wind_speed":
+            return get_r1_hourly_climo_wind_speed(req.level, month, day, hour), None
+        return get_r1_hourly_climo_field(grib_name, req.level, month, day, hour), None
+
     # Single-level variables declare their R2 baseline as an r2_climo spec;
     # climo_policy guarantees climo_source is one of the two R2 sources here.
     spec = VARIABLES[req.variable].get("r2_climo")
@@ -263,11 +282,23 @@ def fetch_daily_climo_for_selection(req: FetchRequest, climo_source: str, select
     total = sum(weight for _, weight in days)
     climo_data = [(weight, fetch_climo(req, climo_source, month, day, grib_name)) for (month, day), weight in days]
     mean = sum(weight * cm for weight, (cm, _) in climo_data) / total
+    # The hourly baseline is mean-only (see fetch_climo); every other source
+    # carries sigma for all days.
+    if any(cs is None for _, (_, cs) in climo_data):
+        return mean, None
     std = sum(weight * cs for weight, (_, cs) in climo_data) / total
     return mean, std
 
 
 def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int, day: int):
+    if climo_source == HOURLY_CLIMO_SOURCE:
+        hour = int(req.hour)
+        spec = VARIABLES[req.variable].get("r1_4xday")
+        if spec is not None and spec.get("derive") == "wind_speed":
+            return (get_r1_hourly_climo(spec["u"], req.level, month, day, hour),
+                    get_r1_hourly_climo(spec["v"], req.level, month, day, hour))
+        return (get_r1_hourly_climo_field("UGRD", req.level, month, day, hour),
+                get_r1_hourly_climo_field("VGRD", req.level, month, day, hour))
     return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, day, req.level)
 
 

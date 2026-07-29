@@ -33,7 +33,22 @@ function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }
   )
 }
 
-export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null }: {
+/** Dismissible explanation of something the builder changed on the user's
+ *  behalf, e.g. a link asking for a mode that map cannot produce (#72). */
+function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+  return (
+    <div role="status"
+      className="mb-3 flex w-full max-w-xl items-start gap-3 rounded border border-amber-600 bg-amber-950/60 px-4 py-3 text-sm text-amber-100">
+      <span className="flex-1">{text}</span>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss"
+        className="shrink-0 cursor-pointer rounded border border-amber-500 px-2 py-0.5 font-medium hover:bg-amber-900">
+        Got it
+      </button>
+    </div>
+  )
+}
+
+export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null, notice = null, onDismissNotice }: {
   mapSrc: string | null
   error: string | null
   loading: boolean
@@ -42,13 +57,20 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
   saving?: boolean
   // One-click informed retry when a composite has missing data (#95).
   retry?: { label: string; onClick: () => void } | null
+  // Dismissible note when the builder changed the request (#72).
+  notice?: string | null
+  onDismissNotice?: () => void
 }) {
+  const noticeEl = notice && onDismissNotice
+    ? <Notice text={notice} onDismiss={onDismissNotice} />
+    : null
   return (
     <>
         {isVertical ? (
           <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
             {(mapSrc || error || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center w-full h-full">
+                {noticeEl}
                 {error && (
                   <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
                     {error}
@@ -77,6 +99,7 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
           <>
             {(mapSrc || error || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center min-h-48">
+                {noticeEl}
                 {error && (
                   <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
                     {error}

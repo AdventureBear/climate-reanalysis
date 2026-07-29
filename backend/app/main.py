@@ -322,6 +322,19 @@ def get_map(
         )
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
+    # Single-hour products (no `hours`, no `months`) compare against that
+    # hour's normal, which is a mean-only baseline — there is no per-hour
+    # sigma to normalize by (#72). The daily map answers the same question
+    # in standard deviations.
+    if mode == "normalized" and not hours and not months:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "normalized mode is not available for single-hour maps: the "
+                "per-hour climatology has no standard deviation. Use the daily "
+                "composite for normalized anomalies, or anomaly mode for this hour."
+            ),
+        )
     if hours:
         parsed_hours = [h.strip() for h in hours.split(",") if h.strip()]
         invalid_hours = [h for h in parsed_hours if h not in VALID_HOURS]

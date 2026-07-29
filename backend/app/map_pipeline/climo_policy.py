@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Protocol
 
-from ..config import supported_climo_sources
+from ..config import R1_4XDAY_FIELDS, VARIABLES, supported_climo_sources
 from .time_selection import TimeSelection
 
 log = logging.getLogger("pyre.api")
@@ -11,6 +11,9 @@ log = logging.getLogger("pyre.api")
 MONTHLY_IMPLEMENTED_CLIMO_SOURCES = {"monthly-pgb", "r2-monthly"}
 MONTHLY_FALLBACK_CLIMO_SOURCE = "r2-monthly"
 SUBMONTHLY_CLIMO_SOURCE = "r2-daily"
+# Single-hour products (3-hourly single maps and same-hour composites) compare
+# against the normal for THAT hour, not a daily mean (#72).
+HOURLY_CLIMO_SOURCE = "r1-4xdaily"
 
 
 class ClimoRequest(Protocol):
@@ -19,7 +22,37 @@ class ClimoRequest(Protocol):
     climo_source: str
 
 
+def has_hourly_baseline(variable: str) -> bool:
+    """Whether this variable has a per-synoptic-hour (R1 4×-daily) baseline.
+
+    Single-level variables declare an `r1_4xday` spec; pressure-level fields
+    are covered when their GRIB name appears in R1_4XDAY_FIELDS. Wind speed is
+    derived from the u/v files.
+    """
+    cfg = VARIABLES.get(variable, {})
+    if not cfg.get("climo_sources"):
+        return False
+    if cfg.get("r1_4xday"):
+        return True
+    if variable == "wind_speed":
+        return "UGRD" in R1_4XDAY_FIELDS and "VGRD" in R1_4XDAY_FIELDS
+    if variable == "rel_humidity":
+        return "RH" in R1_4XDAY_FIELDS
+    return cfg.get("grib_name") in R1_4XDAY_FIELDS
+
+
+def is_single_hour_product(selection: TimeSelection) -> bool:
+    """True for maps valid at one analysis hour — the ones a daily-mean
+    baseline biases. Daily composites average 00/06/12/18z, so a daily-mean
+    baseline is the correct like-for-like comparison for them."""
+    return not selection.monthly_mode and not selection.is_daily_composite
+
+
 def _clamp_to_variable(source: str, variable: str) -> str:
+    # r1-4xdaily is chosen by cadence, not offered per variable; the caller has
+    # already confirmed the variable has an hourly baseline.
+    if source == HOURLY_CLIMO_SOURCE:
+        return source
     """
     Substitute an equivalent-cadence source when the variable's registry does
     not support the resolved one (e.g. single-level fields have no monthly-pgb
@@ -67,6 +100,15 @@ def _resolve_for_cadence(req: ClimoRequest, selection: TimeSelection) -> str:
             MONTHLY_FALLBACK_CLIMO_SOURCE,
         )
         return MONTHLY_FALLBACK_CLIMO_SOURCE
+
+    # A single-hour map compares against that hour's normal; a daily mean would
+    # leave the diurnal cycle inside the anomaly (#72).
+    if is_single_hour_product(selection) and has_hourly_baseline(req.variable):
+        log.info(
+            "CLIMO    single-hour product → r1-4xdaily"
+            " (per-synoptic-hour baseline; a daily mean would carry the diurnal cycle)",
+        )
+        return HOURLY_CLIMO_SOURCE
 
     if req.climo_source != SUBMONTHLY_CLIMO_SOURCE:
         log.info(
