@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,7 @@ def reset_rate_limiter():
     rate_limiter.reset()
 
 
-def test_map_rate_limit_returns_429_before_render(monkeypatch):
+def test_map_rate_limit_returns_429_before_render(monkeypatch, caplog):
     renders = 0
 
     def fake_create_map_buffer(_req):
@@ -38,10 +39,13 @@ def test_map_rate_limit_returns_429_before_render(monkeypatch):
     assert client.get("/api/map", params=params).status_code == 200
     assert client.get("/api/map", params=params).status_code == 200
 
-    limited = client.get("/api/map", params=params)
+    with caplog.at_level(logging.WARNING, logger="app.rate_limit"):
+        limited = client.get("/api/map", params=params)
 
     assert limited.status_code == 429
     assert "Retry-After" in limited.headers
+    assert "RATE_LIMITED rule=test-map method=GET path=/api/map" in caplog.text
+    assert "client=" in caplog.text
     assert renders == 2
 
 

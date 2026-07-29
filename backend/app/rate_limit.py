@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 import time
 from collections import deque
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 from typing import Deque
 
 from fastapi import HTTPException, Request
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -60,13 +63,21 @@ def _client_token(request: Request) -> str:
 
 
 def enforce_rate_limit(request: Request, rule: RateLimitRule) -> None:
-    key = f"{rule.name}:{_client_token(request)}"
+    client_token = _client_token(request)
+    key = f"{rule.name}:{client_token}"
     retry_after = rate_limiter.check(key, rule)
     if retry_after is None:
         return
+    log.warning(
+        "RATE_LIMITED rule=%s method=%s path=%s client=%s retry_after=%s",
+        rule.name,
+        request.method,
+        request.url.path,
+        client_token[:12],
+        retry_after,
+    )
     raise HTTPException(
         status_code=429,
         detail=f"Too many requests. Please wait {retry_after} seconds and try again.",
         headers={"Retry-After": str(retry_after)},
     )
-
