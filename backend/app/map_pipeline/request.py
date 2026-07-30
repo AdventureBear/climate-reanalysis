@@ -22,7 +22,12 @@ class MapRequest:
     scale_max: float | None = None
     scale_spec: str = ""
     mode: str = "raw"
-    climo_source: str = "monthly-pgb"
+    # R2 monthly, matching every existing map, share link, and saved recipe.
+    # The frontend used to send r2-monthly on every request and override a
+    # monthly-pgb default here, so the two halves disagreed and nobody ever
+    # received the CORe baseline (#127). Whether CORe should become the
+    # default is #66.
+    climo_source: str = "r2-monthly"
     wind_unit: str = "kt"
     pwat_unit: str = "in"
     # "contours" (default) or "shaded" — how contour-first variables

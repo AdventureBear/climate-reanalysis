@@ -47,7 +47,11 @@ CLIMO_DESC = {
         "NCEP/DOE Reanalysis 2  |  PSL THREDDS OPeNDAP  |  "
         "single strided request (30 monthly slices)  |  1991–2020  |  2.5° grid"
     ),
-    "monthly-pgb": "CORe pgb monthly means  |  FTP surgical byte-range  |  1991–2020  |  2.5° grid",
+    "monthly-pgb": (
+        "CORe monthly means  |  FTP surgical byte-range  |  "
+        "single strided request (30 monthly slices)  |  1991–2020  |  2.5° grid  |  "
+        "same dataset as the observations"
+    ),
 }
 
 

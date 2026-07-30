@@ -27,6 +27,8 @@ import {
 
 export type TemperatureUnit = 'auto' | 'F' | 'C'
 
+const CORE_CLIMO_STORAGE_KEY = 'pyre.preferCoreClimo'
+
 export function defaultDate(): string {
   const d = new Date()
   d.setDate(d.getDate() - 3)
@@ -71,7 +73,33 @@ export function useCompositeRecipe() {
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
   const [fillMode, setFillMode] = useState<FillMode>('contours')
   const [colorStep, setColorStep] = useState('1')
-  const [climoSource,  setClimoSource]  = useState<ClimoSource>('r2-monthly')
+  // Baseline preference (#127). R2 monthly is the default, matching every map
+  // and share link made before the CORe option was reachable. Turning the
+  // preference on asks for CORe; climo_policy substitutes R2 wherever CORe has
+  // no baseline (surface variables, and all daily and 3-hourly maps), so the
+  // preference is a no-op outside monthly pressure-level maps.
+  const [preferCoreClimo, setPreferCoreClimo] = useState(false)
+  const climoSource: ClimoSource = preferCoreClimo ? 'monthly-pgb' : 'r2-monthly'
+  // Loading a recipe (share link, saved map) sets the source without changing
+  // the stored preference: that map's baseline is part of the map, not a
+  // standing choice.
+  const setClimoSource = (source: ClimoSource) => setPreferCoreClimo(source === 'monthly-pgb')
+
+  // Restored after mount rather than in the initializer: localStorage does not
+  // exist during the static build, so reading it there would mismatch hydration.
+  useEffect(() => {
+    try {
+      setPreferCoreClimo(localStorage.getItem(CORE_CLIMO_STORAGE_KEY) === '1')
+    } catch { /* private browsing or storage disabled: keep the default */ }
+  }, [])
+
+  /** The settings toggle. Persists, unlike loading a recipe. */
+  function chooseCoreClimoPreference(next: boolean) {
+    setPreferCoreClimo(next)
+    try {
+      localStorage.setItem(CORE_CLIMO_STORAGE_KEY, next ? '1' : '0')
+    } catch { /* nothing to do if storage is unavailable */ }
+  }
 
   const apiVariable = apiVariableForSelection(variable, level)
   const apiLevel = apiLevelForSelection(variable, level)
@@ -264,6 +292,7 @@ export function useCompositeRecipe() {
     fillMode, setFillMode,
     colorStep, setColorStep,
     climoSource, setClimoSource,
+    preferCoreClimo, chooseCoreClimoPreference,
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, isWindVariable,

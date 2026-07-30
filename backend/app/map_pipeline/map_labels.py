@@ -33,7 +33,9 @@ def map_date_label(
     climo_source_labels = {
         "r2-daily": "R2-daily",
         "r2-monthly": "R2-monthly",
-        "monthly-pgb": "PGB-monthly",
+        # Names the dataset, not the file layout: this baseline is built from
+        # CORe's own monthly means, the same dataset as the observations.
+        "monthly-pgb": "CORe-monthly",
         # Per-synoptic-hour baseline (#72). A different reanalysis than the
         # daily/monthly baselines, so the title says so outright.
         "r1-4xdaily": "R1 4×-daily",

@@ -44,6 +44,7 @@ export default function MapBuilder() {
     windUnit, setWindUnit,
     pwatUnit, setPwatUnit,
     apiVariable, apiLevel, isClimo,
+    preferCoreClimo, chooseCoreClimoPreference,
     currentMapRecipe, applyRecipeToState,
   } = recipe
 
@@ -303,7 +304,9 @@ export default function MapBuilder() {
       />
 
       {settingsOpen && (
-        <SettingsDrawer isVertical={isVertical} setLayoutMode={setLayoutMode} onClose={() => setSettingsOpen(false)} />
+        <SettingsDrawer isVertical={isVertical} setLayoutMode={setLayoutMode}
+          preferCoreClimo={preferCoreClimo} onPreferCoreClimo={chooseCoreClimoPreference}
+          onClose={() => setSettingsOpen(false)} />
       )}
 
 
