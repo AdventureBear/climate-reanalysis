@@ -1,9 +1,10 @@
-# R1 vs R2 vs CORe: what each dataset actually contains
+# R1 vs R2 vs CORe vs ERA5: what each dataset actually contains
 
-Checked against the live servers in July 2026. Sources:
+Checked against the live servers on 29 July 2026. Sources:
 
 - **R1** and **R2**: the PSL THREDDS `Dailies` catalogs (`ncep.reanalysis`, `ncep.reanalysis2`).
 - **CORe**: the operational GRIB index files, `pgb` (pressure levels) and `flx` (surface), read from a real analysis time.
+- **ERA5**: the public analysis-ready copy on Google Cloud (`gcp-public-data-arco-era5`). Listed for comparison; PyRe does not currently use it.
 
 An X means the dataset publishes that field. A blank means it does not.
 
@@ -11,15 +12,64 @@ An X means the dataset publishes that field. A blank means it does not.
 
 ## At a glance
 
-| Dataset | Covers | Still growing? | Latest data available | Normals available | Last checked |
-|---|---|---|---|---|---|
-| **R1** (NCEP/NCAR Reanalysis 1) | 1948 onward | No, retired | 17 Mar 2026 | Hourly, daily, monthly — all on a fixed 1991–2020 base period | 27 Jul 2026 |
-| **R2** (NCEP/DOE Reanalysis 2) | 1979 onward | No, stopped | 28 Feb 2026 | None published. PyRe computes them from 30 years of raw files | 27 Jul 2026 |
-| **CORe** (Climate-Ocean Reanalysis) | 1950 onward | Yes, updated daily | 29 Jul 2026 (3-hourly) | Monthly means only, and the latest is **Dec 2025**. Nothing daily or hourly | 27 Jul 2026 |
+| Dataset | Covers | Still growing? | Grid | Latest data available | Normals available | Last checked |
+|---|---|---|---|---|---|---|
+| **R1** (NCEP/NCAR Reanalysis 1) | 1948 onward | No, retired | 2.5° (T62 gaussian for surface) | 17 Mar 2026 | Hourly, daily, monthly — all on a fixed 1991–2020 base period | 29 Jul 2026 |
+| **R2** (NCEP/DOE Reanalysis 2) | 1979 onward | No, stopped | 2.5° (T62 gaussian for surface) | 28 Feb 2026 | None published. PyRe computes them from 30 years of raw files | 29 Jul 2026 |
+| **CORe** (Climate-Ocean Reanalysis) | 1950 onward | Yes, updated daily | 0.703° 3-hourly; 2.5° monthly archive | 29 Jul 2026 (3-hourly) | Monthly means only, and the latest is **Dec 2025**. Nothing daily or hourly | 29 Jul 2026 |
+| **ERA5** (ECMWF) — *not currently used* | 1940 onward | Yes, updated daily | 0.25°, hourly, 37 pressure levels | 23 Jul 2026 preliminary; 30 Apr 2026 final | None published, but computable for any period from the full hourly record | 29 Jul 2026 |
 
 You were right about CORe: the monthly archive stops at December 2025. January 2026 onward returns nothing. So CORe's own monthly normals are seven months behind its observations, which are current to yesterday.
 
 Both older datasets stopped this spring, within weeks of each other. Their normals are frozen on the 1991–2020 period, which does not change as time passes, so they stay usable as baselines even though no new observations arrive.
+
+---
+
+## Resolution, and why one number is not enough
+
+CORe does not have a single grid. Which one you get depends on the product, and therefore on the map you asked for.
+
+| What you request | Grid you get | Where it comes from |
+|---|---|---|
+| 3-hourly map, any date | 0.703° (256 × 512) | CORe analyses, T170 gaussian |
+| Daily map, any date | 0.703° | averaged from those same analyses |
+| Monthly map, through Dec 2025 | **2.5°** (73 × 144) | CORe's own monthly-mean archive |
+| Monthly map, 2026 onward | 0.703° | rebuilt from 3-hourly analyses, because the monthly archive stops at Dec 2025 |
+
+So two monthly maps either side of that date differ by a factor of twelve in grid points, for the same variable and the same product. Nothing on the map says which one you are looking at.
+
+A note on a claim that was wrong for a long time: earlier versions of this project's documentation described CORe as 0.25°, about 28 km, and roughly ten times finer than R1, based on a `pgrb2.0p25` filename taken from early planning notes. That filename does not resolve on NOMADS, and no 0.25° CORe product was found when this was checked. Both of the archives PyRe fetches from, GCS and the NOMADS fallback, serve the same 0.703° grid. The true comparison against R1 and R2 is about 3.5× finer in each direction, or roughly 13× smaller grid boxes by area. CORe is still clearly the right observation source; only the numbers were wrong.
+
+ERA5, by contrast, genuinely is 0.25°. It is finer than CORe. See the next section.
+
+---
+
+## ERA5, the one we do not use
+
+ERA5 is the European reanalysis, from ECMWF rather than NCEP. It does the same job as R1, R2, and CORe: re-run a weather model across the historical record, absorbing every observation available, to produce a complete gridded atmosphere for any hour in the past.
+
+It is a genuine alternative for both observations and normals, not just a validation reference. Checked 29 Jul 2026 against the public analysis-ready copy on Google Cloud (`gcp-public-data-arco-era5`):
+
+| | ERA5 | CORe (what we use) |
+|---|---|---|
+| Covers | 1940 onward | 1950 onward |
+| Grid | 0.25° (~28 km) | 0.703° (~78 km) |
+| Time step | Hourly | 3-hourly |
+| Pressure levels | 37 | 16 wired here |
+| Currency | 23 Jul 2026 preliminary, 30 Apr 2026 final | 29 Jul 2026 |
+| Format | Zarr, cloud-native, supports partial reads | GRIB2 with byte-range index |
+
+So ERA5 is finer, more frequent, deeper in the vertical, and reaches back a decade further. CORe is more current, because ERA5's final product lags about three months and even its preliminary stream runs a few days behind.
+
+Variables were not enumerated here. A partial listing returned 50 names before truncating alphabetically at "i", including CAPE, CIN, boundary layer height, cloud cover by layer, dewpoint, 100 m winds, and a large set of radiation, soil, and ocean wave fields. The full set is substantially larger than either NCEP dataset.
+
+**Why PyRe does not use it.** Two reasons, and only one of them still holds.
+
+The project was scoped as a replacement for a PSL tool built on NCEP data, so an NCEP successor was the natural choice and ERA5 was treated as something other people validate against rather than something we might fetch. That framing is still defensible for continuity with the community that used those pages.
+
+The technical objection was access. ERA5 traditionally came through a request queue: ask for data, wait for it to be prepared. That is incompatible with rendering a map in seconds. But the analysis-ready cloud copy above removes that objection. It is public, it responded immediately when checked, and Zarr supports reading a small piece of a large array, which is the same property that makes the CORe byte-range approach fast.
+
+Whether to use it, and for what, is the open question in #66. The strongest case is for climatology rather than observations: ERA5's hourly record from 1940 could produce normals at any time scale and any base period, which is precisely the gap that forces the current three-dataset mix.
 
 ---
 
@@ -72,7 +122,7 @@ Hourly is the exception: no dataset publishes hourly raw data we can compute fro
 | Potential vorticity | | | X | — / — / PVORT |
 | Vertical wind shear | | | X | — / — / VWSH |
 
-Grid spacing: R1 and R2 are 2.5 degrees (about 175 miles). CORe is 0.25 degrees (about 17 miles).
+Grid spacing: R1 and R2 are 2.5 degrees (about 175 miles). CORe's 3-hourly files are 0.703 degrees (about 49 miles); its monthly archive is 2.5 degrees, the same as the other two. See the resolution section above.
 
 ---
 

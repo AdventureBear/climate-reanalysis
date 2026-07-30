@@ -239,41 +239,18 @@ _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
 # Units were verified against CORe obs fields (Pa, kg/m², K, m/s) — no
 # conversions applied at fetch time.
 #
-# normalized_mask_threshold: for normalized anomaly maps, grid points where the
-# observed value is BELOW this threshold are masked (set to NaN before rendering).
-# Prevents physically meaningless high-sigma values over weak background flow.
-# e.g. a +5σ wind anomaly at 15 m/s is noise against a near-zero summer mean —
-# the jet simply isn't there. Set to None to suppress masking for that variable.
+# normalized_mask_threshold: optional non-wind guard for normalized anomaly maps.
+# Grid points where the observed value is below this threshold are masked after
+# the sigma-validity mask. Wind normalized maps intentionally use only the
+# sigma-validity mask: a weak monthly or daily mean wind can still have a real
+# standardized departure from climatology.
 VARIABLES = {
     "wind_speed": {
         "name": "Wind Speed",
         "units": "m/s",
         "grib_names": ["UGRD", "VGRD"],
         "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
-        # Minimum observed wind (m/s) for a normalized anomaly to be physically meaningful.
-        # Below threshold → masked to NaN. Scales with pressure level because wind speed
-        # climatology drops significantly from upper troposphere to the surface.
-        # 250mb: jet core threshold (~25 kt minimum to call it jet-level flow)
-        # 850mb: LLJ / strong surface wind threshold
-        # Levels not listed → nearest level's value is used.
-        "normalized_mask_threshold": {
-            1000: 8.0,
-            925:  8.0,
-            850: 12.0,   # LLJ threshold; below this is weak background flow
-            700: 12.0,
-            600: 14.0,
-            500: 15.0,
-            400: 18.0,
-            300: 20.0,
-            250: 20.0,   # jet core; below this is summer background noise
-            200: 22.0,
-            150: 20.0,
-            100: 15.0,
-            70:  12.0,
-            50:  10.0,
-            20:   8.0,
-            10:   8.0,
-        },
+        "normalized_mask_threshold": None,
     },
     "temp": {
         "name": "Temperature",

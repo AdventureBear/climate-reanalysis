@@ -24,10 +24,10 @@ The PSL composite tools were built on **NCEP Reanalysis 1** (R1), a global retro
 
 PyRe uses **CORe — Climate-Ocean Reanalysis** from NCEP/CPC.
 
-- **Resolution**: 0.25° × 0.25° (~28 km at mid-latitudes) — roughly 10× finer than R1
+- **Resolution**: 0.703° × 0.703° (~78 km at mid-latitudes), the T170 gaussian grid — about 3.5× finer than R1 in each direction, or roughly 13× smaller grid boxes by area
 - **Temporal coverage**: January 1, 1950 to near-real-time
 - **Format**: GRIB2 ensemble mean files; PyRe fetches data surgically using HTTP byte-range requests (no full file downloads)
-- **Naming**: `core.{YYYYMMDD}.t{HH}z.pgrb2.0p25.f000.grib2`
+- **Naming**: `pgb.{YYYYMMDD}{HH}.grb` (pressure levels) and `flx.{YYYYMMDD}{HH}.grb` (surface) in the GCS archive; `core.t{HH}z.spgb.ensmean.anl.grib2` on NOMADS for the most recent week
 
 CORe is the designated successor to R1/R2 for NCEP operational reanalysis products.
 
@@ -37,7 +37,7 @@ CORe is the designated successor to R1/R2 for NCEP operational reanalysis produc
 
 **No.** In PyRe, R2 is used *exclusively* for the climatological baseline — the 30-year mean and standard deviation used to compute anomaly and normalized anomaly maps. R2 is never used as the source for the observation fields shown on raw or composite maps.
 
-**Why not?** R2 was last updated in 2021 and has no near-real-time data. Its 2.5° spatial resolution is also significantly coarser than CORe's 0.25°. For any map showing what the atmosphere looked like on a specific date, CORe is the correct source.
+**Why not?** R2 stopped updating in early 2026 and has no near-real-time data. Its 2.5° spatial resolution is also significantly coarser than CORe's 0.703°. For any map showing what the atmosphere looked like on a specific date, CORe is the correct source.
 
 ---
 
@@ -191,12 +191,12 @@ Other variables (temperature, height, humidity) do not require this masking — 
 
 | Attribute | PSL (R1) | PyRe (CORe) |
 |---|---|---|
-| Grid resolution | ~2.5° (~275 km) | 0.25° (~28 km) |
+| Grid resolution | ~2.5° (~275 km) | 0.703° (~78 km) |
 | Coverage | 1948–March 2026 | 1950s–present (near real-time) |
 | Spectral truncation | T62 | Significantly higher |
 | Current? | Discontinued | Active and updating |
 
-The practical effect: features like the low-level jet (LLJ), frontal boundaries, and upper-level troughs are positioned more accurately at 0.25° than at 2.5°. A wind maximum that appears 200–300 km north of where you expect it on PSL's map may be correct at CORe's resolution. That is not an error — it is better data.
+The practical effect: features like the low-level jet (LLJ), frontal boundaries, and upper-level troughs are positioned more accurately at 0.703° than at 2.5°. A wind maximum that appears 200–300 km north of where you expect it on PSL's map may be correct at CORe's resolution. That is not an error — it is better data.
 
 ---
 
@@ -204,7 +204,7 @@ The practical effect: features like the low-level jet (LLJ), frontal boundaries,
 
 CORe, almost certainly. The differences are usually explained by:
 
-1. **Resolution**: 0.25° vs 2.5° — PSL was averaging over grid boxes 10× larger. Fine-scale features (LLJ cores, jet streaks, moisture plumes) were smeared.
+1. **Resolution**: 0.703° vs 2.5° — PSL was averaging over grid boxes roughly 13× larger in area. Fine-scale features (LLJ cores, jet streaks, moisture plumes) were smeared.
 2. **Different reanalysis system**: R1 and CORe use different data assimilation schemes, model backgrounds, and observational inputs. They are not expected to produce identical fields.
 3. **Improved observational coverage**: CORe incorporates more recent observational datasets and better quality control even when retrospectively applied.
 
@@ -220,13 +220,13 @@ This varies by event date and paper vintage:
 |---|---|---|---|
 | **ERA5** | 0.25° | 1940–present | Current gold standard for CONUS case studies; most post-2020 severe weather papers |
 | **NARR** | ~32 km | 1979–2021 | North American Regional Reanalysis; widely cited in older severe wx literature |
-| **CORe** | 0.25° | 1950s–present | What PyRe uses; comparable resolution to ERA5 |
+| **CORe** | 0.703° | 1950–present | What PyRe uses; coarser than ERA5, but reaches back to 1950 and is still updating |
 | **NAM/GFS archived analyses** | 12–4 km | ~2004–present | Operational analysis grids from NCEI; used for real-time event reconstruction |
 | **HRRR** | ~3 km | 2014–present (operational) | High-resolution convective-scale; NOT available for pre-2014 events |
 
 **Important**: If a paper or talk about a pre-2014 event (like the April 27, 2011 Super Outbreak) references HRRR, it is almost certainly either a hindcast (a model re-run using the HRRR configuration, which is a specialized research product) or a misidentified product. HRRR operational archives begin around 2014–2016.
 
-For the 2011 Super Outbreak, researchers most commonly use ERA5 or NARR. CORe at 0.25° is directly comparable to ERA5 in resolution and appropriate for that validation.
+For the 2011 Super Outbreak, researchers most commonly use ERA5 or NARR. CORe at 0.703° is coarser than either, so it is well suited to the synoptic pattern — the trough, the jet, the moisture return — and less suited to fine mesoscale structure. Use ERA5 or NARR when the question is about storm-scale detail.
 
 ---
 

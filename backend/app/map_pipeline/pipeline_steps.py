@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from ..config import VARIABLES
@@ -9,6 +10,14 @@ class AnalysisRequest(Protocol):
     variable: str
     level: int
     mode: str
+
+
+@dataclass(frozen=True)
+class NormalizedAnomalyMaskStats:
+    total_valid_input: int
+    invalid_sigma_masked: int
+    threshold_masked: int
+    final_valid: int
 
 
 def is_vector_wind_anomaly(req: AnalysisRequest) -> bool:
@@ -53,12 +62,27 @@ def normalized_mask_threshold(variable: str, level: int):
 
 
 def compute_normalized_anomaly(obs, climo_mean, climo_std, abs_threshold):
+    valid_input = obs.notnull() & climo_mean.notnull() & climo_std.notnull()
+    total_valid_input = int(valid_input.sum())
+
     safe_std = climo_std.where(climo_std > 1e-6)
     subset = (obs - climo_mean) / safe_std
-    if abs_threshold is None:
-        return subset, 0, int(subset.notnull().sum())
+    valid_after_sigma = int(subset.notnull().sum())
+    invalid_sigma_masked = total_valid_input - valid_after_sigma
 
-    n_before = int(subset.notnull().sum())
+    if abs_threshold is None:
+        return subset, NormalizedAnomalyMaskStats(
+            total_valid_input=total_valid_input,
+            invalid_sigma_masked=invalid_sigma_masked,
+            threshold_masked=0,
+            final_valid=valid_after_sigma,
+        )
+
     subset = subset.where(obs >= abs_threshold)
-    n_masked = n_before - int(subset.notnull().sum())
-    return subset, n_masked, n_before
+    final_valid = int(subset.notnull().sum())
+    return subset, NormalizedAnomalyMaskStats(
+        total_valid_input=total_valid_input,
+        invalid_sigma_masked=invalid_sigma_masked,
+        threshold_masked=valid_after_sigma - final_valid,
+        final_valid=final_valid,
+    )

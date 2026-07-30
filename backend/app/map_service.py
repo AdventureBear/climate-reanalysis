@@ -182,7 +182,7 @@ def create_map_buffer(req: MapRequest):
             step += 1
             log.info("")
             log.info("STEP %d  Regrid climatology to observation grid", step)
-            log.info("  To      : %s  (obs grid, 0.25°)", "×".join(str(s) for s in obs_subset.shape))
+            log.info("  To      : %s  (obs grid)", "×".join(str(s) for s in obs_subset.shape))
             log.info("  Method  : bilinear interpolation  (xarray interp_like)")
             if use_vector_wind_anomaly:
                 log.info("  From    : %s  (climo U/V grid, ~2.5°)", "×".join(str(s) for s in climo_u_mean.shape))
@@ -228,9 +228,22 @@ def create_map_buffer(req: MapRequest):
             log.info("  Note    : climo_σ < 1e-6 → NaN  (no inter-annual variability, undefined)")
             if abs_threshold is not None:
                 log.info("  Mask    : obs < %.3g %s → NaN  (below threshold: physically insignificant signal)", abs_threshold, VARIABLES[req.variable].get("units", ""))
-            subset, n_masked, n_before = compute_normalized_anomaly(obs_subset, climo_mean, climo_std, abs_threshold)
+            subset, mask_stats = compute_normalized_anomaly(obs_subset, climo_mean, climo_std, abs_threshold)
+            log.info(
+                "  Masked  : %d grid points with invalid σ (%.1f%% of valid input)",
+                mask_stats.invalid_sigma_masked,
+                100.0 * mask_stats.invalid_sigma_masked / max(mask_stats.total_valid_input, 1),
+            )
             if abs_threshold is not None:
-                log.info("  Masked  : %d grid points below threshold (%.1f%% of domain)", n_masked, 100.0 * n_masked / max(n_before, 1))
+                log.info(
+                    "  Masked  : %d grid points below threshold (%.1f%% of post-σ valid cells)",
+                    mask_stats.threshold_masked,
+                    100.0 * mask_stats.threshold_masked / max(
+                        mask_stats.final_valid + mask_stats.threshold_masked,
+                        1,
+                    ),
+                )
+            log.info("  Valid   : %d grid points remain after normalized-anomaly masks", mask_stats.final_valid)
             log.info("STEP %d ✓  normalized anomaly computed", step)
             log.info("  obs range   : [%.3g, %.3g] %s", float(obs_subset.min()), float(obs_subset.max()), VARIABLES[req.variable].get("units", ""))
             log.info("  climo_mean  : [%.3g, %.3g] %s  (after regrid)", float(climo_mean.min()), float(climo_mean.max()), VARIABLES[req.variable].get("units", ""))

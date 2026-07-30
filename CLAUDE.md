@@ -134,7 +134,7 @@ Schema changes are file-first: write the file in `supabase/migrations/`, apply t
 4. **Render** — Matplotlib + Cartopy PNG at 200+ DPI. Title metadata extracted from the data, never from user input.
 5. **Stream** — FastAPI `StreamingResponse` returns PNG to frontend.
 
-**GRIB2 naming:** `core.{YYYYMMDD}.t{HH}z.pgrb2.0p25.f000.grib2`
+**GRIB2 naming:** GCS archive (primary) `pgb.{YYYYMMDD}{HH}.grb` and `flx.{YYYYMMDD}{HH}.grb`; NOMADS fallback (last ~7 days) `core.t{HH}z.spgb.ensmean.anl.grib2`. Both serve the same **0.703° T170 gaussian grid** (256×512). Earlier drafts of this file named a `pgrb2.0p25` product — that filename does not resolve on NOMADS and no 0.25° CORe product was found (verified 2026-07-27).
 **Index files:** same name + `.{hash}.idx`
 **NOAA NOMADS base:** `https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod/`
 
@@ -146,7 +146,7 @@ The byte range for a record is `byte_start` to `next_record_byte_start - 1`. Par
 
 ### CORe Variables and Pressure Levels
 
-Variables available in the 0.25° ensemble mean files (`spgb.ensmean`):
+Variables available in the 0.703° ensemble mean files (`spgb.ensmean`):
 
 | GRIB Short Name | Description | Levels (mb) |
 |---|---|---|

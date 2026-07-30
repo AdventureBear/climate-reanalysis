@@ -404,7 +404,7 @@ Two separate issues cover this, and they are not the same thing:
 
 A CORe-native build would resolve three things at once: observations and baselines would come from the same dataset; the 03/09/15/21z interpolation between R1 hours would go away; and computing the spread alongside the mean would restore 3-hourly normalized maps, which the R1 per-hour files cannot support. Whether that is the right spend is exactly what #66 decides.
 
-**Open conflict to resolve in #66:** #70 records a decision (2026-07-14) that R1 is explicitly excluded as a climatology source. The #72 work (2026-07-28) introduced R1 4x-daily means as the single-hour baseline, because no other dataset publishes a per-hour normal and R2 has no sub-daily data at all. The diurnal error it removed was far larger than any R1-versus-R2 difference, and the maps label the source, but the exclusion decision has not been formally revisited.
+**R1 as a climatology source: permitted.** #70 recorded an earlier decision (2026-07-14) excluding R1. That is superseded. R1 4x-daily means are approved as the single-hour baseline, because no other dataset publishes a per-hour normal and R2 has no sub-daily data at all, and because the diurnal error removed is far larger than any R1-versus-R2 difference. Every affected map names the source in its title. Reasoning recorded on #72; decision confirmed by the project owner, July 2026.
 
 ### `cfsr-daily` Placeholder
 
