@@ -1030,6 +1030,26 @@ _WIND_VECTOR_ANOMALY_HEX = [
     "#16b87b", "#26ff00", "#cfff00", "#ffe100", "#ff9a00", "#ff2500",
 ]
 
+_WIND_VECTOR_ANOMALY_SCALE_VARIANTS = {
+    "esrl-2kt": {
+        "native_step": {"kt": 2.0, "m/s": 1.0},
+        "white_below": {"kt": 4.0, "m/s": 2.0},
+        "fallback_max": {"kt": 20.0, "m/s": 10.0},
+        "tick_stride": 1,
+    },
+    "esrl-1kt-experiment": {
+        "native_step": {"kt": 1.0, "m/s": 1.0},
+        "white_below": {"kt": 4.0, "m/s": 2.0},
+        "fallback_max": {"kt": 20.0, "m/s": 10.0},
+        "tick_stride": 2,
+    },
+}
+_ACTIVE_WIND_VECTOR_ANOMALY_SCALE = "esrl-1kt-experiment"
+
+_WIND_VECTOR_NORMALIZED_HEX = [
+    "#ffffff", "#fee5d9", "#fcbba1", "#fc9272", "#fb6a4a", "#de2d26", "#a50f15",
+]
+
 _NORMALIZED_MAX = 5.0   # standard deviations (±5σ, 0.5σ step)
 
 
@@ -1093,12 +1113,15 @@ def _wind_vector_anomaly_native_config(
 ) -> dict[str, object]:
     """
     Native display-unit scale for positive-only wind vector anomaly magnitude.
-    Uses the original smoother positive palette, but lets the upper end follow
-    the actual plotted values for the current request.
+    Uses a named ESRL-style positive palette variant so experiments can be
+    swapped later without changing the request contract.
     """
-    native_step = 1.0 if wind_unit == "m/s" else 2.0
+    variant_name = _ACTIVE_WIND_VECTOR_ANOMALY_SCALE
+    variant = _WIND_VECTOR_ANOMALY_SCALE_VARIANTS[variant_name]
+    unit_key = "m/s" if wind_unit == "m/s" else "kt"
+    native_step = float(variant["native_step"][unit_key])
     start_val = native_step
-    white_below = 2.0 if wind_unit == "m/s" else 4.0
+    white_below = float(variant["white_below"][unit_key])
     step = native_step * max(color_step, 1)
 
     data_max = None
@@ -1108,7 +1131,7 @@ def _wind_vector_anomaly_native_config(
         if finite.size:
             data_max = float(np.nanmax(finite))
 
-    fallback_max = 10.0 if wind_unit == "m/s" else 20.0
+    fallback_max = float(variant["fallback_max"][unit_key])
     target_max = max(data_max or fallback_max, white_below + step, start_val + step)
     max_val = float(np.ceil(target_max / step) * step)
 
@@ -1120,14 +1143,42 @@ def _wind_vector_anomaly_native_config(
         color_start=white_below,
         start_at=start_val,
     )
-    tick_vals = list(boundaries)
+    tick_stride = max(1, int(variant["tick_stride"]) * max(color_step, 1))
+    tick_vals = boundaries[::tick_stride]
+    if tick_vals[-1] != boundaries[-1]:
+        tick_vals.append(boundaries[-1])
     return {
+        "variant": variant_name,
         "max_val": max_val,
         "step": step,
         "breakpoints": boundaries,
         "colors": colors,
         "tick_vals": tick_vals,
         "over_color": _WIND_VECTOR_ANOMALY_HEX[-1],
+    }
+
+
+def _wind_vector_normalized_config(color_step: int) -> dict[str, object]:
+    step = max(color_step * 0.5, 0.5)
+    boundaries, colors = _make_positive_scale(
+        max_val=_NORMALIZED_MAX,
+        step=step,
+        anchor_hex=_WIND_VECTOR_NORMALIZED_HEX,
+        white_below=0.5,
+        color_start=0.5,
+        start_at=0.0,
+    )
+    tick_stride = max(1, round(1.0 / step))
+    tick_vals = boundaries[::tick_stride]
+    if tick_vals[-1] != boundaries[-1]:
+        tick_vals.append(boundaries[-1])
+    return {
+        "max_val": _NORMALIZED_MAX,
+        "step": step,
+        "breakpoints": boundaries,
+        "colors": colors,
+        "tick_vals": tick_vals,
+        "over_color": _WIND_VECTOR_NORMALIZED_HEX[-1],
     }
 
 
@@ -1317,16 +1368,25 @@ def describe_color_scale(
     explain exactly how color bands were derived for a given request.
     """
     if mode in ("anomaly", "normalized"):
+        variant = None
         if mode == "normalized":
             max_val = _NORMALIZED_MAX
             step = max(color_step * 0.5, 0.5)
             unit = "σ"
-            breakpoints = [round(v, 6) for v in np.arange(-max_val, max_val + step / 2, step)]
-            anchor_values = _DIV_ANCHORS
-            anchor_hex = _DIV_HEX
             plot_values = np.asarray(data_array.values, dtype=float) if data_array is not None else None
-            _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
-            scale_kind = mode
+            if variable == "wind_speed":
+                native_cfg = _wind_vector_normalized_config(color_step)
+                breakpoints = native_cfg["breakpoints"]
+                interval_colors = native_cfg["colors"]
+                anchor_values = breakpoints[:-1]
+                anchor_hex = [_rgb_to_hex(c) for c in interval_colors]
+                scale_kind = "normalized-vector-anomaly-magnitude"
+            else:
+                breakpoints = [round(v, 6) for v in np.arange(-max_val, max_val + step / 2, step)]
+                anchor_values = _DIV_ANCHORS
+                anchor_hex = _DIV_HEX
+                _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
+                scale_kind = mode
         else:
             max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
             unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
@@ -1344,6 +1404,8 @@ def describe_color_scale(
                 anchor_values = breakpoints[:-1]
                 anchor_hex = [_rgb_to_hex(c) for c in interval_colors]
                 scale_kind = "vector-anomaly-magnitude"
+                variant = native_cfg["variant"]
+                step = native_cfg["step"]
             elif variable in {"temp", "temp_2m"}:
                 unit_letter = _temp_display_unit(variable, level, temp_unit)
                 max_val, step, breakpoints, interval_colors = _temp_anomaly_scale(unit_letter, color_step, monthly=monthly_anomaly)
@@ -1367,6 +1429,7 @@ def describe_color_scale(
             "interval_hex": [_rgb_to_hex(c) for c in interval_colors],
             "anchor_values": anchor_values,
             "anchor_hex": anchor_hex,
+            "variant": variant,
             **stats,
         }
 
@@ -1759,13 +1822,17 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
             unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
             plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
-        if mode == "anomaly" and variable == "wind_speed":
-            native_cfg = _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
+        if variable == "wind_speed" and mode in ("anomaly", "normalized"):
+            native_cfg = (
+                _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
+                if mode == "anomaly"
+                else _wind_vector_normalized_config(color_step)
+            )
             breakpoints = native_cfg["breakpoints"]
             colors = native_cfg["colors"]
             cmap = mcolors.ListedColormap(colors)
             cmap.set_under(colors[0])
-            cmap.set_over(mcolors.to_rgb(_WIND_VECTOR_ANOMALY_HEX[-1]))
+            cmap.set_over(mcolors.to_rgb(native_cfg["over_color"]))
             norm = mcolors.BoundaryNorm(breakpoints, ncolors=len(colors))
             plot_obj = ax.contourf(
                 data_array.longitude, data_array.latitude, plot_vals,
@@ -1775,7 +1842,11 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             cbar_cfg = {
                 'ticks': native_cfg["tick_vals"],
                 'ticklabels': [_format_scale_value(v) for v in native_cfg["tick_vals"]],
-                'ylabel': f'Wind Vector Anomaly Magnitude  ({unit_label})',
+                'ylabel': (
+                    f'Wind Vector Anomaly Magnitude  ({unit_label})'
+                    if mode == "anomaly"
+                    else 'Wind Vector Normalized Anomaly Magnitude  (σ)'
+                ),
                 'extend': 'max',
                 'colors': colors, 'boundaries': breakpoints,
             }

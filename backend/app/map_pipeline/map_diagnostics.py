@@ -15,6 +15,8 @@ def log_scale_diag(scale_diag: dict) -> None:
         log.info("  color step    : %s", scale_diag.get("step"))
     if scale_diag.get("group"):
         log.info("  scale group   : %s", scale_diag.get("group"))
+    if scale_diag.get("variant"):
+        log.info("  scale variant : %s", scale_diag.get("variant"))
     if scale_diag.get("data_in_range_pct") is not None:
         log.info("  data in range : %.1f%%", scale_diag.get("data_in_range_pct"))
     if scale_diag.get("data_under_pct") is not None or scale_diag.get("data_over_pct") is not None:

@@ -38,9 +38,9 @@ def prepare_wind_overlay(
 
     step += 1
     log.info("")
-    # Convention (#47): on a wind anomaly map the glyphs are ALWAYS anomaly
-    # wind — the map mode picks the quantity, wind_type picks the style only.
-    # wind_overlay_mode is still accepted (old share links) but ignored here.
+    # Convention (#47): on wind anomaly/normalized maps the glyphs are ALWAYS
+    # anomaly wind — the map mode picks the quantity, wind_type picks the style
+    # only. wind_overlay_mode is still accepted (old share links) but ignored here.
     if (
         use_vector_wind_anomaly
         and anomaly_u_subset is not None

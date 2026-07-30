@@ -35,7 +35,7 @@ MODE_NAMES = {
     "raw": "Raw composite",
     "climatology": "Climatology mean only  (no obs fetched)",
     "anomaly": "Anomaly  =  obs − climo_mean",
-    "normalized": "Normalized anomaly  =  (obs − climo_mean) / climo_σ",
+    "normalized": "Normalized anomaly  =  standardized departure from climatology",
 }
 
 CLIMO_DESC = {

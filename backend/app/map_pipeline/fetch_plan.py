@@ -55,6 +55,7 @@ from ..climo_r1 import (
 )
 from ..config import VARIABLES, is_surface_or_named_level
 from .climo_policy import HOURLY_CLIMO_SOURCE
+from .pipeline_steps import vector_sigma_from_component_std
 from .time_selection import TimeSelection
 
 
@@ -302,6 +303,24 @@ def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int
     return WIND_CLIMO_COMPONENT_FETCHERS[climo_source](month, day, req.level)
 
 
+def fetch_wind_vector_climo(req: FetchRequest, climo_source: str, month: int, day: int):
+    if climo_source == HOURLY_CLIMO_SOURCE:
+        mean_u, mean_v = fetch_wind_climo_components(req, climo_source, month, day)
+        return mean_u, mean_v, None
+    if climo_source == "r2-daily":
+        u_mean, u_std = get_r2_daily_climo_field(month, day, "UGRD", req.level)
+        v_mean, v_std = get_r2_daily_climo_field(month, day, "VGRD", req.level)
+    elif climo_source == "r2-monthly":
+        u_mean, u_std = get_r2_monthly_climo_field(month, "UGRD", req.level)
+        v_mean, v_std = get_r2_monthly_climo_field(month, "VGRD", req.level)
+    elif climo_source == "monthly-pgb":
+        u_mean, u_std = get_climatology_field(month, "UGRD", req.level)
+        v_mean, v_std = get_climatology_field(month, "VGRD", req.level)
+    else:
+        raise KeyError(f"wind vector climatology is not wired for {climo_source!r}")
+    return u_mean, v_mean, vector_sigma_from_component_std(u_std, v_std)
+
+
 def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
     """
     MSLP (MSLET) matching the map's time selection, for H/L center detection
@@ -429,6 +448,18 @@ def fetch_weighted_wind_climo_components(req: FetchRequest, climo_source: str, s
     return mean_u, mean_v
 
 
+def fetch_weighted_wind_vector_climo(req: FetchRequest, climo_source: str, selection: TimeSelection):
+    month_weights = _selection_month_weights(selection)
+    if len(month_weights) == 1:
+        return fetch_wind_vector_climo(req, climo_source, month_weights[0][0], 15)
+    total_days = sum(weight for _, weight in month_weights)
+    comps = [(weight, fetch_wind_vector_climo(req, climo_source, month, 15)) for month, weight in month_weights]
+    mean_u = sum(weight * cu for weight, (cu, _, _) in comps) / total_days
+    mean_v = sum(weight * cv for weight, (_, cv, _) in comps) / total_days
+    vector_std = sum(weight * cs for weight, (_, _, cs) in comps) / total_days
+    return mean_u, mean_v, vector_std
+
+
 def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection):
     days = _calendar_day_counts(selection.date_list)
     if len(days) == 1:
@@ -439,6 +470,21 @@ def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_sou
     mean_u = sum(weight * cu for weight, (cu, _) in comps) / total
     mean_v = sum(weight * cv for weight, (_, cv) in comps) / total
     return mean_u, mean_v
+
+
+def fetch_daily_wind_vector_climo_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection):
+    days = _calendar_day_counts(selection.date_list)
+    if len(days) == 1:
+        (month, day), _ = days[0]
+        return fetch_wind_vector_climo(req, climo_source, month, day)
+    total = sum(weight for _, weight in days)
+    comps = [(weight, fetch_wind_vector_climo(req, climo_source, month, day)) for (month, day), weight in days]
+    mean_u = sum(weight * cu for weight, (cu, _, _) in comps) / total
+    mean_v = sum(weight * cv for weight, (_, cv, _) in comps) / total
+    if any(cs is None for _, (_, _, cs) in comps):
+        return mean_u, mean_v, None
+    vector_std = sum(weight * cs for weight, (_, _, cs) in comps) / total
+    return mean_u, mean_v, vector_std
 
 
 def fetch_obs(req: FetchRequest, selection: TimeSelection, grib_name: str):

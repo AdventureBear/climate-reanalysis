@@ -239,11 +239,10 @@ _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
 # Units were verified against CORe obs fields (Pa, kg/m², K, m/s) — no
 # conversions applied at fetch time.
 #
-# normalized_mask_threshold: optional non-wind guard for normalized anomaly maps.
-# Grid points where the observed value is below this threshold are masked after
-# the sigma-validity mask. Wind normalized maps intentionally use only the
-# sigma-validity mask: a weak monthly or daily mean wind can still have a real
-# standardized departure from climatology.
+# normalized_mask_threshold: optional non-wind guard for scalar normalized
+# anomaly maps. Grid points where the observed value is below this threshold are
+# masked after the sigma-validity mask. Wind anomalies/normalized anomalies use
+# vector U/V departures instead of scalar wind-speed departures.
 VARIABLES = {
     "wind_speed": {
         "name": "Wind Speed",

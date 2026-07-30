@@ -21,7 +21,7 @@ class NormalizedAnomalyMaskStats:
 
 
 def is_vector_wind_anomaly(req: AnalysisRequest) -> bool:
-    return req.variable == "wind_speed" and req.mode == "anomaly"
+    return req.variable == "wind_speed" and req.mode in ("anomaly", "normalized")
 
 
 def select_region(da, bounds: dict):
@@ -54,6 +54,12 @@ def compute_vector_anomaly(obs_u, obs_v, climo_u, climo_v, obs_template):
     return anomaly_u, anomaly_v, magnitude
 
 
+def vector_sigma_from_component_std(u_std, v_std):
+    sigma = (u_std ** 2 + v_std ** 2) ** 0.5
+    sigma.attrs.update({"units": "m/s", "long_name": "Wind Vector Variability"})
+    return sigma
+
+
 def normalized_mask_threshold(variable: str, level: int):
     thresh_cfg = VARIABLES[variable].get("normalized_mask_threshold")
     if isinstance(thresh_cfg, dict):
@@ -84,5 +90,34 @@ def compute_normalized_anomaly(obs, climo_mean, climo_std, abs_threshold):
         total_valid_input=total_valid_input,
         invalid_sigma_masked=invalid_sigma_masked,
         threshold_masked=valid_after_sigma - final_valid,
+        final_valid=final_valid,
+    )
+
+
+def compute_normalized_vector_anomaly(obs_u, obs_v, climo_u, climo_v, vector_std, obs_template):
+    anomaly_u, anomaly_v, magnitude = compute_vector_anomaly(
+        obs_u,
+        obs_v,
+        climo_u,
+        climo_v,
+        obs_template,
+    )
+    valid_input = (
+        obs_u.notnull()
+        & obs_v.notnull()
+        & climo_u.notnull()
+        & climo_v.notnull()
+        & vector_std.notnull()
+    )
+    total_valid_input = int(valid_input.sum())
+
+    safe_std = vector_std.where(vector_std > 1e-6)
+    subset = magnitude / safe_std
+    final_valid = int(subset.notnull().sum())
+    subset.attrs.update({"units": "sigma", "long_name": "Wind Vector Normalized Anomaly Magnitude"})
+    return anomaly_u, anomaly_v, subset, NormalizedAnomalyMaskStats(
+        total_valid_input=total_valid_input,
+        invalid_sigma_masked=total_valid_input - final_valid,
+        threshold_masked=0,
         final_valid=final_valid,
     )

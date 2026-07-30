@@ -41,9 +41,9 @@ def map_date_label(
     obs_source_tag = f"  [{obs_source}]" if selection.monthly_mode and obs_source != "CORe-pgb" else ""
     mode_labels = {
         ("anomaly", False): "anomaly",
-        ("anomaly", True): "anomaly",
+        ("anomaly", True): "vector anomaly",
         ("normalized", False): "normalized anomaly",
-        ("normalized", True): "normalized anomaly",
+        ("normalized", True): "normalized vector anomaly",
     }
 
     def fmt(date_str: str) -> str:
@@ -143,5 +143,7 @@ def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
     if is_surface_or_named_level(req.variable):
         return f"{VARIABLES[req.variable]['name']} ({units})"
     if use_vector_wind_anomaly:
+        if req.mode == "normalized":
+            return f"Wind Vector Normalized Anomaly Magnitude (σ)  {req.level}mb"
         return f"Wind Vector Anomaly Magnitude ({units})  {req.level}mb"
     return f"{VARIABLES[req.variable]['name']} ({units})  {req.level}mb"

@@ -15,16 +15,20 @@ from .map_pipeline.fetch_plan import (
     fetch_mslp_field_for_selection,
     fetch_daily_climo_for_selection,
     fetch_daily_wind_climo_components_for_selection,
+    fetch_daily_wind_vector_climo_for_selection,
     fetch_obs,
+    fetch_weighted_wind_vector_climo,
     fetch_weighted_wind_climo_components,
     fetch_wind,
     fetch_wind_climo_components,
+    fetch_wind_vector_climo,
 )
 from .map_pipeline.map_labels import map_date_label, variable_label
 from .climo_r2 import get_r2_monthly_climo_single_level
 from .visualizer import display_unit, has_anomaly_base_contours
 from .map_pipeline.pipeline_steps import (
     compute_normalized_anomaly,
+    compute_normalized_vector_anomaly,
     compute_vector_anomaly,
     is_vector_wind_anomaly,
     normalized_mask_threshold,
@@ -105,6 +109,7 @@ def create_map_buffer(req: MapRequest):
 
     climo_mean = climo_std = None
     climo_u_mean = climo_v_mean = None
+    climo_vector_std = None
     if req.mode != "raw":
         step += 1
         multi_month_climo = selection.monthly_mode and len(set(m for _, m in selection.year_months)) > 1
@@ -131,7 +136,15 @@ def create_map_buffer(req: MapRequest):
 
         t0 = time.perf_counter()
         if use_vector_wind_anomaly:
-            if multi_month_climo:
+            if req.mode == "normalized" and multi_month_climo:
+                climo_u_mean, climo_v_mean, climo_vector_std = fetch_weighted_wind_vector_climo(req, climo_source, selection)
+            elif req.mode == "normalized" and multi_day_climo:
+                climo_u_mean, climo_v_mean, climo_vector_std = fetch_daily_wind_vector_climo_for_selection(req, climo_source, selection)
+            elif req.mode == "normalized":
+                climo_u_mean, climo_v_mean, climo_vector_std = fetch_wind_vector_climo(
+                    req, climo_source, selection.obs_month, selection.obs_day
+                )
+            elif multi_month_climo:
                 climo_u_mean, climo_v_mean = fetch_weighted_wind_climo_components(req, climo_source, selection)
             elif multi_day_climo:
                 climo_u_mean, climo_v_mean = fetch_daily_wind_climo_components_for_selection(req, climo_source, selection)
@@ -151,9 +164,13 @@ def create_map_buffer(req: MapRequest):
         if use_vector_wind_anomaly:
             climo_u_mean = select_region(climo_u_mean, bounds)
             climo_v_mean = select_region(climo_v_mean, bounds)
+            if climo_vector_std is not None:
+                climo_vector_std = select_region(climo_vector_std, bounds)
             log.info("  climo grid  : %s", "×".join(str(s) for s in climo_u_mean.shape))
             log.info("  U mean      : [%.3g, %.3g] m/s  (region subset)", float(climo_u_mean.min()), float(climo_u_mean.max()))
             log.info("  V mean      : [%.3g, %.3g] m/s  (region subset)", float(climo_v_mean.min()), float(climo_v_mean.max()))
+            if climo_vector_std is not None:
+                log.info("  vector σ    : [%.3g, %.3g] m/s  (region subset)", float(climo_vector_std.min()), float(climo_vector_std.max()))
         else:
             climo_mean = select_region(climo_mean, bounds)
             # The per-hour baseline (#72) is mean-only; normalized mode is
@@ -188,6 +205,8 @@ def create_map_buffer(req: MapRequest):
                 log.info("  From    : %s  (climo U/V grid, ~2.5°)", "×".join(str(s) for s in climo_u_mean.shape))
                 climo_u_mean = climo_u_mean.interp_like(obs_u_subset)
                 climo_v_mean = climo_v_mean.interp_like(obs_v_subset)
+                if climo_vector_std is not None:
+                    climo_vector_std = climo_vector_std.interp_like(obs_subset)
             else:
                 log.info("  From    : %s  (climo grid, ~2.5°)", "×".join(str(s) for s in climo_mean.shape))
                 climo_mean = climo_mean.interp_like(obs_subset)
@@ -224,17 +243,29 @@ def create_map_buffer(req: MapRequest):
             step += 1
             abs_threshold = normalized_mask_threshold(req.variable, req.level)
             log.info("")
-            log.info("STEP %d  Compute normalized anomaly  =  (obs − climo_mean) / climo_σ", step)
-            log.info("  Note    : climo_σ < 1e-6 → NaN  (no inter-annual variability, undefined)")
-            if abs_threshold is not None:
-                log.info("  Mask    : obs < %.3g %s → NaN  (below threshold: physically insignificant signal)", abs_threshold, VARIABLES[req.variable].get("units", ""))
-            subset, mask_stats = compute_normalized_anomaly(obs_subset, climo_mean, climo_std, abs_threshold)
+            if use_vector_wind_anomaly:
+                log.info("STEP %d  Compute normalized vector anomaly  =  |V−V_climo| / vector_σ", step)
+                log.info("  Note    : vector_σ = sqrt(σ_u² + σ_v²); vector_σ < 1e-6 → NaN")
+                anomaly_u_subset, anomaly_v_subset, subset, mask_stats = compute_normalized_vector_anomaly(
+                    obs_u_subset,
+                    obs_v_subset,
+                    climo_u_mean,
+                    climo_v_mean,
+                    climo_vector_std,
+                    obs_subset,
+                )
+            else:
+                log.info("STEP %d  Compute normalized anomaly  =  (obs − climo_mean) / climo_σ", step)
+                log.info("  Note    : climo_σ < 1e-6 → NaN  (no inter-annual variability, undefined)")
+                if abs_threshold is not None:
+                    log.info("  Mask    : obs < %.3g %s → NaN  (below threshold: physically insignificant signal)", abs_threshold, VARIABLES[req.variable].get("units", ""))
+                subset, mask_stats = compute_normalized_anomaly(obs_subset, climo_mean, climo_std, abs_threshold)
             log.info(
                 "  Masked  : %d grid points with invalid σ (%.1f%% of valid input)",
                 mask_stats.invalid_sigma_masked,
                 100.0 * mask_stats.invalid_sigma_masked / max(mask_stats.total_valid_input, 1),
             )
-            if abs_threshold is not None:
+            if abs_threshold is not None and not use_vector_wind_anomaly:
                 log.info(
                     "  Masked  : %d grid points below threshold (%.1f%% of post-σ valid cells)",
                     mask_stats.threshold_masked,
@@ -246,8 +277,13 @@ def create_map_buffer(req: MapRequest):
             log.info("  Valid   : %d grid points remain after normalized-anomaly masks", mask_stats.final_valid)
             log.info("STEP %d ✓  normalized anomaly computed", step)
             log.info("  obs range   : [%.3g, %.3g] %s", float(obs_subset.min()), float(obs_subset.max()), VARIABLES[req.variable].get("units", ""))
-            log.info("  climo_mean  : [%.3g, %.3g] %s  (after regrid)", float(climo_mean.min()), float(climo_mean.max()), VARIABLES[req.variable].get("units", ""))
-            log.info("  climo_σ     : [%.3g, %.3g] %s  (after regrid)", float(climo_std.min()), float(climo_std.max()), VARIABLES[req.variable].get("units", ""))
+            if use_vector_wind_anomaly:
+                log.info("  climo U     : [%.3g, %.3g] m/s  (after regrid)", float(climo_u_mean.min()), float(climo_u_mean.max()))
+                log.info("  climo V     : [%.3g, %.3g] m/s  (after regrid)", float(climo_v_mean.min()), float(climo_v_mean.max()))
+                log.info("  vector_σ    : [%.3g, %.3g] m/s  (after regrid)", float(climo_vector_std.min()), float(climo_vector_std.max()))
+            else:
+                log.info("  climo_mean  : [%.3g, %.3g] %s  (after regrid)", float(climo_mean.min()), float(climo_mean.max()), VARIABLES[req.variable].get("units", ""))
+                log.info("  climo_σ     : [%.3g, %.3g] %s  (after regrid)", float(climo_std.min()), float(climo_std.max()), VARIABLES[req.variable].get("units", ""))
             log.info("  result σ    : [%.3g, %.3g]  (values outside ±6 are scientifically extreme)", float(subset.min(skipna=True)), float(subset.max(skipna=True)))
         else:
             subset = obs_subset

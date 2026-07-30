@@ -46,8 +46,11 @@ def render_map_product(
     monthly_anomaly: bool = False,
     missing_note: str = "",
 ):
-    if req.mode == "anomaly" and use_vector_wind_anomaly:
-        log.info("  colormap : positive sequential (vector anomaly magnitude)")
+    if use_vector_wind_anomaly:
+        if req.mode == "normalized":
+            log.info("  colormap : positive sequential (normalized vector anomaly magnitude)")
+        else:
+            log.info("  colormap : positive sequential (vector anomaly magnitude)")
     else:
         log.info("  colormap : %s", "diverging (Blues/Reds)" if req.mode in ("anomaly", "normalized") else "fixed-anchor stepped")
 
