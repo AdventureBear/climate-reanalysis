@@ -279,6 +279,15 @@ VARIABLES = {
         "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,
     },
+    "rel_humidity_2m": {
+        "name": "2m Relative Humidity",
+        "units": "%",
+        "stream": "derived_surface",
+        "display_level": "2 m above ground",
+        "levels": [1000],
+        "climo_sources": (),   # derivable from R2 2m TMP + humidity later
+        "normalized_mask_threshold": None,
+    },
     "omega": {
         "name": "Omega (Vertical Velocity)",
         "units": "Pa/s",
@@ -482,7 +491,7 @@ PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 
 
 def is_surface_or_named_level(variable: str) -> bool:
     """Return True for fields that are not selected by pressure level."""
-    return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level"}
+    return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level", "derived_surface"}
 
 
 def valid_levels(variable: str) -> list[int]:

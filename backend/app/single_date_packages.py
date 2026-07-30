@@ -22,6 +22,17 @@ from .config import CACHE_ROOT
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
 from .retrieval import DataUnavailableError
+from .units import (
+    VORTICITY_TO_1E5,
+    celsius_to_fahrenheit,
+    delta_celsius_to_delta_fahrenheit,
+    kelvin_to_celsius,
+    kelvin_to_fahrenheit,
+    meters_per_second_to_knots,
+    meters_to_inches,
+    pascals_to_hpa,
+    precipitation_rate_to_mm_day,
+)
 
 PACKAGE_CACHE_ROOT = Path(CACHE_ROOT) / "map_packages"
 PACKAGE_ROOT = PACKAGE_CACHE_ROOT / "single_date"
@@ -520,29 +531,26 @@ def compute_diagnostics(date: str, lat: float, lon: float, zone: str) -> dict[st
         h500_mean, h500_std = h500_climo
         h500_sigma = (_sample(h500, lat, lon) - _sample(h500_mean, lat, lon)) / max(_sample(h500_std, lat, lon), 0.1)
 
-    def to_f(kelvin: float) -> float:
-        return (kelvin - 273.15) * 9 / 5 + 32
-
     return {
-        "t2m_c": t2m_pt - 273.15,
+        "t2m_c": kelvin_to_celsius(t2m_pt),
         "t2m_anom_c": t2m_anom,
         "t2m_sigma": t2m_sigma,
-        "t2m_max_f": to_f(t2m_max),
-        "t2m_min_f": to_f(t2m_min),
-        "mslp_pt_hpa": mslp_pt_sum / len(pairs) / 100.0,
-        "mslp_min_hpa": mslp_min / 100.0,
+        "t2m_max_f": kelvin_to_fahrenheit(t2m_max),
+        "t2m_min_f": kelvin_to_fahrenheit(t2m_min),
+        "mslp_pt_hpa": pascals_to_hpa(mslp_pt_sum / len(pairs)),
+        "mslp_min_hpa": pascals_to_hpa(mslp_min),
         "cloud_pct": _sample(tcdc, lat, lon),
-        "precip_mm_day": _sample(prate, lat, lon) * 86400.0,
-        "snow_depth_in": _sample(snod, lat, lon) * 39.3701,
+        "precip_mm_day": precipitation_rate_to_mm_day(_sample(prate, lat, lon)),
+        "snow_depth_in": meters_to_inches(_sample(snod, lat, lon)),
         "cape_jkg": cape_max,
         "cin_at_peak": cin_at_peak,
         "pwat_mm": pwat_pt,
         "pwat_sigma": pwat_sigma,
-        "jet_max_kt": _window_extreme(jet, lat, lon, lambda b: b.max()) * 1.94384,
+        "jet_max_kt": meters_per_second_to_knots(_window_extreme(jet, lat, lon, lambda b: b.max())),
         "h500_sigma": h500_sigma,
-        "vort_1e5": None if vort is None else _window_extreme(vort, lat, lon, lambda b: b.max()) * 1e5,
-        "wind10_kt": None if wind10 is None else _sample(wind10, lat, lon) * 1.94384,
-        "dewpoint_f": None if dewpoint is None else to_f(_sample(dewpoint, lat, lon)),
+        "vort_1e5": None if vort is None else _window_extreme(vort, lat, lon, lambda b: b.max()) * VORTICITY_TO_1E5,
+        "wind10_kt": None if wind10 is None else meters_per_second_to_knots(_sample(wind10, lat, lon)),
+        "dewpoint_f": None if dewpoint is None else kelvin_to_fahrenheit(_sample(dewpoint, lat, lon)),
     }
 
 
@@ -732,12 +740,12 @@ def render_animation(center: datetime, out_dir: Path, package_extras: dict[str, 
 
 
 def summary_lines(diag: dict[str, Any], highlights: list[str], place: str, date: str) -> str:
-    temp_f = diag["t2m_c"] * 9 / 5 + 32
+    temp_f = celsius_to_fahrenheit(diag["t2m_c"])
     lines = [
         f"Your date in numbers - {date[:4]}-{date[4:6]}-{date[6:]} at {place}",
         "",
         f"2m temperature      : {temp_f:.0f} F ({diag['t2m_c']:.1f} C)",
-        f"vs normal           : {diag['t2m_anom_c'] * 9 / 5:+.0f} F ({diag['t2m_sigma']:+.1f} sigma)",
+        f"vs normal           : {delta_celsius_to_delta_fahrenheit(diag['t2m_anom_c']):+.0f} F ({diag['t2m_sigma']:+.1f} sigma)",
         f"day's high / low    : {diag['t2m_max_f']:.0f} / {diag['t2m_min_f']:.0f} F (analysis extremes)",
         f"sky cover           : {diag['cloud_pct']:.0f}% ({_sky_words(diag['cloud_pct'])})",
         _line_or_na("dewpoint            : {:.0f} F", diag["dewpoint_f"]),

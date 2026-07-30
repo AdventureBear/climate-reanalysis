@@ -1,5 +1,5 @@
 import { HOURS, normalizeColorStep } from './sharedOptions'
-import { apiLevelForSelection, apiVariableForSelection, uiSelectionForApiVariable } from './variableConfig'
+import { apiLevelForSelection, apiVariableForSelection, type HumidityType, uiSelectionForApiVariable } from './variableConfig'
 
 // Mirror the backend request guards (MAX_COMPOSITE_DATES / MAX_COMPOSITE_MONTHS
 // in backend/app/main.py) so users get instant feedback instead of a 422.
@@ -35,6 +35,7 @@ export type TimeRecipe =
 export type MapRecipe = {
   variable?: string
   level?: string
+  humidityType?: HumidityType
   region?: string
   displayMode?: DisplayMode
   climoSource?: ClimoSource
@@ -243,7 +244,7 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     return { ok: false, error: 'Choose a time period.' }
   }
 
-  const variable = apiVariableForSelection(recipe.variable, recipe.level)
+  const variable = apiVariableForSelection(recipe.variable, recipe.level, recipe.humidityType)
   const level = apiLevelForSelection(recipe.variable, recipe.level)
   const params: Record<string, string> = { variable, level, region: recipe.region }
 
@@ -397,6 +398,11 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   const apiVariable = params.get('variable')
   const apiLevel = params.get('level') ?? '850'
   const uiSelection = apiVariable ? uiSelectionForApiVariable(apiVariable, apiLevel) : {}
+  const parsedHumidityType: HumidityType | undefined = apiVariable === 'humidity'
+    ? 'specific'
+    : apiVariable === 'rel_humidity' || apiVariable === 'rel_humidity_2m'
+      ? 'relative'
+      : undefined
   const parsedWindType = windType(params.get('wind_type')) ?? 'barbs'
   const windStep = params.get('wind_step')
   // wind_step=0 (or junk) in a URL means "no glyph overlay", never "density
@@ -406,6 +412,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
 
   return {
     ...uiSelection,
+    humidityType: parsedHumidityType,
     region: params.get('region') ?? undefined,
     displayMode: displayMode(params.get('mode'), params),
     climoSource: climoSource(params.get('climo_source')),

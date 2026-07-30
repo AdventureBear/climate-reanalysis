@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..config import VARIABLES
+from ..met_math import vector_magnitude
+from ..met_math import wind_speed_from_components as _wind_speed_from_components
 
 
 class AnalysisRequest(Protocol):
@@ -37,17 +39,18 @@ def select_region(da, bounds: dict):
 
 
 def wind_speed_from_components(u, v):
-    speed = (u ** 2 + v ** 2) ** 0.5
-    speed.attrs.update({"units": "m/s", "long_name": "Wind Speed"})
-    speed.attrs["_pyre_obs_source"] = u.attrs.get("_pyre_obs_source", "CORe-pgb")
-    speed.attrs["_pyre_grib_level"] = u.attrs.get("_pyre_grib_level", "")
-    return speed
+    return _wind_speed_from_components(
+        u,
+        v,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
 
 
 def compute_vector_anomaly(obs_u, obs_v, climo_u, climo_v, obs_template):
     anomaly_u = obs_u - climo_u
     anomaly_v = obs_v - climo_v
-    magnitude = (anomaly_u ** 2 + anomaly_v ** 2) ** 0.5
+    magnitude = vector_magnitude(anomaly_u, anomaly_v)
     magnitude.attrs.update({"units": "m/s", "long_name": "Wind Vector Anomaly Magnitude"})
     if "valid_time" in obs_template.coords:
         magnitude = magnitude.assign_coords(valid_time=obs_template.coords["valid_time"])
@@ -55,7 +58,7 @@ def compute_vector_anomaly(obs_u, obs_v, climo_u, climo_v, obs_template):
 
 
 def vector_sigma_from_component_std(u_std, v_std):
-    sigma = (u_std ** 2 + v_std ** 2) ** 0.5
+    sigma = vector_magnitude(u_std, v_std)
     sigma.attrs.update({"units": "m/s", "long_name": "Wind Vector Variability"})
     return sigma
 

@@ -17,6 +17,22 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 from .config import CACHE_ROOT
+from .met_math import vector_magnitude
+from .units import (
+    KT_TO_MS,
+    M_TO_IN,
+    MM_TO_IN,
+    VORTICITY_TO_1E5,
+    celsius_to_kelvin,
+    delta_celsius_to_delta_fahrenheit,
+    fahrenheit_to_kelvin,
+    kelvin_to_celsius,
+    kelvin_to_fahrenheit,
+    knots_to_meters_per_second,
+    millimeters_to_inches,
+    pascals_to_hpa,
+    precipitation_rate_to_mm_day,
+)
 
 # Rendering runs on FastAPI's worker threads (the endpoint is sync so slow
 # fetches don't stall the event loop). Matplotlib's OO API is mostly re-entrant
@@ -179,9 +195,6 @@ _WIND_STRAT_COLORS = [
 # 200mb scales keep their current start and ceiling values, with the reviewed
 # yellow-green/teal/deep-blue top-end transition. Stratospheric levels use
 # their own fixed-anchor ladder.
-_KT_TO_MS = 0.51444
-_MM_TO_IN = 0.03937007874
-
 _WIND_SCALE_CONFIGS: dict[str, dict] = {
     "surface": {
         "mapping": "fixed_anchors",
@@ -236,7 +249,7 @@ _QUIVER_BASE_SCALE = 520  # calibrated at 925/850mb (80kt max); ~10% longer than
 
 
 def _wind_unit_factor(wind_unit: str) -> float:
-    return 1.0 if wind_unit == "m/s" else 1.0 / _KT_TO_MS
+    return 1.0 if wind_unit == "m/s" else 1.0 / KT_TO_MS
 
 
 def _wind_unit_label(wind_unit: str) -> str:
@@ -248,12 +261,12 @@ def _wind_display_value(value_ms: float, wind_unit: str) -> float:
 
 
 def _wind_scale_display_value(value_kt: float, wind_unit: str) -> float:
-    return value_kt * _KT_TO_MS if wind_unit == "m/s" else value_kt
+    return knots_to_meters_per_second(value_kt) if wind_unit == "m/s" else value_kt
 
 
 def _pwat_to_display(values, pwat_unit: str):
     if pwat_unit == "in":
-        return values * 0.03937007874
+        return millimeters_to_inches(values)
     return values
 
 
@@ -345,7 +358,7 @@ def _make_wind_scale(
         steps_kt.append(float(max_kt))
     colors = _interpolate_interval_colors(steps_kt, anchor_kt, scale_cfg["anchor_colors"])
 
-    breakpoints_ms = [round(kt * _KT_TO_MS, 3) for kt in steps_kt]
+    breakpoints_ms = [round(knots_to_meters_per_second(kt), 3) for kt in steps_kt]
     return breakpoints_ms, colors, min_kt, max_kt
 
 
@@ -451,11 +464,11 @@ _TEMP_SCALES: dict[int, dict] = {
 
 
 def _f_to_k(f: float) -> float:
-    return (f - 32.0) * 5.0 / 9.0 + 273.15
+    return fahrenheit_to_kelvin(f)
 
 
 def _c_to_k(c: float) -> float:
-    return c + 273.15
+    return celsius_to_kelvin(c)
 
 
 def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple], Callable[[float], float]]:
@@ -499,7 +512,7 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
         return _wind_unit_label(wind_unit)
     if variable in {"temp", "temp_2m"}:
         return f"°{_temp_display_unit(variable, level, temp_unit)}"
-    if variable == "rel_humidity":
+    if variable in {"rel_humidity", "rel_humidity_2m"}:
         return "%"
     if variable == "height":
         return "dam"
@@ -728,9 +741,6 @@ _OLR_SCALE_CONFIG = {
     "step": 5.0,
 }
 
-_PRATE_TO_MM_DAY = 86400.0   # kg/m²/s → mm/day (1 kg/m² = 1 mm of water)
-_M_TO_IN = 39.3701
-
 # CAPE in J/kg. White below convective relevance, then the familiar
 # yellow → orange → red → magenta severity ramp.
 _CAPE_SCALE_CONFIG = {
@@ -801,7 +811,7 @@ _SNOW_DEPTH_SCALE_CONFIG = {
 
 
 def _k_to_f(values):
-    return values * 9.0 / 5.0 - 459.67
+    return kelvin_to_fahrenheit(values)
 
 
 # Variables rendered as generic filled contours from a fixed-anchor config.
@@ -810,7 +820,7 @@ def _k_to_f(values):
 _FIXED_SCALE_CONFIGS: dict[str, dict] = {
     "omega":       {**_OMEGA_SCALE_CONFIG,       "tick_every": 0.5,   "label": "Omega",              "extend": "both"},
     "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0,  "label": "Precipitation Rate", "extend": "max",
-                    "to_display": lambda v: v * _PRATE_TO_MM_DAY},
+                    "to_display": precipitation_rate_to_mm_day},
     "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
     "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
     "cape_ml":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
@@ -821,9 +831,9 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
     "dewpoint_2m": {**_DEWPOINT_SCALE_CONFIG,    "tick_every": 10.0,  "label": "2m Dewpoint",        "extend": "both",
                     "to_display": _k_to_f},
     "absv":        {**_ABSV_SCALE_CONFIG,        "tick_every": 10.0,  "label": "Absolute Vorticity", "extend": "both",
-                    "to_display": lambda v: v * 1e5},
+                    "to_display": lambda v: v * VORTICITY_TO_1E5},
     "snow_depth":  {**_SNOW_DEPTH_SCALE_CONFIG,  "tick_every": 6.0,   "label": "Snow Depth",         "extend": "max",
-                    "to_display": lambda v: v * _M_TO_IN},
+                    "to_display": lambda v: v * M_TO_IN},
 }
 
 
@@ -832,10 +842,10 @@ def _pwat_display_scale_config(pwat_unit: str) -> dict:
         return _PWAT_SCALE_CONFIG
     return {
         **_PWAT_SCALE_CONFIG,
-        "domain_min": _PWAT_SCALE_CONFIG["domain_min"] * 0.03937007874,
-        "domain_max": _PWAT_SCALE_CONFIG["domain_max"] * 0.03937007874,
-        "anchor_values": [round(v * 0.03937007874, 3) for v in _PWAT_SCALE_CONFIG["anchor_values"]],
-        "key_breakpoints": [round(v * 0.03937007874, 3) for v in _PWAT_SCALE_CONFIG["key_breakpoints"]],
+        "domain_min": millimeters_to_inches(_PWAT_SCALE_CONFIG["domain_min"]),
+        "domain_max": millimeters_to_inches(_PWAT_SCALE_CONFIG["domain_max"]),
+        "anchor_values": [round(millimeters_to_inches(v), 3) for v in _PWAT_SCALE_CONFIG["anchor_values"]],
+        "key_breakpoints": [round(millimeters_to_inches(v), 3) for v in _PWAT_SCALE_CONFIG["key_breakpoints"]],
     }
 
 
@@ -988,9 +998,9 @@ def _anomaly_scale_in_display_units(
         # the daily ladder washes a ±3 mb seasonal signal to near-white.
         max_val, step = max_val * 0.5, step * 0.5
     if variable in {"wind_speed", "wind_10m"} and wind_unit == "m/s":
-        return max_val * _KT_TO_MS, step * _KT_TO_MS
+        return max_val * KT_TO_MS, step * KT_TO_MS
     if variable == "precipitable_water" and pwat_unit == "in":
-        return max_val * _MM_TO_IN, step * _MM_TO_IN
+        return max_val * MM_TO_IN, step * MM_TO_IN
     return max_val, step
 
 
@@ -1003,12 +1013,12 @@ def _base_contour_plan(variable, level, values, wind_unit="kt", pwat_unit="mm", 
     if variable == "height":
         return values / 10.0, 6.0                       # dam
     if variable == "surface_pressure":
-        return values / 100.0, 4.0                      # mb
+        return pascals_to_hpa(values), 4.0              # mb
     # Temperature deliberately excluded: isotherms over temp-anomaly shading
     # read as clutter rather than context.
     if variable in {"wind_speed", "wind_10m"}:
         return values * _wind_unit_factor(wind_unit), 20.0 if wind_unit == "kt" else 10.0
-    if variable == "rel_humidity":
+    if variable in {"rel_humidity", "rel_humidity_2m"}:
         return values, 20.0                             # %
     if variable == "precipitable_water":
         disp = _pwat_to_display(values, pwat_unit)
@@ -1190,16 +1200,16 @@ def _anomaly_to_display_with_unit(
         return values * _wind_unit_factor(wind_unit)
     if variable in {"temp", "temp_2m"}:
         if _temp_display_unit(variable, level, temp_unit) == "F":
-            return values * 9 / 5          # ΔK = Δ°C → Δ°F
+            return delta_celsius_to_delta_fahrenheit(values)  # Delta K = Delta C to Delta F
         return values                       # ΔK = Δ°C — no offset needed for differences
     if variable == "height":
         return values / 10                  # gpm → dam
     if variable == "surface_pressure":
-        return values / 100                 # Pa → mb (hPa)
+        return pascals_to_hpa(values)       # Pa to mb (hPa)
     if variable == "precipitable_water":
         return _pwat_to_display(values, pwat_unit)
     if variable == "precip_rate":
-        return values * _PRATE_TO_MM_DAY
+        return precipitation_rate_to_mm_day(values)
     return values
 
 
@@ -1316,11 +1326,11 @@ def _custom_scale_from_spec(
 
     def to_native(value: float) -> float:
         if variable in {"wind_speed", "wind_10m"}:
-            return value * _KT_TO_MS if wind_unit == "kt" else value
+            return knots_to_meters_per_second(value) if wind_unit == "kt" else value
         if variable in {"temp", "temp_2m"}:
             if _temp_display_unit(variable, level, temp_unit) == "F":
-                return (value - 32.0) * 5.0 / 9.0 + 273.15
-            return value + 273.15
+                return fahrenheit_to_kelvin(value)
+            return celsius_to_kelvin(value)
         return value
 
     def label_value(value: float) -> str:
@@ -1479,7 +1489,7 @@ def describe_color_scale(
     if variable in {"temp", "temp_2m"} and _render_level(variable, level) in _TEMP_SCALES:
         cfg = _TEMP_SCALES[_render_level(variable, level)]
         boundaries_k, interval_colors, _ = _make_temp_scale(cfg, step=color_step * cfg.get("step", 1))
-        from_k = (lambda k: (k - 273.15) * 9.0 / 5.0 + 32.0) if cfg["unit"] == "F" else (lambda k: k - 273.15)
+        from_k = kelvin_to_fahrenheit if cfg["unit"] == "F" else kelvin_to_celsius
         boundaries = [from_k(v) for v in boundaries_k]
         data_vals = np.asarray([from_k(v) for v in np.ravel(data_array.values)], dtype=float) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1496,7 +1506,7 @@ def describe_color_scale(
             **stats,
         }
 
-    if variable == "rel_humidity":
+    if variable in {"rel_humidity", "rel_humidity_2m"}:
         boundaries, interval_colors = _make_rh_scale(step=color_step)
         data_vals = np.asarray(data_array.values, dtype=float) if data_array is not None else None
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1540,7 +1550,7 @@ def describe_color_scale(
         step = max(color_step, 1) * _MSLP_CONTOUR_SCALE_CONFIG["step"]
         boundaries, interval_colors, cfg = _make_fixed_display_scale(_MSLP_CONTOUR_SCALE_CONFIG, step=step)
         data_vals = (
-            np.asarray((data_array.values / 100.0), dtype=float)
+            np.asarray(pascals_to_hpa(data_array.values), dtype=float)
             if data_array is not None else None
         )
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
@@ -1649,7 +1659,7 @@ def _detect_pressure_centers(mslp_da):
     """
     from scipy.ndimage import maximum_filter, minimum_filter
 
-    hpa = mslp_da.values / 100.0
+    hpa = pascals_to_hpa(mslp_da.values)
     lons = mslp_da.longitude.values
     lats = mslp_da.latitude.values
     if len(lons) < 5 or len(lats) < 5:
@@ -1697,13 +1707,13 @@ def _draw_contour_overlay(ax, overlay: dict, temp_unit: str = "") -> None:
     kind = overlay["kind"]
     da = overlay["data"]
     if kind == "pressure":
-        disp, interval, color, ls, lw = da.values / 100.0, 4.0, "#2b2b2b", "solid", 1.0
+        disp, interval, color, ls, lw = pascals_to_hpa(da.values), 4.0, "#2b2b2b", "solid", 1.0
     elif kind == "height":
         disp, interval, color, ls, lw = da.values / 10.0, 6.0, "black", "solid", 1.0
     else:
         variable = "temp_2m" if overlay.get("is_2m") else "temp"
         unit = _temp_display_unit(variable, overlay["level"], temp_unit)
-        disp = _k_to_f(da.values) if unit == "F" else da.values - 273.15
+        disp = _k_to_f(da.values) if unit == "F" else kelvin_to_celsius(da.values)
         interval, color, ls, lw = (10.0 if unit == "F" else 5.0), "#e8112d", "dashed", 1.2
     v0 = float(np.floor(np.nanmin(disp) / interval) * interval)
     v1 = float(np.ceil(np.nanmax(disp) / interval) * interval)
@@ -1917,7 +1927,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             min_display = _wind_scale_display_value(min_kt, wind_unit)
             max_display = _wind_scale_display_value(max_kt, wind_unit)
             cbar_cfg = {
-                'ticks':      [kt * _KT_TO_MS for kt in tick_kt],
+                'ticks':      [knots_to_meters_per_second(kt) for kt in tick_kt],
                 'ticklabels': [_format_scale_value(v) for v in tick_display],
                 'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
                 'extend':     'max',
@@ -1948,7 +1958,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             else:
                 # Unit override: boundaries stay physically anchored; ticks land
                 # on round values of the chosen unit within the same K range.
-                from_k = _k_to_f if shown_unit == "F" else (lambda v: v - 273.15)
+                from_k = _k_to_f if shown_unit == "F" else kelvin_to_celsius
                 back_to_k = _f_to_k if shown_unit == "F" else _c_to_k
                 tick_step = 10 if shown_unit == "F" else 5
                 u_min = int(np.ceil(from_k(breakpoints_k[0]) / tick_step) * tick_step)
@@ -1984,7 +1994,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         # contours-only mode has no colorbar
 
     elif variable == "surface_pressure":
-        hpa = data_array / 100.0
+        hpa = pascals_to_hpa(data_array)
         interval = 4
         v0 = float(np.floor(hpa.values.min() / interval) * interval)
         v1 = float(np.ceil( hpa.values.max() / interval) * interval)
@@ -2002,7 +2012,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         ax.clabel(cs, cs.levels, inline=True, fontsize=9, fmt='%d')
         # standard 4 mb isobars; contours-only mode has no colorbar
 
-    elif variable == "rel_humidity":
+    elif variable in {"rel_humidity", "rel_humidity_2m"}:
         if not draw_custom_filled(data_array.values, ylabel='Relative Humidity (%)', extend='both'):
             steps, interval_colors = _make_rh_scale(step=color_step)
             cmap = mcolors.ListedColormap(interval_colors)
@@ -2120,7 +2130,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             # Labeled speed contours on the full grid (density stride does not
             # apply). Interval/threshold in display units: below the threshold
             # is background flow that would only clutter the map.
-            speed = np.sqrt(u_array.values ** 2 + v_array.values ** 2) * _wind_unit_factor(wind_unit)
+            speed = vector_magnitude(u_array.values, v_array.values) * _wind_unit_factor(wind_unit)
             interval = 20.0 if wind_unit == "kt" else 10.0
             first = 30.0 if wind_unit == "kt" else 15.0
             speed_max = float(np.nanmax(speed))

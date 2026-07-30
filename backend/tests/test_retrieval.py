@@ -37,6 +37,7 @@ from app.retrieval import (
     _nomads_url,
     fetch_field,
     fetch_index,
+    fetch_relative_humidity_2m,
     parse_index_text,
 )
 
@@ -284,6 +285,39 @@ class TestMonthlyFallback:
         assert float(v.item()) == 5.0
         assert u.attrs["_pyre_obs_source"] == "CORe-synoptic"
         assert v.attrs["_pyre_obs_source"] == "CORe-synoptic"
+
+
+class TestDerivedSurfaceRelativeHumidity:
+    def test_fetch_2m_relative_humidity_uses_tmp_and_dpt(self, monkeypatch):
+        valid_time = np.datetime64("2026-07-30T00:00")
+        calls: list[tuple[str, str]] = []
+
+        def fake_flx_field(_date, _hour, variable, level_name):
+            calls.append((variable, level_name))
+            return xr.DataArray(
+                np.array([293.15]),
+                dims=("x",),
+                coords={"valid_time": valid_time},
+            )
+
+        def fake_named_level(_date, _hour, variable, level_name):
+            calls.append((variable, level_name))
+            return xr.DataArray(
+                np.array([283.15]),
+                dims=("x",),
+                coords={"valid_time": valid_time},
+            )
+
+        monkeypatch.setattr(retrieval, "fetch_flx_field", fake_flx_field)
+        monkeypatch.setattr(retrieval, "fetch_field_by_level_name", fake_named_level)
+
+        rh = fetch_relative_humidity_2m("20260730", "00")
+
+        assert calls == [("TMP", "2 m above ground"), ("DPT", "2 m above ground")]
+        assert float(rh[0]) == pytest.approx(52.511655)
+        assert rh.attrs["units"] == "%"
+        assert rh.attrs["long_name"] == "2m Relative Humidity"
+        assert rh.coords["valid_time"].item() == valid_time
 
 
 # ── Network: live index fetch (~20KB) ────────────────────────────────────────────

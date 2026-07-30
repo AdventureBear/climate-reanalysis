@@ -17,6 +17,11 @@ from urllib3.util.retry import Retry
 from .climo_r2 import dap_fetch_with_retries
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
+from .met_math import (
+    relative_humidity_from_components,
+    relative_humidity_from_dewpoint_components,
+    wind_speed_from_components,
+)
 
 log = logging.getLogger("pyre.retrieval")
 
@@ -392,15 +397,14 @@ def fetch_relative_humidity(date: str, hour: str, level: int) -> xr.DataArray:
     q = _fetch_record(grib_url, records, "SPFH", level)  # kg/kg
     t = _fetch_record(grib_url, records, "TMP",  level)  # K
 
-    tc  = t - 273.15                                          # → °C
-    e_s = 6.112 * np.exp(17.67 * tc / (tc + 243.5))          # saturation vapour pressure (hPa)
-    e   = q * float(level) / (0.622 + 0.378 * q)             # actual vapour pressure (hPa)
-    rh  = (e / e_s * 100).clip(0, 100)
+    return relative_humidity_from_components(q, t, float(level))
 
-    rh.attrs.update({"units": "%", "long_name": "Relative Humidity"})
-    if "valid_time" in q.coords:
-        rh = rh.assign_coords(valid_time=q.coords["valid_time"])
-    return rh
+
+def fetch_relative_humidity_2m(date: str, hour: str) -> xr.DataArray:
+    """Compute 2m relative humidity (%) from 2m TMP and 2m DPT."""
+    temperature = fetch_flx_field(date, hour, "TMP", "2 m above ground")
+    dewpoint = fetch_field_by_level_name(date, hour, "DPT", "2 m above ground")
+    return relative_humidity_from_dewpoint_components(temperature, dewpoint)
 
 
 def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
@@ -414,13 +418,7 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
     u = _fetch_record(grib_url, records, "UGRD", level)
     v = _fetch_record(grib_url, records, "VGRD", level)
 
-    speed = (u ** 2 + v ** 2) ** 0.5
-    speed.attrs.update({"units": "m/s", "long_name": "Wind Speed"})
-    # valid_time is a scalar coordinate; preserve it explicitly after arithmetic
-    if "valid_time" in u.coords:
-        speed = speed.assign_coords(valid_time=u.coords["valid_time"])
-
-    return speed
+    return wind_speed_from_components(u, v)
 
 
 # ---------------------------------------------------------------------------
@@ -614,6 +612,10 @@ def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], 
     return _mean_of_pairs(fetch_relative_humidity, [(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
 
+def fetch_relative_humidity_2m_daily_composite(dates: list[str], hours: list[str], *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of_pairs(fetch_relative_humidity_2m, [(d, h) for d in dates for h in hours], skip_missing=skip_missing)
+
+
 def fetch_field_composite(dates: list[str], hour: str, variable: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
     return _mean_of(fetch_field, dates, hour, variable, level, skip_missing=skip_missing)
 
@@ -633,6 +635,10 @@ def fetch_wind_components_composite(dates: list[str], hour: str, level: int, *, 
 
 def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
     return _mean_of(fetch_relative_humidity, dates, hour, level, skip_missing=skip_missing)
+
+
+def fetch_relative_humidity_2m_composite(dates: list[str], hour: str, *, skip_missing: bool = False) -> xr.DataArray:
+    return _mean_of(fetch_relative_humidity_2m, dates, hour, skip_missing=skip_missing)
 
 
 # ---------------------------------------------------------------------------
@@ -936,8 +942,7 @@ def fetch_monthly_field(year: int, month: int, grib_name: str, level: int) -> xr
 def fetch_monthly_wind_speed(year: int, month: int, level: int) -> xr.DataArray:
     """Derived from cached U and V; inherits obs_source from U component."""
     u, v = fetch_monthly_wind_components(year, month, level)
-    speed = (u ** 2 + v ** 2) ** 0.5
-    speed.attrs.update({"units": "m/s", "long_name": "Wind Speed"})
+    speed = wind_speed_from_components(u, v, obs_source_default="CORe-pgb")
     speed.attrs["_pyre_obs_source"] = u.attrs.get("_pyre_obs_source", "CORe-pgb")
     return speed
 

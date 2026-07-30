@@ -18,6 +18,7 @@ import {
 import {
   MONTHLY_UNAVAILABLE_API_VARIABLES,
   RAW_ONLY_API_VARIABLES,
+  type HumidityType,
   apiLevelForSelection,
   apiVariableForSelection,
   levelForVariableChange,
@@ -55,6 +56,7 @@ export function useCompositeRecipe() {
 
   const [variable, setVariable] = useState('wind_speed')
   const [level,    setLevel]    = useState('850')
+  const [humidityType, setHumidityType] = useState<HumidityType>('relative')
 
   const [region,      setRegion]      = useState('CONUS')
 
@@ -101,9 +103,9 @@ export function useCompositeRecipe() {
     } catch { /* nothing to do if storage is unavailable */ }
   }
 
-  const apiVariable = apiVariableForSelection(variable, level)
+  const apiVariable = apiVariableForSelection(variable, level, humidityType)
   const apiLevel = apiLevelForSelection(variable, level)
-  const levelOptions = levelOptionsForVariable(variable)
+  const levelOptions = levelOptionsForVariable(variable, humidityType)
   const isClimo     = timeScale === 'climatology'
   const isMonthly   = timeScale === 'monthly'
   const isThreeHourly = timeScale === '3-hourly'
@@ -137,6 +139,7 @@ export function useCompositeRecipe() {
     return {
       variable,
       level,
+      humidityType: variable === 'humidity' ? humidityType : undefined,
       region,
       displayMode,
       climoSource,
@@ -201,8 +204,13 @@ export function useCompositeRecipe() {
       }
     }
 
-    if (recipe.variable) setVariable(recipe.variable)
+    if (recipe.variable) {
+      setVariable(recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m' ? 'humidity' : recipe.variable)
+    }
     if (recipe.level) setLevel(recipe.level)
+    if (recipe.humidityType) setHumidityType(recipe.humidityType)
+    else if (recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m') setHumidityType('relative')
+    else if (recipe.variable === 'humidity') setHumidityType('specific')
     if (recipe.region) setRegion(recipe.region)
     if (recipe.displayMode) setDisplayMode(recipe.displayMode)
     if (recipe.climoSource) setClimoSource(recipe.climoSource)
@@ -249,9 +257,9 @@ export function useCompositeRecipe() {
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {
-      setLevel(levelForVariableChange(variable, level))
+      setLevel(levelForVariableChange(variable, level, humidityType))
     }
-  }, [level, levelOptions, variable])
+  }, [humidityType, level, levelOptions, variable])
 
   useEffect(() => {
     if (shouldDefaultWindOverlay(apiVariable)) {
@@ -275,6 +283,7 @@ export function useCompositeRecipe() {
     customMonths, setCustomMonths,
     climoMonth, setClimoMonth,
     variable, setVariable,
+    humidityType, setHumidityType,
     level, setLevel,
     region, setRegion,
     displayMode, setDisplayMode,

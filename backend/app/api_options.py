@@ -1,4 +1,5 @@
 from .config import supports_climatology
+from .units import MS_TO_KT
 
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 # r1-4xdaily is resolved internally for 3-hourly anomalies (#72), never
@@ -12,6 +13,7 @@ VAR_NAMES = {
     "temp": "Temperature",
     "height": "Geopotential Height",
     "rel_humidity": "Relative Humidity  (derived: SPFH + TMP → Bolton formula)",
+    "rel_humidity_2m": "2m Relative Humidity  (derived: TMP + DPT)",
     "humidity": "Specific Humidity",
     "temp_2m": "2m Temperature",
     "wind_10m": "10m Wind Speed",
@@ -85,7 +87,7 @@ def scale_overrides_from_query(
         return None
     if scale_min is None and scale_max is None:
         return None
-    unit_factor = 1.0 if wind_unit == "kt" else 1.0 / 0.51444
+    unit_factor = 1.0 if wind_unit == "kt" else MS_TO_KT
     overrides: dict[str, float] = {}
     if scale_min is not None:
         overrides["domain_min"] = float(scale_min) * unit_factor

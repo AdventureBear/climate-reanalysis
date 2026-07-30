@@ -328,7 +328,7 @@ export function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFami
     ]
   }
 
-  if (variable === 'rel_humidity') {
+  if (variable === 'rel_humidity' || variable === 'rel_humidity_2m') {
     return [
       {
         key: 'shared',

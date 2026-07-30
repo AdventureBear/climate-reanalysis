@@ -54,6 +54,7 @@ import xarray as xr
 
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
+from .met_math import vector_magnitude
 
 log = logging.getLogger("pyre.climo_r2")
 
@@ -377,7 +378,7 @@ def _fetch_wind_speed_climo(level: int, month: int, day: int) -> dict[str, xr.Da
     log.info("CLIMO_R2  fetched in %.1fs", time.perf_counter() - t0)
 
     speed_arrays = [
-        np.sqrt(u_by_year[y] ** 2 + v_by_year[y] ** 2)
+        vector_magnitude(u_by_year[y], v_by_year[y])
         for y in _CLIMO_YEARS
     ]
     stacked = xr.concat(speed_arrays, dim="year")
@@ -464,7 +465,7 @@ def _fetch_r2m_monthly_wind_speed(level: int, month: int) -> dict[str, xr.DataAr
 
     u_30yr = u_30yr.where(np.abs(u_30yr) < 1e30).astype(np.float64)
     v_30yr = v_30yr.where(np.abs(v_30yr) < 1e30).astype(np.float64)
-    speed_30yr = (u_30yr ** 2 + v_30yr ** 2) ** 0.5
+    speed_30yr = vector_magnitude(u_30yr, v_30yr)
     mean = speed_30yr.mean(dim="time")
     std  = speed_30yr.std( dim="time", ddof=1)
     mean = mean.rename({"lat": "latitude", "lon": "longitude"})
@@ -528,7 +529,7 @@ def _fetch_single_level_daily_wind_speed(
     log.info("CLIMO_R2  fetched in %.1fs", time.perf_counter() - t0)
 
     speed_arrays = [
-        np.sqrt(u_by_year[y] ** 2 + v_by_year[y] ** 2)
+        vector_magnitude(u_by_year[y], v_by_year[y])
         for y in _CLIMO_YEARS
     ]
     return _mean_std(xr.concat(speed_arrays, dim="year"), dim="year")
@@ -569,7 +570,7 @@ def _fetch_single_level_monthly_wind_speed(
     u_30yr = _fetch_r2m_30yr(u_spec, month)
     v_30yr = _fetch_r2m_30yr(v_spec, month)
     log.info("CLIMO_R2M  fetched in %.1fs", time.perf_counter() - t0)
-    return _mean_std((u_30yr ** 2 + v_30yr ** 2) ** 0.5, dim="time")
+    return _mean_std(vector_magnitude(u_30yr, v_30yr), dim="time")
 
 
 def _disk_path_single_level(stem: str, month: int, day: int | None) -> str:

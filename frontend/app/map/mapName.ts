@@ -29,14 +29,17 @@ function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9-]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
-function variableLabel(variable: string | undefined): string {
+function variableLabel(variable: string | undefined, recipe?: MapRecipe): string {
   if (!variable) return ''
+  if (variable === 'humidity') {
+    return recipe?.humidityType === 'specific' ? 'Specific Humidity' : 'Relative Humidity'
+  }
   return VARIABLES.find(option => option.value === variable)?.label ?? variable
 }
 
-function levelLabel(variable: string | undefined, level: string | undefined): string {
+function levelLabel(variable: string | undefined, level: string | undefined, recipe?: MapRecipe): string {
   if (!variable || !level) return ''
-  const options = levelOptionsForVariable(variable)
+  const options = levelOptionsForVariable(variable, recipe?.humidityType)
   // Single-level variables (MSLP, precipitable water) already say it all in the
   // variable name; a level token would just duplicate it.
   if (options.length <= 1) return ''
@@ -84,8 +87,8 @@ function formatTime(time: TimeRecipe | undefined): string {
 
 export function suggestedMapName(recipe: MapRecipe): string {
   const parts = [
-    slug(levelLabel(recipe.variable, recipe.level)),
-    slug(variableLabel(recipe.variable)),
+    slug(levelLabel(recipe.variable, recipe.level, recipe)),
+    slug(variableLabel(recipe.variable, recipe)),
     slug(MODE_LABEL[recipe.displayMode ?? 'raw']),
     slug(recipe.region ?? ''),
     formatTime(recipe.time),

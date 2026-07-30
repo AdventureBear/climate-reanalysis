@@ -16,6 +16,8 @@ type VariableConfig = {
   levels: readonly VariableLevelConfig[]
 }
 
+export type HumidityType = 'relative' | 'specific'
+
 function pressureLevels(apiVariable: string): VariableLevelConfig[] {
   return PRESSURE_LEVELS.map(level => ({
     value: String(level),
@@ -55,13 +57,12 @@ const VARIABLE_CONFIG = {
     label: 'Geopotential Height',
     levels: pressureLevels('height'),
   },
-  rel_humidity: {
-    label: 'Relative Humidity',
-    levels: pressureLevels('rel_humidity'),
-  },
   humidity: {
-    label: 'Specific Humidity',
-    levels: pressureLevels('humidity'),
+    label: 'Humidity',
+    levels: [
+      { value: 'surface_2m_rh', label: 'Surface (2m)', apiVariable: 'rel_humidity_2m', apiLevel: '1000', levelKind: 'surface' },
+      ...pressureLevels('rel_humidity'),
+    ],
   },
   precipitable_water: {
     label: 'Precipitable Water',
@@ -154,6 +155,7 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'surface_pressure', label: 'Mean Sea Level Pressure' },
   { value: 'height', label: 'Geopotential Height' },
   { value: 'rel_humidity', label: 'Relative Humidity' },
+  { value: 'rel_humidity_2m', label: '2m Relative Humidity' },
   { value: 'humidity', label: 'Specific Humidity' },
   { value: 'precipitable_water', label: 'Precipitable Water' },
   { value: 'omega', label: 'Omega (Vertical Velocity)' },
@@ -173,23 +175,23 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
 export const SURFACE_LEVELS = new Set([
   'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'toa_olr',
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
-  'surface_2m_dpt', 'surface_snod',
+  'surface_2m_dpt', 'surface_2m_rh', 'surface_snod',
 ])
 // Surface/named-level API variables whose monthly obs composites are NOT
 // wired (MSLP has a monthly archive record and is exempt). Mirrors the
 // backend gate keyed on monthly_grib_name in config.py.
 export const MONTHLY_UNAVAILABLE_API_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'olr',
-  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 // Surface/named-level API variables: wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
-  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
-  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 
 // API variables with no wired climatology baseline — raw display mode only.
@@ -199,7 +201,7 @@ export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
 // R2 source, or derivation deferred — see config.py comments.)
 export const RAW_ONLY_API_VARIABLES = new Set([
   'humidity', 'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
-  'dewpoint_2m', 'absv', 'snow_depth',
+  'dewpoint_2m', 'rel_humidity_2m', 'absv', 'snow_depth',
 ])
 
 const API_TO_UI_SELECTION = new Map<string, { variable: string; level: string }>()
@@ -210,15 +212,19 @@ for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {
   }
 }
 
-export function levelOptionsForVariable(variable: string): SelectOption[] {
-  return levelConfigsForVariable(variable).map(({ value, label }) => ({
+export function levelOptionsForVariable(variable: string, humidityType: HumidityType = 'relative'): SelectOption[] {
+  return levelConfigsForVariable(variable, humidityType).map(({ value, label }) => ({
     value,
     label,
   }))
 }
 
-function levelConfigsForVariable(variable: string): VariableLevelConfig[] {
-  return [...(VARIABLE_CONFIG[variable as UiVariableKey]?.levels ?? pressureLevels(variable))]
+function levelConfigsForVariable(variable: string, humidityType: HumidityType = 'relative'): VariableLevelConfig[] {
+  const levels = [...(VARIABLE_CONFIG[variable as UiVariableKey]?.levels ?? pressureLevels(variable))]
+  if (variable === 'humidity' && humidityType === 'specific') {
+    return levels.filter(option => option.levelKind === 'pressure')
+  }
+  return levels
 }
 
 function defaultPressureLevel(options: VariableLevelConfig[]): string {
@@ -229,8 +235,8 @@ function defaultPressureLevel(options: VariableLevelConfig[]): string {
   )?.value ?? '850'
 }
 
-export function levelForVariableChange(nextVariable: string, currentLevel: string): string {
-  const options = levelConfigsForVariable(nextVariable)
+export function levelForVariableChange(nextVariable: string, currentLevel: string, humidityType: HumidityType = 'relative'): string {
+  const options = levelConfigsForVariable(nextVariable, humidityType)
   const exact = options.find(option => option.value === currentLevel)
   if (exact) return exact.value
 
@@ -252,7 +258,11 @@ export function levelForVariableChange(nextVariable: string, currentLevel: strin
   )?.value ?? '850'
 }
 
-export function apiVariableForSelection(variable: string, level: string): string {
+export function apiVariableForSelection(variable: string, level: string, humidityType: HumidityType = 'relative'): string {
+  if (variable === 'humidity') {
+    const levelConfig = VARIABLE_CONFIG.humidity.levels.find(option => option.value === level)
+    return humidityType === 'specific' ? 'humidity' : levelConfig?.apiVariable ?? 'rel_humidity'
+  }
   return VARIABLE_CONFIG[variable as UiVariableKey]?.levels.find(option => option.value === level)?.apiVariable ?? variable
 }
 
@@ -261,6 +271,9 @@ export function apiLevelForSelection(variable: string, level: string): string {
 }
 
 export function uiSelectionForApiVariable(apiVariable: string, apiLevel: string): { variable: string; level: string } {
+  if (apiVariable === 'rel_humidity' || apiVariable === 'humidity') {
+    return { variable: 'humidity', level: apiLevel }
+  }
   return API_TO_UI_SELECTION.get(`${apiVariable}:${apiLevel}`) ?? API_TO_UI_SELECTION.get(apiVariable) ?? {
     variable: apiVariable,
     level: apiLevel,

@@ -35,6 +35,9 @@ from ..retrieval import (
     fetch_named_level_field_composite,
     fetch_named_level_field_daily_composite,
     fetch_relative_humidity,
+    fetch_relative_humidity_2m,
+    fetch_relative_humidity_2m_composite,
+    fetch_relative_humidity_2m_daily_composite,
     fetch_relative_humidity_composite,
     fetch_relative_humidity_daily_composite,
     fetch_wind_components,
@@ -68,6 +71,8 @@ class FetchRequest(Protocol):
 def _variable_fetch_key(variable: str) -> str:
     if VARIABLES[variable].get("stream") == "flx":
         return "flx"
+    if VARIABLES[variable].get("stream") == "derived_surface":
+        return variable
     if VARIABLES[variable].get("stream") == "pgb_named_level":
         return "pgb_named_level"
     return variable if variable in {"wind_speed", "rel_humidity"} else "field"
@@ -169,6 +174,7 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ),
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
+    ("daily", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_daily_composite(sel.date_list, sel.daily_hours, skip_missing=bool(req.skip_missing)),
     ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_daily_composite(
         sel.date_list,
@@ -180,6 +186,7 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("daily", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, h) for d in sel.date_list for h in sel.daily_hours]),
     ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
+    ("composite", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_composite(sel.date_list, req.hour, skip_missing=bool(req.skip_missing)),
     ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_composite(
         sel.date_list,
@@ -191,6 +198,7 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("composite", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, req.hour) for d in sel.date_list]),
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity(sel.date_list[0], req.hour, req.level),
+    ("single", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m(sel.date_list[0], req.hour),
     ("single", "field"): lambda req, sel, grib: fetch_field(sel.date_list[0], req.hour, grib, req.level),
     ("single", "pgb_named_level"): lambda req, sel, _grib: _pgb_named_level_field(req, sel.date_list[0], req.hour),
     ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),

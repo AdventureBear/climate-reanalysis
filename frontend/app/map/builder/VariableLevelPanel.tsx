@@ -14,6 +14,7 @@ import type { CompositeRecipeState, TemperatureUnit } from './useCompositeRecipe
 export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState }) {
   const {
     variable, setVariable,
+    humidityType, setHumidityType,
     level, setLevel,
     levelOptions,
     windUnit, setWindUnit,
@@ -29,13 +30,13 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
             <div className="grid w-full grid-cols-[minmax(0,1fr)_8rem] items-end gap-2">
               <SelectField
                 label="Variable"
-                value={variable === 'humidity' ? 'rel_humidity' : variable}
+                value={variable}
                 options={VARIABLES}
                 onChange={nextVariable => {
                     setVariable(nextVariable)
-                    const nextLevel = levelForVariableChange(nextVariable, level)
+                    const nextLevel = levelForVariableChange(nextVariable, level, humidityType)
                     setLevel(nextLevel)
-                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel))) {
+                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel, humidityType))) {
                       setWindOn(true)
                       setWindType('barbs')
                     }
@@ -49,7 +50,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                 options={levelOptions}
                 onChange={nextLevel => {
                   setLevel(nextLevel)
-                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel))) {
+                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel, humidityType))) {
                     setWindOn(true)
                     setWindType('barbs')
                   }
@@ -60,7 +61,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'rel_humidity' || variable === 'humidity' || variable === 'precipitable_water') && (
+            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water') && (
             <CardRow>
                 {variable === 'wind_speed' && (
                   <VariableDisplayControl label="Wind Units">
@@ -128,15 +129,15 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                     />
                   </VariableDisplayControl>
                 )}
-                {(variable === 'rel_humidity' || variable === 'humidity') && (
+                {variable === 'humidity' && (
                   <VariableDisplayControl label="Humidity Type">
                     <TabStrip
                       options={[
-                        { value: 'rel_humidity', label: 'Relative' },
-                        { value: 'humidity', label: 'Specific' },
+                        { value: 'relative', label: 'Relative' },
+                        { value: 'specific', label: 'Specific', disabled: level === 'surface_2m_rh' },
                       ]}
-                      value={variable}
-                      onChange={setVariable}
+                      value={humidityType}
+                      onChange={v => setHumidityType(v as typeof humidityType)}
                       fullWidth
                     />
                   </VariableDisplayControl>

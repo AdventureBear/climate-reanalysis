@@ -43,6 +43,7 @@ import xarray as xr
 from .climo_r2 import _PendingFetch, _load_cached, dap_fetch_with_retries
 from .config import CACHE_ROOT
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
+from .met_math import vector_magnitude
 
 log = logging.getLogger("pyre.climo_r1")
 
@@ -222,7 +223,7 @@ def get_r1_hourly_climo_spec(spec: dict, level: int, month: int, day: int, hour:
     if spec.get("derive") == "wind_speed":
         u = get_r1_hourly_climo(spec["u"], level, month, day, hour)
         v = get_r1_hourly_climo(spec["v"], level, month, day, hour)
-        return (u ** 2 + v ** 2) ** 0.5
+        return vector_magnitude(u, v)
     return get_r1_hourly_climo(spec, level, month, day, hour)
 
 
@@ -240,7 +241,7 @@ def get_r1_hourly_climo_wind_speed(level: int, month: int, day: int, hour: int) 
     """Per-hour wind-speed mean at a pressure level, from the u/v LTM files."""
     u = get_r1_hourly_climo_field("UGRD", level, month, day, hour)
     v = get_r1_hourly_climo_field("VGRD", level, month, day, hour)
-    return (u ** 2 + v ** 2) ** 0.5
+    return vector_magnitude(u, v)
 
 
 _DAYS_IN_LTM_MONTH = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
