@@ -194,6 +194,7 @@ The planning screenshot in `docs/archive/` is an older UI checkpoint from May 20
 - Prefer production-shaped configuration contracts such as `PYRE_CACHE_DIR` instead of hardcoded paths.
 - Keep the frontend thin; the map image is a backend product.
 - Preserve scientific meaning: fixed anchors, discrete steps, explicit units, and provenance-aware labels.
+- Meteorological math trip wire: PyRe should not accumulate feature-local formulas. When new work needs physical-unit conversion, repeated derived math, multi-field or multi-level diagnostics, or reusable xarray metadata handling, route the work through an internal shared module first. MetPy can be introduced behind narrow adapters when scientific validation burden is high, but PyRe continues to own retrieval, climatology policy, rendering, and product behavior. Discussion tracker: #119.
 - Make changes stepwise and verifiable.
 
 ### React / Frontend Guardrails

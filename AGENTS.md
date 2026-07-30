@@ -58,6 +58,7 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 - Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params. Do not scatter URL parsing, API serialization, or variable/level mapping inside `App.tsx`.
 - If a feature will grow with variables, levels, overlays, units, regions, or modes, pause and extend the source-of-truth config first.
 - Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR`, over temporary hardcoded paths or code that will need to be deleted later.
+- Trip wire for meteorological math: if a feature introduces a new meteorological formula, repeats an existing formula, converts physical units, derives a field from multiple CORe variables/levels, or needs xarray metadata preservation, first add or reuse a shared helper/module. Do not implement the math inline in the feature path.
 - Before implementing a quick UI fix, ask whether this is a state/model problem instead of a component problem.
 - Keep changes stepwise and verifiable: make one structural change, run the relevant build/test, then continue.
 
