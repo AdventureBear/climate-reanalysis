@@ -391,11 +391,20 @@ Two consequences are documented on the maps and in the FAQ: the baseline line in
 
 Reviewed and approved by the project owner, 2026-07-28.
 
-### CORe Climatology Not Built
+### CORe Sub-Monthly Climatology Not Built
 
-The long-term goal is a CORe-native climatology for 1991-2020 covering all eight 3-hourly analyses, computed once and served from disk (#70). It requires substantial batch fetching, storage, and server-side persistence, and is deferred until a controlled compute environment exists.
+CORe already supplies the **monthly** climatology: the `monthly-pgb` source computes 30-year monthly means from CORe monthly files, so monthly anomalies are single-dataset today.
 
-It resolves three things at once: observations and baselines would finally come from the same dataset; the 03/09/15/21z interpolation between R1 hours goes away; and computing the spread alongside the mean restores 3-hourly normalized maps, which the R1 per-hour files cannot support.
+The gap is **daily and 3-hourly**. Nobody publishes CORe daily or hourly normals, and building them means fetching 30 years x 366 days of 0.25 degree fields. That is why sub-monthly baselines come from other datasets (R2 for daily, R1 4x-daily for single-hour maps).
+
+Two separate issues cover this, and they are not the same thing:
+
+- **#66** decides *which dataset* sub-monthly normals should come from: ARCO-ERA5, R2, or a CORe-native build. A science decision, not yet made.
+- **#70** precomputes the *existing R2* normals offline so no visitor request triggers a 30-year fetch. Same dataset and same math as today, just done ahead of time. It does not close the CORe gap.
+
+A CORe-native build would resolve three things at once: observations and baselines would come from the same dataset; the 03/09/15/21z interpolation between R1 hours would go away; and computing the spread alongside the mean would restore 3-hourly normalized maps, which the R1 per-hour files cannot support. Whether that is the right spend is exactly what #66 decides.
+
+**Open conflict to resolve in #66:** #70 records a decision (2026-07-14) that R1 is explicitly excluded as a climatology source. The #72 work (2026-07-28) introduced R1 4x-daily means as the single-hour baseline, because no other dataset publishes a per-hour normal and R2 has no sub-daily data at all. The diurnal error it removed was far larger than any R1-versus-R2 difference, and the maps label the source, but the exclusion decision has not been formally revisited.
 
 ### `cfsr-daily` Placeholder
 
