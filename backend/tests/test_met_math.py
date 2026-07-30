@@ -10,6 +10,7 @@ from app.met_math import (
     saturation_vapor_pressure_bolton_hpa,
     vapor_pressure_from_specific_humidity_hpa,
     vector_magnitude,
+    with_derived_metadata,
     wind_speed_from_components,
 )
 
@@ -50,6 +51,29 @@ def test_wind_speed_from_components_preserves_pyre_metadata_when_requested():
     assert float(speed[0]) == 10.0
     assert speed.attrs["_pyre_obs_source"] == "CORe-pgb"
     assert speed.attrs["_pyre_grib_level"] == "850 mb"
+
+
+def test_with_derived_metadata_sets_attrs_and_preserves_template_context():
+    valid_time = np.datetime64("2026-07-30T00:00")
+    template = xr.DataArray([1.0], dims=("x",), coords={"valid_time": valid_time})
+    template.attrs["_pyre_obs_source"] = "CORe-pgb"
+    template.attrs["_pyre_grib_level"] = "850 mb"
+    derived = xr.DataArray([2.0], dims=("x",))
+
+    result = with_derived_metadata(
+        derived,
+        units="widgets",
+        long_name="Derived Widgets",
+        template=template,
+        obs_source_default="fallback",
+        preserve_grib_level=True,
+    )
+
+    assert result.attrs["units"] == "widgets"
+    assert result.attrs["long_name"] == "Derived Widgets"
+    assert result.attrs["_pyre_obs_source"] == "CORe-pgb"
+    assert result.attrs["_pyre_grib_level"] == "850 mb"
+    assert result.coords["valid_time"].item() == valid_time
 
 
 def test_bolton_saturation_vapor_pressure_at_freezing():

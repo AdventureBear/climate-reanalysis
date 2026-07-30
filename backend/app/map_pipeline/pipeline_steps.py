@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..config import VARIABLES
-from ..met_math import vector_magnitude
+from ..met_math import vector_magnitude, with_derived_metadata
 from ..met_math import wind_speed_from_components as _wind_speed_from_components
 
 
@@ -51,16 +51,22 @@ def compute_vector_anomaly(obs_u, obs_v, climo_u, climo_v, obs_template):
     anomaly_u = obs_u - climo_u
     anomaly_v = obs_v - climo_v
     magnitude = vector_magnitude(anomaly_u, anomaly_v)
-    magnitude.attrs.update({"units": "m/s", "long_name": "Wind Vector Anomaly Magnitude"})
-    if "valid_time" in obs_template.coords:
-        magnitude = magnitude.assign_coords(valid_time=obs_template.coords["valid_time"])
+    magnitude = with_derived_metadata(
+        magnitude,
+        units="m/s",
+        long_name="Wind Vector Anomaly Magnitude",
+        template=obs_template,
+    )
     return anomaly_u, anomaly_v, magnitude
 
 
 def vector_sigma_from_component_std(u_std, v_std):
     sigma = vector_magnitude(u_std, v_std)
-    sigma.attrs.update({"units": "m/s", "long_name": "Wind Vector Variability"})
-    return sigma
+    return with_derived_metadata(
+        sigma,
+        units="m/s",
+        long_name="Wind Vector Variability",
+    )
 
 
 def normalized_mask_threshold(variable: str, level: int):
@@ -117,7 +123,12 @@ def compute_normalized_vector_anomaly(obs_u, obs_v, climo_u, climo_v, vector_std
     safe_std = vector_std.where(vector_std > 1e-6)
     subset = magnitude / safe_std
     final_valid = int(subset.notnull().sum())
-    subset.attrs.update({"units": "sigma", "long_name": "Wind Vector Normalized Anomaly Magnitude"})
+    subset = with_derived_metadata(
+        subset,
+        units="sigma",
+        long_name="Wind Vector Normalized Anomaly Magnitude",
+        template=obs_template,
+    )
     return anomaly_u, anomaly_v, subset, NormalizedAnomalyMaskStats(
         total_valid_input=total_valid_input,
         invalid_sigma_masked=total_valid_input - final_valid,

@@ -7,6 +7,28 @@ import numpy as np
 from .units import kelvin_to_celsius
 
 
+def with_derived_metadata(
+    data: Any,
+    *,
+    units: str,
+    long_name: str,
+    template: Any | None = None,
+    obs_source_default: str | None = None,
+    preserve_grib_level: bool = False,
+) -> Any:
+    """Apply standard PyRe metadata to a derived xarray-like result."""
+    if hasattr(data, "attrs"):
+        data.attrs.update({"units": units, "long_name": long_name})
+        template_attrs = getattr(template, "attrs", {})
+        if obs_source_default is not None or "_pyre_obs_source" in template_attrs:
+            data.attrs["_pyre_obs_source"] = template_attrs.get("_pyre_obs_source", obs_source_default)
+        if preserve_grib_level:
+            data.attrs["_pyre_grib_level"] = template_attrs.get("_pyre_grib_level", "")
+    if template is not None and hasattr(data, "assign_coords") and "valid_time" in getattr(template, "coords", {}):
+        data = data.assign_coords(valid_time=template.coords["valid_time"])
+    return data
+
+
 def vector_magnitude(u: Any, v: Any) -> Any:
     """Return sqrt(u^2 + v^2) for numpy/xarray-like component arrays."""
     return (u ** 2 + v ** 2) ** 0.5
@@ -21,14 +43,14 @@ def wind_speed_from_components(
 ) -> Any:
     """Derived wind speed in m/s with PyRe metadata applied consistently."""
     speed = vector_magnitude(u, v)
-    speed.attrs.update({"units": "m/s", "long_name": "Wind Speed"})
-    if obs_source_default is not None or "_pyre_obs_source" in u.attrs:
-        speed.attrs["_pyre_obs_source"] = u.attrs.get("_pyre_obs_source", obs_source_default)
-    if preserve_grib_level:
-        speed.attrs["_pyre_grib_level"] = u.attrs.get("_pyre_grib_level", "")
-    if "valid_time" in u.coords:
-        speed = speed.assign_coords(valid_time=u.coords["valid_time"])
-    return speed
+    return with_derived_metadata(
+        speed,
+        units="m/s",
+        long_name="Wind Speed",
+        template=u,
+        obs_source_default=obs_source_default,
+        preserve_grib_level=preserve_grib_level,
+    )
 
 
 def saturation_vapor_pressure_bolton_hpa(temperature_k: Any) -> Any:
@@ -76,10 +98,12 @@ def relative_humidity_from_components(
 ) -> Any:
     """Derived relative humidity (%) with PyRe metadata applied consistently."""
     relative_humidity = relative_humidity_from_specific_humidity(specific_humidity, temperature_k, pressure_hpa)
-    relative_humidity.attrs.update({"units": "%", "long_name": "Relative Humidity"})
-    if "valid_time" in specific_humidity.coords:
-        relative_humidity = relative_humidity.assign_coords(valid_time=specific_humidity.coords["valid_time"])
-    return relative_humidity
+    return with_derived_metadata(
+        relative_humidity,
+        units="%",
+        long_name="Relative Humidity",
+        template=specific_humidity,
+    )
 
 
 def relative_humidity_from_dewpoint_components(
@@ -88,7 +112,9 @@ def relative_humidity_from_dewpoint_components(
 ) -> Any:
     """Derived relative humidity (%) from temperature and dewpoint DataArrays."""
     relative_humidity = relative_humidity_from_dewpoint(temperature_k, dewpoint_k)
-    relative_humidity.attrs.update({"units": "%", "long_name": "2m Relative Humidity"})
-    if "valid_time" in temperature_k.coords:
-        relative_humidity = relative_humidity.assign_coords(valid_time=temperature_k.coords["valid_time"])
-    return relative_humidity
+    return with_derived_metadata(
+        relative_humidity,
+        units="%",
+        long_name="2m Relative Humidity",
+        template=temperature_k,
+    )

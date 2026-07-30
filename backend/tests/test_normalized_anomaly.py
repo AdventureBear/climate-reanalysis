@@ -2,6 +2,7 @@ import numpy as np
 import xarray as xr
 
 from app.map_pipeline.pipeline_steps import (
+    compute_vector_anomaly,
     compute_normalized_anomaly,
     compute_normalized_vector_anomaly,
     is_vector_wind_anomaly,
@@ -53,6 +54,23 @@ def test_normalized_wind_uses_vector_departure_not_scalar_speed():
     assert stats.invalid_sigma_masked == 0
     assert stats.threshold_masked == 0
     assert stats.final_valid == 1
+    assert result.attrs["units"] == "sigma"
+    assert result.attrs["long_name"] == "Wind Vector Normalized Anomaly Magnitude"
+
+
+def test_vector_anomaly_preserves_valid_time_metadata():
+    valid_time = np.datetime64("2026-07-30T00:00")
+    obs_u = _da([4.0]).assign_coords(valid_time=valid_time)
+    obs_v = _da([0.0])
+    climo_u = _da([0.0])
+    climo_v = _da([3.0])
+
+    _, _, magnitude = compute_vector_anomaly(obs_u, obs_v, climo_u, climo_v, obs_u)
+
+    np.testing.assert_allclose(magnitude.values, [5.0])
+    assert magnitude.attrs["units"] == "m/s"
+    assert magnitude.attrs["long_name"] == "Wind Vector Anomaly Magnitude"
+    assert magnitude.coords["valid_time"].item() == valid_time
 
 
 def test_normalized_vector_anomaly_masks_tiny_vector_sigma():
@@ -84,6 +102,8 @@ def test_vector_sigma_combines_component_variability():
     result = vector_sigma_from_component_std(u_std, v_std)
 
     np.testing.assert_allclose(result.values, [5.0])
+    assert result.attrs["units"] == "m/s"
+    assert result.attrs["long_name"] == "Wind Vector Variability"
 
 
 def test_optional_absolute_threshold_still_masks_non_wind_cases():
