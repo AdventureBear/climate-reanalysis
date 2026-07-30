@@ -44,6 +44,8 @@ backend/birthday-packages/
 backend/map_packages/
 
 # Local one-off scale/planning artifacts
+backend/scripts/run_*_experiment.py
+backend/scripts/*_experiment.py
 backend/scripts/render_*_wind_scale_test.py
 backend/scripts/render_lower_level_wind_scale_tests.py
 backend/scripts/render_surface_temp_anomaly_scale_test.py
