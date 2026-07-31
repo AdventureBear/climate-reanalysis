@@ -25,6 +25,7 @@ import { TemporalPanel } from './builder/TemporalPanel'
 import { TimeScaleControls } from './builder/TimeScaleControls'
 import { VariableLevelPanel } from './builder/VariableLevelPanel'
 import { SettingsDrawer } from './SettingsDrawer'
+import { readStoredWindLayout } from '../../lib/windLayout'
 import { useMapGeneration } from './builder/useMapGeneration'
 import ColorLabPanel from './colorLab/ColorLabPanel'
 import { useScaleDesigner } from './colorLab/useScaleDesigner'
@@ -83,6 +84,11 @@ export default function MapBuilder() {
   // URL → state synchronization. Runs for deep links and browser back/forward;
   // URL updates made by handleGenerate / library-load are skipped via the ref.
   const selfUpdatedParamsRef = useRef<string | null>(null)
+
+  // ?controls=… / stored wind-controls layout (#45 split test). Read after
+  // mount, like every other stored preference: localStorage does not exist
+  // during the static build.
+  useEffect(() => { readStoredWindLayout() }, [])
 
   useEffect(() => {
     // Read the query string directly (no useSearchParams): the hook forces a

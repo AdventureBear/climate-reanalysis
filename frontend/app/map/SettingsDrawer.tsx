@@ -1,5 +1,8 @@
-// Settings drawer: layout mode, the climatology baseline preference, and notes.
+// Settings drawer: layout mode, the wind-controls layout, the climatology
+// baseline preference, and notes.
 import { LayoutGrid, PanelLeft, X } from 'lucide-react'
+import { TabStrip } from '../../ui/controls'
+import { WIND_LAYOUTS, WIND_LAYOUT_LABELS, setWindLayout, useWindLayout, type WindLayout } from '../../lib/windLayout'
 
 export function SettingsDrawer({ isVertical, setLayoutMode, onClose, preferCoreClimo, onPreferCoreClimo }: {
   isVertical: boolean
@@ -9,6 +12,7 @@ export function SettingsDrawer({ isVertical, setLayoutMode, onClose, preferCoreC
   preferCoreClimo: boolean
   onPreferCoreClimo: (next: boolean) => void
 }) {
+  const windLayout = useWindLayout()
   return (
     <>
         <>
@@ -44,6 +48,17 @@ export function SettingsDrawer({ isVertical, setLayoutMode, onClose, preferCoreC
                 </div>
               </section>
               <section>
+                {/* #45 split test. A ?controls=buttons link sets this too, and
+                    wins on arrival; both layouts drive the same map state. */}
+                <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Wind controls</h3>
+                <TabStrip fullWidth
+                  options={WIND_LAYOUTS.map(v => ({ value: v, label: WIND_LAYOUT_LABELS[v] }))}
+                  value={windLayout}
+                  onChange={v => setWindLayout(v as WindLayout)} />
+                <p className="mt-3 mb-8 text-xs text-slate-500 leading-relaxed">
+                  Two arrangements of the wind layer controls in the Overlays card. The choice is
+                  yours alone: it is never part of a map, a share link, or a saved recipe.
+                </p>
                 <h3 className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-4">Anomalies</h3>
                 <label className="flex cursor-pointer items-start gap-3">
                   <button type="button" role="switch" aria-checked={preferCoreClimo}

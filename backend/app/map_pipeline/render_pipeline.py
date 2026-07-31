@@ -23,6 +23,7 @@ class RenderRequest(Protocol):
     fill_mode: str
     temp_unit: str
     isotachs: int
+    isotach_interval: int
     centers: int
     contours: str
     marker: str
@@ -90,10 +91,14 @@ def render_map_product(
         fill_mode=req.fill_mode,
         temp_unit=req.temp_unit,
         base_array=base_array,
-        isotachs=bool(req.isotachs),
+        # Isotachs are a raw-field layer and are not offered on anomaly maps
+        # (#45): an anomaly map shows anomaly quantities only. The frontend
+        # disables the control there; this is the backend guarantee.
+        isotachs=bool(req.isotachs) and req.mode not in ("anomaly", "normalized"),
         centers_array=centers_array,
         contour_overlays=contour_overlays,
         monthly_anomaly=monthly_anomaly,
+        isotach_interval=req.isotach_interval,
         marker=req.marker,
         title_note=req.title_note,
     )

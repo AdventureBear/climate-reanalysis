@@ -40,7 +40,7 @@ from .rate_limit import (
     enforce_rate_limit,
 )
 from .retrieval import DataUnavailableError, VALID_HOURS
-from .visualizer import describe_color_scale
+from .visualizer import DEFAULT_WIND_DENSITY, ISOTACH_INTERVALS_KT, describe_color_scale
 
 logging.basicConfig(
     level=logging.INFO,
@@ -293,6 +293,7 @@ def get_map(
     fill_mode: str = "contours",
     temp_unit: str = "",
     isotachs: int = 0,
+    isotach_interval: int = 0,
     centers: int = 0,
     contours: str = "",
     skip_missing: int = 0,
@@ -301,6 +302,11 @@ def get_map(
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
         wind_type, wind_step, isotachs = "vectors", 0, 1
+    # "Auto" density arrives as a negative sentinel. Resolve it here, at the
+    # edge, so every downstream `wind_step > 0` gate (fetch planning, overlay
+    # planning, rendering) keeps seeing a plain positive number (#45).
+    if wind_step < 0:
+        wind_step = DEFAULT_WIND_DENSITY
     _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded", "none"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")
@@ -310,10 +316,17 @@ def get_map(
     if not parsed_contours <= {"pressure", "height", "temp"}:
         raise HTTPException(status_code=422, detail="contours accepts a comma-separated subset of: pressure, height, temp")
     # A wind map with shading, isotachs, and glyphs all off would be blank.
+    # Isotachs do not count on an anomaly map, where they are not drawn (#45).
+    if isotach_interval and isotach_interval not in ISOTACH_INTERVALS_KT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"isotach_interval must be one of {list(ISOTACH_INTERVALS_KT)} knots, or 0 to derive it from the level",
+        )
+    isotachs_would_draw = bool(isotachs) and mode not in ("anomaly", "normalized")
     if (
         variable in {"wind_speed", "wind_10m"}
         and fill_mode == "none"
-        and not isotachs
+        and not isotachs_would_draw
         and wind_step <= 0
     ):
         raise HTTPException(
@@ -425,6 +438,7 @@ def get_map(
                 fill_mode=fill_mode,
                 temp_unit=temp_unit,
                 isotachs=isotachs,
+                isotach_interval=isotach_interval,
                 centers=centers,
                 contours=contours,
                 skip_missing=skip_missing,

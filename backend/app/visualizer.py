@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import os
 import threading
 from collections.abc import Callable
@@ -195,6 +196,10 @@ _WIND_STRAT_COLORS = [
 # 200mb scales keep their current start and ceiling values, with the reviewed
 # yellow-green/teal/deep-blue top-end transition. Stratospheric levels use
 # their own fixed-anchor ladder.
+# Isotach spacings offered to the user, knots. The default for a level is
+# derived from its wind scale group; see isotach_interval_kt (#45).
+ISOTACH_INTERVALS_KT: tuple[int, ...] = (5, 10, 20)
+
 _WIND_SCALE_CONFIGS: dict[str, dict] = {
     "surface": {
         "mapping": "fixed_anchors",
@@ -1016,8 +1021,12 @@ def _base_contour_plan(variable, level, values, wind_unit="kt", pwat_unit="mm", 
         return pascals_to_hpa(values), 4.0              # mb
     # Temperature deliberately excluded: isotherms over temp-anomaly shading
     # read as clutter rather than context.
-    if variable in {"wind_speed", "wind_10m"}:
-        return values * _wind_unit_factor(wind_unit), 20.0 if wind_unit == "kt" else 10.0
+    #
+    # Wind deliberately excluded for the same reason, and more strongly (#45):
+    # the shading on a wind anomaly map is the anomaly magnitude, while these
+    # contours would be raw speed. Two different quantities about wind sharing
+    # one visual space, drawn automatically with no way to turn them off.
+    # Anomaly maps show anomaly quantities only.
     if variable in {"rel_humidity", "rel_humidity_2m"}:
         return values, 20.0                             # %
     if variable == "precipitable_water":
@@ -1213,6 +1222,42 @@ def _anomaly_to_display_with_unit(
     return values
 
 
+# The figure is a fixed 14x9 inches for every region, so the same grid stride
+# produces very different spacing on the page: measured at density 2, a barb
+# fell every 0.55 in on the Northeast map and every 0.05 in on the World map,
+# an elevenfold range. Density is normalized against CONUS instead, the extent
+# users calibrated the setting on, so one density number means one on-page
+# spacing everywhere (#45).
+FIGURE_INCHES = (14.0, 9.0)
+# T170 gaussian, the native CORe obs grid users calibrated density against.
+CORE_GRID_DEG = 0.703125
+# wind_step < 0 means "auto": use the calibrated density. Retuning this one
+# number retunes every Auto map without touching a saved recipe or share link.
+DEFAULT_WIND_DENSITY = 2
+_CONUS_DEGREES_PER_INCH = 7.29   # (317.5-215.5)/14.0
+
+
+def _degrees_per_inch(region_bounds: dict) -> float:
+    """Map degrees covered by one inch of figure. Whichever axis fills the
+    fixed figure first sets the scale."""
+    lat0, lat1 = region_bounds["lat"]
+    lon0, lon1 = region_bounds["lon"]
+    dlon = (lon1 - lon0) % 360 or 360.0
+    return max(dlon / FIGURE_INCHES[0], (lat1 - lat0) / FIGURE_INCHES[1])
+
+
+def glyph_stride(wind_step: int, grid_deg: float, region_bounds: dict) -> int:
+    """Grid points to skip between wind glyphs.
+
+    Two corrections on the requested density: the source grid spacing (2.5 deg
+    R2 climatology vs 0.70 deg CORe obs) and the region's extent on the page.
+    """
+    if wind_step < 0:
+        wind_step = DEFAULT_WIND_DENSITY
+    extent_factor = _degrees_per_inch(region_bounds) / _CONUS_DEGREES_PER_INCH
+    return max(1, round(wind_step * CORE_GRID_DEG / grid_deg * extent_factor))
+
+
 def _wind_group(level: int, variable: str = "wind_speed") -> str:
     if level == 1000:
         return "surface" if variable == "wind_10m" else "low"
@@ -1225,6 +1270,30 @@ def _wind_group(level: int, variable: str = "wind_speed") -> str:
     if level in (300, 250, 200):
         return "high"
     return "strat"  # 150mb and up: winds decrease above the 200mb jet max
+
+
+def isotach_interval_kt(level: int, variable: str = "wind_speed") -> int:
+    """Default isotach spacing in knots for a level, derived rather than fixed.
+
+    A flat 20 kt drew one or two lines at 850mb and a sensible set at 250mb
+    (#45). The level's wind scale group already encodes the speed range that
+    belongs there, so the interval comes from that single source of truth:
+    the finest of 5/10/20 kt that keeps the group's domain under 12 labeled
+    lines. Result: 5 kt at the surface, 10 kt at 850/700mb, 20 kt at jet
+    levels and in the stratosphere.
+    """
+    config = _WIND_SCALE_CONFIGS[_wind_group(level, variable)]
+    span = config["domain_max"] - config["domain_min"]
+    for candidate in ISOTACH_INTERVALS_KT:          # 5, 10, 20
+        if span / candidate + 1 <= 12:
+            return candidate
+    return ISOTACH_INTERVALS_KT[-1]
+
+
+def isotach_floor_kt(level: int, variable: str = "wind_speed") -> float:
+    """Lowest isotach drawn: the level's own scale floor, so background flow
+    below the range the scale bothers to colour is not contoured either."""
+    return float(_WIND_SCALE_CONFIGS[_wind_group(level, variable)]["domain_min"])
 
 
 def _resolved_wind_scale_config(level: int, scale_overrides: dict[str, float] | None = None, variable: str = "wind_speed") -> tuple[str, dict]:
@@ -1759,7 +1828,7 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = ""):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
@@ -1769,11 +1838,11 @@ def create_map_product(data_array, region_bounds, var_name, date_str, variable="
             fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
             centers_array=centers_array, contour_overlays=contour_overlays,
             monthly_anomaly=monthly_anomaly, missing_note=missing_note,
-            marker=marker, title_note=title_note,
+            marker=marker, title_note=title_note, isotach_interval=isotach_interval,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = ""):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -2131,8 +2200,17 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             # apply). Interval/threshold in display units: below the threshold
             # is background flow that would only clutter the map.
             speed = vector_magnitude(u_array.values, v_array.values) * _wind_unit_factor(wind_unit)
-            interval = 20.0 if wind_unit == "kt" else 10.0
-            first = 30.0 if wind_unit == "kt" else 15.0
+            # Spacing follows the level's own scale range unless the request
+            # names one (#45). Knots are the reference unit; m/s halves it,
+            # matching the 2/5/10 the control offers there.
+            interval_kt = isotach_interval or isotach_interval_kt(level, variable)
+            interval = float(interval_kt) if wind_unit == "kt" else float(interval_kt) / 2.0
+            # Start at the level's scale floor, rounded up to a multiple of
+            # the interval so the labels read 10/15/20, not 8/13/18.
+            floor = isotach_floor_kt(level, variable)
+            if wind_unit != "kt":
+                floor *= KT_TO_MS
+            first = max(interval, math.ceil(floor / interval) * interval)
             speed_max = float(np.nanmax(speed))
             if speed_max >= first:
                 iso_levels = np.arange(first, speed_max + interval, interval)
@@ -2143,14 +2221,12 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 )
                 ax.clabel(cs, cs.levels, inline=True, fontsize=8, fmt='%d')
         if wind_step > 0:
-            # Density N = stride N on the native CORe obs grid (T170 gaussian,
-            # ~0.70°), the resolution users calibrated against. Coarser sources
-            # (2.5° R2 climatology) scale the stride to keep the same on-map
-            # spacing for the same setting.
-            CORE_GRID_DEG = 0.703125
+            # Density N = stride N on the native CORe obs grid over CONUS.
+            # glyph_stride corrects for a coarser source grid and for the
+            # region's extent on the page.
             lon_vals = u_array.longitude.values
             grid_deg = abs(float(lon_vals[1] - lon_vals[0])) if len(lon_vals) > 1 else CORE_GRID_DEG
-            s = max(1, round(wind_step * CORE_GRID_DEG / grid_deg))
+            s = glyph_stride(wind_step, grid_deg, region_bounds)
             lons = u_array.longitude.values[::s]
             lats = u_array.latitude.values[::s]
             u    = u_array.values[::s, ::s]

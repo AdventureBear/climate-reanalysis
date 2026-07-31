@@ -49,6 +49,9 @@ export type MapRecipe = {
     // glyph quantity (raw → actual wind, anomaly → anomaly wind).
     anomalyOverlay?: WindAnomalyOverlay
     isotachs?: boolean
+    // Isotach spacing in knots: 5, 10 or 20. Undefined = let the backend
+    // derive it from the level's wind scale range (#45).
+    isotachInterval?: IsotachInterval
     // Wind-variable maps only: false renders isotachs/glyphs without the
     // shaded speed field (fill_mode=none).
     shading?: boolean
@@ -67,6 +70,20 @@ export type MapRecipe = {
 export type MapRecipeParamsResult =
   | { ok: true; params: Record<string, string> }
   | { ok: false; error: string }
+
+// Glyph density. The stride is rescaled per region on the backend, so one
+// number means one on-page spacing everywhere (#45). AUTO sends the backend
+// sentinel and lets it apply the calibrated default.
+export const WIND_DENSITIES = [1, 2, 3, 4, 5, 6, 8, 10, 15, 20]
+export const AUTO_DENSITY = '-1'
+
+export const ISOTACH_INTERVALS = [5, 10, 20] as const
+export type IsotachInterval = (typeof ISOTACH_INTERVALS)[number]
+
+function isotachInterval(value: string | null): IsotachInterval | undefined {
+  const n = Number(value)
+  return (ISOTACH_INTERVALS as readonly number[]).includes(n) ? (n as IsotachInterval) : undefined
+}
 
 export function toApiDate(s: string) {
   return s.replace(/-/g, '')
@@ -271,6 +288,11 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     }
     if (recipe.wind.isotachs && !legacyAnomalyGlyph) {
       params.isotachs = '1'
+      // Omitted = backend default for the level; only an explicit choice
+      // rides in the URL.
+      if (recipe.wind.isotachInterval) {
+        params.isotach_interval = String(recipe.wind.isotachInterval)
+      }
     }
     if (recipe.wind.shading === false && (variable === 'wind_speed' || variable === 'wind_10m')) {
       params.fill_mode = 'none'
@@ -407,7 +429,8 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   const windStep = params.get('wind_step')
   // wind_step=0 (or junk) in a URL means "no glyph overlay", never "density
   // zero" — builder state must not hold a sub-minimum density (#57).
-  const windStepUsable = Number(windStep) > 0
+  // -1 is the auto sentinel: glyphs on, backend picks the density (#45).
+  const windStepUsable = Number(windStep) > 0 || windStep === AUTO_DENSITY
   const parsedColorStep = params.get('color_step')
 
   return {
@@ -421,9 +444,10 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     // the map mode (#47), so glyphs-on is all the URL needs to express.
     wind: windStep === null && params.get('isotachs') !== '1' ? undefined : {
       on: windStepUsable,
-      step: windStepUsable ? windStep! : '2',
+      step: windStepUsable ? windStep! : AUTO_DENSITY,
       type: parsedWindType,
       isotachs: params.get('isotachs') === '1',
+      isotachInterval: isotachInterval(params.get('isotach_interval')),
       shading: params.get('fill_mode') !== 'none',
     },
     windUnit: windUnit(params.get('wind_unit')),

@@ -12,6 +12,27 @@ export function Label({ children }: { children: React.ReactNode }) {
   )
 }
 
+// On/off switch. Use where a setting is a layer that is either drawn or not,
+// and the row it sits on carries the label.
+export function Switch({ checked, onChange, disabled = false, label }: {
+  checked: boolean
+  onChange: () => void
+  disabled?: boolean
+  label: string
+}) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label}
+      onClick={onChange} disabled={disabled}
+      className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors ${
+        disabled ? 'cursor-not-allowed bg-slate-700' : `cursor-pointer ${checked ? 'bg-sky-600' : 'bg-slate-600'}`
+      }`}>
+      <span className={`inline-block h-4 w-4 transform rounded-full shadow transition-transform ${
+        disabled ? 'bg-slate-500' : 'bg-white'
+      } ${checked ? 'translate-x-3' : 'translate-x-0'}`} />
+    </button>
+  )
+}
+
 // Connected horizontal tab strip — pass fullWidth to stretch across the parent
 export function TabStrip({ options, value, onChange, fullWidth = false, disabled = false, className = '' }: {
   options: { value: string; label: string; disabled?: boolean }[]

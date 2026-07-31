@@ -14,6 +14,8 @@ import {
   type TimeScale,
   type WindOverlayType,
   type WindUnit,
+  type IsotachInterval,
+  AUTO_DENSITY,
 } from '../../../mapRecipe'
 import {
   MONTHLY_UNAVAILABLE_API_VARIABLES,
@@ -63,9 +65,13 @@ export function useCompositeRecipe() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>('raw')
 
   const [windOn,    setWindOn]    = useState(true)
-  const [windStep,  setWindStep]  = useState('2')
+  // Auto by default: the backend applies its calibrated density, so
+  // retuning it later reaches every Auto map without editing recipes.
+  const [windStep,  setWindStep]  = useState<string>(AUTO_DENSITY)
   const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
   const [isotachsOn, setIsotachsOn] = useState(false)
+  // 0 = auto: the backend picks the spacing from the level's wind scale.
+  const [isotachInterval, setIsotachInterval] = useState<IsotachInterval | 0>(0)
   const [windShading, setWindShading] = useState(true)
   const [windMaster, setWindMaster] = useState(true)
   const [hlCenters, setHlCenters] = useState(false)
@@ -149,7 +155,10 @@ export function useCompositeRecipe() {
             on: windMaster && windOn,
             step: windStep,
             type: windType,
-            isotachs: windMaster && isotachsOn,
+            // Isotachs contour the raw wind field and are not drawn on
+            // anomaly maps (#45), so they never enter the recipe there.
+            isotachs: windMaster && isotachsOn && displayMode === 'raw',
+            isotachInterval: isotachInterval || undefined,
             // Master off = default rendering: wind maps keep their shading.
             shading: windMaster ? windShading : true,
           }
@@ -236,6 +245,7 @@ export function useCompositeRecipe() {
       const glyphsOn = recipe.wind.on || Boolean(legacyAnomalyGlyph)
       setWindOn(glyphsOn)
       setIsotachsOn(Boolean(recipe.wind.isotachs))
+      setIsotachInterval(recipe.wind.isotachInterval ?? 0)
       setWindShading(recipe.wind.shading !== false)
       setWindMaster(glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
     }
@@ -291,6 +301,7 @@ export function useCompositeRecipe() {
     windStep, setWindStep,
     windType, setWindType,
     isotachsOn, setIsotachsOn,
+    isotachInterval, setIsotachInterval,
     windShading, setWindShading,
     windMaster, setWindMaster,
     hlCenters, setHlCenters,

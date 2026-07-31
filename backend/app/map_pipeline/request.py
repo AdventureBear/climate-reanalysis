@@ -38,6 +38,8 @@ class MapRequest:
     # Draw labeled isotach contours from the overlay wind components.
     # Independent of wind_step/wind_type glyphs — styles combine.
     isotachs: int = 0
+    # 0 = derive from the level's wind scale group; else 5, 10 or 20 kt (#45).
+    isotach_interval: int = 0
     # Stamp H/L MSLP center glyphs (detected from MSLET) on the map.
     centers: int = 0
     # Comma-separated contour overlays: any of "pressure", "height", "temp".
