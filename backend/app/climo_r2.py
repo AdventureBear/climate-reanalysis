@@ -198,6 +198,35 @@ def _save_disk_monthly(r2_var: str, level: int, month: int, result: dict[str, xr
 
 # ── Surgical OPeNDAP fetch ───────────────────────────────────────────────────
 
+class ClimatologyUnavailableError(RuntimeError):
+    """PSL's OPeNDAP server would not serve a baseline this request needs.
+
+    A named type so main.py can answer with a short 503 sentence instead of
+    letting the catch-all put this message, and its URL, in the browser.
+    Carries `rate_limited` because "they are throttling us" and "the service
+    is down" mean different things to whoever reads the log.
+    """
+
+    def __init__(self, message: str, *, rate_limited: bool):
+        super().__init__(message)
+        self.rate_limited = rate_limited
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    text = str(exc)
+    return "429" in text or "undecoded" in text
+
+
+# Measured against PSL on 2026-07-31: they serve about three requests, then
+# 429 every caller from that IP, and the counter needs roughly 60 seconds of
+# idle to reset. Idle waits of 1, 2, 3, 5, 8 and 30 seconds all still got 429;
+# 60 seconds got 200. So a 429 backoff has to outlast that window or it is
+# just noise, and the ladder below is sized to span it rather than to feel
+# fast. Do not "improve" this by failing fast: an 8 second retry cannot clear
+# a 60 second penalty, it only guarantees the map never renders.
+RATE_LIMIT_WAITS_S = (15, 30, 45)
+
+
 def dap_fetch_with_retries(url: str, extract, *, describe: str, max_retries: int = 4):
     """Open a PSL OPeNDAP dataset and return extract(ds), retrying transient failures.
 
@@ -205,12 +234,16 @@ def dap_fetch_with_retries(url: str, extract, *, describe: str, max_retries: int
     answers bursts with 429, and a rate-limited/failed DAP response can still
     "open" but with an undecoded numeric time axis — selecting by date string
     then dies with a misleading dtype ValueError (#94). Both are treated as
-    the fetch failures they are and retried with backoff.
+    the fetch failures they are and retried with backoff. A rate limit waits
+    longer than a transient error, because PSL's counter resets on idle time
+    rather than on elapsed time (see RATE_LIMIT_WAITS_S).
 
     extract(ds) runs inside the open dataset context and must .load() what it
     returns. describe appears in logs and the final error message.
     """
-    for attempt in range(max_retries):
+    attempt = 0
+    budget = max_retries
+    while attempt < budget:
         try:
             # open_netcdf holds HDF5_LOCK: fetches serialize (#51).
             with open_netcdf(url, engine="netcdf4") as ds:
@@ -226,21 +259,24 @@ def dap_fetch_with_retries(url: str, extract, *, describe: str, max_retries: int
                     )
                 return extract(ds)
         except (OSError, ValueError) as exc:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"R2 OPeNDAP failed after {max_retries} attempts: {url} "
+            rate_limited = _is_rate_limited(exc)
+            attempt += 1
+            if attempt >= budget:
+                raise ClimatologyUnavailableError(
+                    f"R2 OPeNDAP failed after {attempt} attempts: {url} "
                     f"({describe})\n"
                     f"PSL THREDDS may be down or rate-limiting (HTTP 429) — "
                     f"try again in a few minutes.\n"
-                    f"Underlying error: {exc}"
+                    f"Underlying error: {exc}",
+                    rate_limited=rate_limited,
                 ) from exc
-            wait = 5 * (2 ** attempt)
-            # PSL's nginx answers bursts with 429; back off harder for those.
-            if "429" in str(exc) or "undecoded" in str(exc):
-                wait = max(wait, 15 * (attempt + 1))
+            wait = (
+                RATE_LIMIT_WAITS_S[min(attempt - 1, len(RATE_LIMIT_WAITS_S) - 1)]
+                if rate_limited else 5 * (2 ** (attempt - 1))
+            )
             log.warning(
                 "CLIMO_R2  OPeNDAP error  %s  attempt=%d/%d retry in %ds  (%s)",
-                describe, attempt + 1, max_retries, wait, exc,
+                describe, attempt, budget, wait, exc,
             )
             time.sleep(wait)
     raise RuntimeError("unreachable")

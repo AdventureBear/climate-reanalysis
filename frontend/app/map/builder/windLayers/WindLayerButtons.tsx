@@ -18,6 +18,7 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
     isotachsOn, setIsotachsOn,
     isotachInterval, setIsotachInterval,
     isWindVariable, displayMode,
+    isLastWindLayer,
   } = recipe
 
   return (
@@ -36,7 +37,7 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
             active={isWindVariable && windShading}
             disabled={!isWindVariable || displayMode !== 'raw'}
             onClick={() => {
-              if (windShading && !isotachsOn && !windOn) return
+              if (isLastWindLayer('shading')) return
               setWindShading(o => !o)
             }}
           >
@@ -45,7 +46,7 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
           <ToggleButton
             active={windOn}
             onClick={() => {
-              if (windOn && isWindVariable && displayMode === 'raw' && !windShading && !isotachsOn) return
+              if (isLastWindLayer('glyphs')) return
               setWindOn(o => !o)
             }}
           >
@@ -57,7 +58,7 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
             active={isotachsOn && displayMode === 'raw'}
             disabled={displayMode !== 'raw'}
             onClick={() => {
-              if (isotachsOn && isWindVariable && displayMode === 'raw' && !windShading && !windOn) return
+              if (isLastWindLayer('isotachs')) return
               setIsotachsOn(o => !o)
             }}
           >

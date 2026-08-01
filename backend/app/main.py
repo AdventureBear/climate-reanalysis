@@ -29,6 +29,7 @@ from .single_date_packages import (
     run_job,
     serialize_job,
 )
+from .climo_r2 import ClimatologyUnavailableError
 from .config import PRESSURE_LEVELS, REGIONS, VARIABLES, is_surface_or_named_level, supports_climatology, valid_levels
 from .map_pipeline.request import MapRequest
 from .map_service import create_map_buffer
@@ -455,6 +456,21 @@ def get_map(
         raise HTTPException(status_code=404, detail=detail) from exc
     except HTTPException:
         raise
+    except ClimatologyUnavailableError as exc:
+        # PSL would not serve the baseline. The full message names the dataset
+        # URL and the underlying errno, which belongs in the log and not in
+        # someone's browser; the user gets a sentence they can act on.
+        log.error("CLIMO    %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "NOAA PSL is limiting requests for the climatology this map needs. "
+                "Please try again in a few minutes."
+                if exc.rate_limited else
+                "The climatology service (NOAA PSL) is not responding. "
+                "Raw maps still work; anomaly maps need it. Please try again shortly."
+            ),
+        ) from exc
     except requests.RequestException as exc:
         log.exception("UPSTREAM %s", exc)
         raise HTTPException(
@@ -462,5 +478,11 @@ def get_map(
             detail="Upstream data source error while fetching CORe/R2 data. Please try again shortly.",
         ) from exc
     except Exception as exc:
+        # Catch-all: never str(exc). It covers every unhandled failure in this
+        # endpoint, so it can carry file paths, cache directories and library
+        # internals. log.exception keeps the whole thing for whoever is on call.
         log.exception("ERROR    %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong while building this map. Please try again.",
+        ) from exc

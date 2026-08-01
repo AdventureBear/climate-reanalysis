@@ -60,7 +60,7 @@ class TestDapFetchWithRetries:
         assert len(calls) == 2  # first attempt failed, retry succeeded
         assert len(no_sleep) == 1
 
-    def test_429_gets_harder_backoff(self, monkeypatch, no_sleep):
+    def test_429_backs_off_longer_than_a_transient_error(self, monkeypatch, no_sleep):
         calls = []
 
         def fake_open(url, engine):
@@ -73,7 +73,33 @@ class TestDapFetchWithRetries:
 
         dap_fetch_with_retries("dap://x", lambda ds: "ok", describe="test")
 
-        assert no_sleep == [15]  # 429 backoff floor beats the 5s default
+        assert no_sleep == [climo_r2.RATE_LIMIT_WAITS_S[0]]
+
+    def test_sustained_429_waits_past_psls_recovery_window(self, monkeypatch, no_sleep):
+        # Measured: PSL needs ~60s of idle to reset. A ladder that gives up
+        # sooner cannot succeed, so the total must outlast that window.
+        def fake_open(url, engine):
+            raise OSError("HTTP 429 Too Many Requests")
+
+        monkeypatch.setattr(climo_r2, "open_netcdf", fake_open)
+
+        with pytest.raises(climo_r2.ClimatologyUnavailableError) as caught:
+            dap_fetch_with_retries("dap://x", lambda ds: "ok", describe="test")
+
+        assert caught.value.rate_limited is True
+        assert sum(no_sleep) >= 60
+
+    def test_transient_failure_keeps_the_full_retry_budget(self, monkeypatch, no_sleep):
+        def fake_open(url, engine):
+            raise OSError("connection reset by peer")
+
+        monkeypatch.setattr(climo_r2, "open_netcdf", fake_open)
+
+        with pytest.raises(climo_r2.ClimatologyUnavailableError) as caught:
+            dap_fetch_with_retries("dap://x", lambda ds: "ok", describe="test")
+
+        assert caught.value.rate_limited is False
+        assert no_sleep == [5, 10, 20]
 
     def test_undecoded_time_axis_is_retried(self, monkeypatch, no_sleep):
         datasets = [FakeDataset(time_dtype=np.dtype("float64")), FakeDataset()]

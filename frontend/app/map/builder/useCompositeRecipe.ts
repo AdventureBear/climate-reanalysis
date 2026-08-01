@@ -122,6 +122,24 @@ export function useCompositeRecipe() {
   // decides the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
   const isWindVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
 
+  // A wind map has to draw at least one wind layer, or the backend returns 422
+  // and the user gets an error instead of a map. Which layers a mode actually
+  // offers differs: an anomaly map has no isotachs (#45) and its shading switch
+  // is disabled, so glyphs can be the only layer the user can reach. Derived
+  // once here rather than restated in each control: the guard used to be
+  // written out per switch and gated on displayMode === 'raw', which made it
+  // inert in exactly the mode with the fewest layers available.
+  const windLayersOn = {
+    shading: isWindVariable && windShading,
+    glyphs: windOn,
+    isotachs: isotachsOn && displayMode === 'raw',
+  }
+  const windLayerCount = Object.values(windLayersOn).filter(Boolean).length
+
+  /** True when turning this layer off would leave a wind map with nothing drawn. */
+  const isLastWindLayer = (layer: keyof typeof windLayersOn) =>
+    isWindVariable && windLayersOn[layer] && windLayerCount === 1
+
   function currentTimeRecipe(): TimeRecipe {
     if (isClimo) {
       return { scale: 'climatology', climoMonth }
@@ -316,6 +334,7 @@ export function useCompositeRecipe() {
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, isWindVariable,
+    isLastWindLayer,
     currentMapRecipe, applyRecipeToState,
   }
 }

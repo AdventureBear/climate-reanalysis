@@ -18,6 +18,7 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
     isotachsOn, setIsotachsOn,
     isotachInterval, setIsotachInterval,
     isWindVariable, displayMode,
+    isLastWindLayer,
   } = recipe
 
   return (
@@ -34,7 +35,7 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             disabled={!isWindVariable || displayMode !== 'raw'}
             label="Wind speed shading"
             onChange={() => {
-              if (windShading && !isotachsOn && !windOn) return
+              if (isLastWindLayer('shading')) return
               setWindShading(o => !o)
             }}
           />
@@ -48,7 +49,7 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             checked={windOn}
             label="Wind glyphs"
             onChange={() => {
-              if (windOn && isWindVariable && displayMode === 'raw' && !windShading && !isotachsOn) return
+              if (isLastWindLayer('glyphs')) return
               setWindOn(o => !o)
             }}
           />
@@ -81,7 +82,7 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             disabled={displayMode !== 'raw'}
             label="Isotach contours"
             onChange={() => {
-              if (isotachsOn && isWindVariable && displayMode === 'raw' && !windShading && !windOn) return
+              if (isLastWindLayer('isotachs')) return
               setIsotachsOn(o => !o)
             }}
           />
