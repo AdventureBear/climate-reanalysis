@@ -121,6 +121,7 @@ export function useCompositeRecipe() {
   // "wind overlay" on a wind map would draw the same data twice. The map mode
   // decides the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
   const isWindVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
+  const isWindControlActive = isWindVariable || windMaster
 
   // A wind map has to draw at least one wind layer, or the backend returns 422
   // and the user gets an error instead of a map. Which layers a mode actually
@@ -131,8 +132,8 @@ export function useCompositeRecipe() {
   // inert in exactly the mode with the fewest layers available.
   const windLayersOn = {
     shading: isWindVariable && windShading,
-    glyphs: windOn,
-    isotachs: isotachsOn && displayMode === 'raw',
+    glyphs: isWindControlActive && windOn,
+    isotachs: isWindControlActive && isotachsOn && displayMode === 'raw',
   }
   const windLayerCount = Object.values(windLayersOn).filter(Boolean).length
 
@@ -170,15 +171,15 @@ export function useCompositeRecipe() {
       time: currentTimeRecipe(),
       wind: windStep
         ? {
-            on: windMaster && windOn,
+            on: isWindControlActive && windOn,
             step: windStep,
             type: windType,
             // Isotachs contour the raw wind field and are not drawn on
             // anomaly maps (#45), so they never enter the recipe there.
-            isotachs: windMaster && isotachsOn && displayMode === 'raw',
+            isotachs: isWindControlActive && isotachsOn && displayMode === 'raw',
             isotachInterval: isotachInterval || undefined,
             // Master off = default rendering: wind maps keep their shading.
-            shading: windMaster ? windShading : true,
+            shading: isWindControlActive ? windShading : true,
           }
         : undefined,
       windUnit,
@@ -249,6 +250,16 @@ export function useCompositeRecipe() {
     setContourOverlays(recipe.contours ?? [])
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
+    const recipeVariable =
+      recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m'
+        ? 'humidity'
+        : recipe.variable ?? variable
+    const recipeApiVariable = apiVariableForSelection(
+      recipeVariable,
+      recipe.level ?? level,
+      recipe.humidityType ?? humidityType,
+    )
+    const recipeIsWindVariable = recipeApiVariable === 'wind_speed' || recipeApiVariable === 'wind_10m'
     if (recipe.wind) {
       // Legacy saved recipes may hold step '0'; state never holds a
       // sub-minimum density (#57).
@@ -265,7 +276,13 @@ export function useCompositeRecipe() {
       setIsotachsOn(Boolean(recipe.wind.isotachs))
       setIsotachInterval(recipe.wind.isotachInterval ?? 0)
       setWindShading(recipe.wind.shading !== false)
-      setWindMaster(glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
+      setWindMaster(recipeIsWindVariable || glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
+    } else if (recipeIsWindVariable) {
+      setWindOn(false)
+      setIsotachsOn(false)
+      setIsotachInterval(0)
+      setWindShading(true)
+      setWindMaster(true)
     }
   }
 
@@ -334,6 +351,7 @@ export function useCompositeRecipe() {
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, isWindVariable,
+    isWindControlActive,
     isLastWindLayer,
     currentMapRecipe, applyRecipeToState,
   }

@@ -432,6 +432,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   // -1 is the auto sentinel: glyphs on, backend picks the density (#45).
   const windStepUsable = Number(windStep) > 0 || windStep === AUTO_DENSITY
   const parsedColorStep = params.get('color_step')
+  const isWindApiVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
 
   return {
     ...uiSelection,
@@ -442,7 +443,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     time: timeRecipeFromUrl(params),
     // Old links may carry wind_overlay_mode; the glyph quantity now follows
     // the map mode (#47), so glyphs-on is all the URL needs to express.
-    wind: windStep === null && params.get('isotachs') !== '1' ? undefined : {
+    wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : {
       on: windStepUsable,
       step: windStepUsable ? windStep! : AUTO_DENSITY,
       type: parsedWindType,

@@ -6,28 +6,46 @@
 // its label instead of a separate word.
 import { Label, Switch, TabStrip } from '../../../../ui/controls'
 import { AUTO_DENSITY, ISOTACH_INTERVALS, type IsotachInterval } from '../../../../mapRecipe'
+import {
+  LAST_WIND_LAYER_NOTICE,
+  WIND_MASTER_NOTICE,
+  WindLayerGuardNotice,
+  useWindLayerGuardNotice,
+} from './guardNotice'
 import type { WindLayerProps } from './types'
 
 export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
   const {
-    windMaster, setWindMaster,
+    setWindMaster,
     windOn, setWindOn,
     windStep, setWindStep,
     windType, setWindType,
     windShading, setWindShading,
     isotachsOn, setIsotachsOn,
     isotachInterval, setIsotachInterval,
-    isWindVariable, displayMode,
+    isWindVariable, isWindControlActive, displayMode,
     isLastWindLayer,
   } = recipe
+  const { notice, showNotice } = useWindLayerGuardNotice()
 
   return (
     <div className="flex flex-col gap-1 pt-2 border-t border-slate-700/40">
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
         <Label>Wind</Label>
-        <Switch checked={windMaster} onChange={() => setWindMaster(o => !o)} label="Wind overlays" />
+        <Switch
+          checked={isWindControlActive}
+          onChange={() => {
+            if (isWindVariable) {
+              showNotice(WIND_MASTER_NOTICE)
+              return
+            }
+            setWindMaster(o => !o)
+          }}
+          label="Wind overlays"
+        />
+        <WindLayerGuardNotice notice={notice} />
       </div>
-      <div className={`flex flex-col gap-1.5 pt-1 transition-opacity ${windMaster ? '' : 'opacity-30 pointer-events-none'}`}>
+      <div className={`flex flex-col gap-1.5 pt-1 transition-opacity ${isWindControlActive ? '' : 'opacity-30 pointer-events-none'}`}>
 
         <div className="flex items-center gap-2">
           <Switch
@@ -35,7 +53,10 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             disabled={!isWindVariable || displayMode !== 'raw'}
             label="Wind speed shading"
             onChange={() => {
-              if (isLastWindLayer('shading')) return
+              if (isLastWindLayer('shading')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setWindShading(o => !o)
             }}
           />
@@ -49,7 +70,10 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             checked={windOn}
             label="Wind glyphs"
             onChange={() => {
-              if (isLastWindLayer('glyphs')) return
+              if (isLastWindLayer('glyphs')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setWindOn(o => !o)
             }}
           />
@@ -82,7 +106,10 @@ export function WindLayerSwitches({ recipe, densityOptions }: WindLayerProps) {
             disabled={displayMode !== 'raw'}
             label="Isotach contours"
             onChange={() => {
-              if (isLastWindLayer('isotachs')) return
+              if (isLastWindLayer('isotachs')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setIsotachsOn(o => !o)
             }}
           />

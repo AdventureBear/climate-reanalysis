@@ -6,38 +6,55 @@
 // width per control and moves one row as glyphs turn on and off.
 import { Label, ToggleButton } from '../../../../ui/controls'
 import { AUTO_DENSITY, ISOTACH_INTERVALS, type IsotachInterval } from '../../../../mapRecipe'
+import {
+  LAST_WIND_LAYER_NOTICE,
+  WIND_MASTER_NOTICE,
+  WindLayerGuardNotice,
+  useWindLayerGuardNotice,
+} from './guardNotice'
 import type { WindLayerProps } from './types'
 
 export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
   const {
-    windMaster, setWindMaster,
+    setWindMaster,
     windOn, setWindOn,
     windStep, setWindStep,
     windType, setWindType,
     windShading, setWindShading,
     isotachsOn, setIsotachsOn,
     isotachInterval, setIsotachInterval,
-    isWindVariable, displayMode,
+    isWindVariable, isWindControlActive, displayMode,
     isLastWindLayer,
   } = recipe
+  const { notice, showNotice } = useWindLayerGuardNotice()
 
   return (
     <div className="flex flex-col gap-1 pt-2 border-t border-slate-700/40">
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
         <Label>Wind</Label>
-        <button type="button" role="switch" aria-checked={windMaster}
-          onClick={() => setWindMaster(o => !o)}
-          className={`relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors cursor-pointer ${windMaster ? 'bg-sky-600' : 'bg-slate-600'}`}>
-          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${windMaster ? 'translate-x-3' : 'translate-x-0'}`} />
+        <button type="button" role="switch" aria-checked={isWindControlActive} aria-label="Wind overlays"
+          onClick={() => {
+            if (isWindVariable) {
+              showNotice(WIND_MASTER_NOTICE)
+              return
+            }
+            setWindMaster(o => !o)
+          }}
+          className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors ${isWindControlActive ? 'bg-sky-600' : 'bg-slate-600'}`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${isWindControlActive ? 'translate-x-3' : 'translate-x-0'}`} />
         </button>
+        <WindLayerGuardNotice notice={notice} />
       </div>
-      <div className={`flex flex-col gap-1 transition-opacity ${windMaster ? '' : 'opacity-30 pointer-events-none'}`}>
+      <div className={`flex flex-col gap-1 transition-opacity ${isWindControlActive ? '' : 'opacity-30 pointer-events-none'}`}>
         <div className="grid grid-cols-3 gap-1">
           <ToggleButton
             active={isWindVariable && windShading}
             disabled={!isWindVariable || displayMode !== 'raw'}
             onClick={() => {
-              if (isLastWindLayer('shading')) return
+              if (isLastWindLayer('shading')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setWindShading(o => !o)
             }}
           >
@@ -46,7 +63,10 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
           <ToggleButton
             active={windOn}
             onClick={() => {
-              if (isLastWindLayer('glyphs')) return
+              if (isLastWindLayer('glyphs')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setWindOn(o => !o)
             }}
           >
@@ -58,7 +78,10 @@ export function WindLayerButtons({ recipe, densityOptions }: WindLayerProps) {
             active={isotachsOn && displayMode === 'raw'}
             disabled={displayMode !== 'raw'}
             onClick={() => {
-              if (isLastWindLayer('isotachs')) return
+              if (isLastWindLayer('isotachs')) {
+                showNotice(LAST_WIND_LAYER_NOTICE)
+                return
+              }
               setIsotachsOn(o => !o)
             }}
           >
