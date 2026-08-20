@@ -11,6 +11,24 @@ import { articleSchema, breadcrumbSchema, graph } from '../../../lib/structuredD
 
 type Params = { slug: string }
 
+function TaxonomyChips({ tags, regions }: { tags: string[]; regions: string[] }) {
+  if (tags.length === 0 && regions.length === 0) return null
+  return (
+    <div className="mt-5 flex flex-wrap gap-1.5">
+      {tags.map(t => (
+        <span key={`tag-${t}`} className="rounded border border-sky-500/30 bg-sky-950/40 px-2 py-0.5 text-[11px] text-sky-200">
+          {t}
+        </span>
+      ))}
+      {regions.map(r => (
+        <span key={`region-${r}`} className="rounded border border-emerald-500/25 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-200">
+          {r}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // Static export: only slugs returned here become pages; anything else 404s.
 export const dynamicParams = false
 
@@ -78,7 +96,8 @@ export default async function SynopsisPost({ params }: { params: Promise<Params>
           {post.description && (
             <p className="mt-3 text-lg leading-relaxed text-slate-300">{post.description}</p>
           )}
-          <div className="faq-doc mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
+          <TaxonomyChips tags={post.tags} regions={post.regions} />
+          <div className="faq-doc synopsis-body mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
             <PostBody body={post.body_md} />
           </div>
           <Lightbox />

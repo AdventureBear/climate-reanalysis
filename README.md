@@ -136,15 +136,15 @@ npm run build
 npm run lint
 ```
 
-## Synopsis Pipeline: Generating an AFD Post
+## Synopsis Pipeline: Generating a WPC Discussion Post
 
-The backend turns an NWS WPC Short Range Forecast Discussion into a drafted, map-illustrated blog post (issue #37). By default the scheduled run covers the day from 2 days ago — the newest day CORe reanalysis has data for. Posts always land as unpublished drafts; publishing is a human act in the editor.
+The backend turns an NWS WPC Short Range Forecast Discussion into a drafted, map-illustrated same-day setup post (issue #37). By default the scheduled run covers the day from 3 days ago — a conservative lag so the needed CORe reanalysis fields and hours are available. Posts always land as unpublished drafts; publishing is a human act in the editor.
 
-Every generated map is also saved to the admin map library under My Maps → Forecast Discussions → the post's slug, so any map can be reopened in the builder. The draft ends with a link to the exact archived discussion it was generated from.
+Every generated map is also saved to the admin map library under My Maps → WPC Discussions → the post's slug, so any map can be reopened in the builder. The draft ends with a link to the exact archived discussion it was generated from.
 
 **Historical posts (any past date) — two ways:**
 
-1. **Admin UI:** sign in as an admin, open `/admin/afd`, pick the date, and generate. No keys involved.
+1. **Admin UI:** sign in as an admin, open `/admin/wpc`, pick the date, and generate. No keys involved.
 2. **The endpoint directly.** It accepts either the cron secret or an admin bearer token:
 
 ```bash
@@ -154,7 +154,7 @@ curl -X POST https://<backend-host>/api/synopsis/generate \
   -d '{"date": "20240927", "issuance": "morning"}'
 ```
 
-- `date` is `YYYYMMDD`, no later than 2 days ago. `issuance` is `morning` (default) or `afternoon`.
+- `date` is `YYYYMMDD`, no later than 3 days ago. `issuance` is `morning` (default) or `afternoon`.
 - Returns `202 {"started": true, "slug": "..."}` and generates in the background (about 2–4 minutes).
 - Returns `409` if that day's post is already published — published posts are never overwritten. An existing draft for the day is replaced.
 

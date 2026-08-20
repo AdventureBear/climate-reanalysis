@@ -28,7 +28,7 @@ function isActive(pathname: string, href: string) {
 const ADMIN_LINKS = [
   { href: '/admin/posts/', label: 'All Posts', Icon: Files },
   { href: '/admin/post/', label: 'New Post', Icon: FilePlus2 },
-  { href: '/admin/afd/', label: 'New AFD', Icon: Newspaper },
+  { href: '/admin/wpc/', label: 'New WPC', Icon: Newspaper },
 ]
 
 export function SiteHeader() {

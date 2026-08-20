@@ -145,9 +145,9 @@ def synopsis_generate(
     x_cron_secret: str = Header(default=""),
     authorization: str = Header(default=""),
 ):
-    """Kick off the Synopsis AFD draft pipeline (#37/#76). Two callers:
+    """Kick off the Synopsis WPC discussion draft pipeline (#37/#76). Two callers:
     the daily Supabase scheduler (x-cron-secret, no body) and the admin
-    New AFD page (admin bearer token, optional {date, issuance}). The
+    New WPC page (admin bearer token, optional {date, issuance}). The
     2-4 minute job runs after this returns; the response carries the slug
     so the UI can poll for the draft."""
     from . import synopsis

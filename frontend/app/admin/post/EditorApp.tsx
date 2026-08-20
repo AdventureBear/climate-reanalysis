@@ -26,7 +26,7 @@ import {
   useCreateBlockNote,
 } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
-import { Eye, Image as ImageIcon, Map as MapIcon } from 'lucide-react'
+import { Eye, Image as ImageIcon, Map as MapIcon, X } from 'lucide-react'
 import { useAuth } from '../../auth/authContext'
 import type { SavedMap } from '../../../lib/database.types'
 import {
@@ -38,6 +38,8 @@ import { TEXT_LINK } from '../../../ui/linkStyles'
 import { EditorGate } from '../shared'
 import { MapPickerModal } from './MapPickerModal'
 import { listAllMaps } from '../../../lib/library'
+import { PostBody } from '../../synopsis/[slug]/PostBody'
+import { Lightbox } from '../../synopsis/[slug]/Lightbox'
 
 type Status = 'draft' | 'published' | 'scheduled'
 type AutosaveSnapshot = {
@@ -64,6 +66,8 @@ export const IMAGE_PRESETS = [
   { label: 'Full width', px: 1020 },
 ] as const
 export type ImagePreset = (typeof IMAGE_PRESETS)[number]
+export const DEFAULT_IMAGE_WIDTH = IMAGE_PRESETS[1].px
+const DEFAULT_IMAGE_ALIGNMENT = 'center' as const
 
 const PANEL = 'rounded-lg border border-[#2e4278]/60 bg-[#1b2a55]/70'
 const FIELD = 'w-full rounded-md border border-[#2e4278]/70 bg-[#131d3f] px-3 py-2 text-[15px] text-slate-200 outline-none transition-colors focus:border-sky-700'
@@ -77,6 +81,17 @@ function widenImages(body: string): string {
 }
 function narrowImages(body: string): string {
   return POST_IMAGE_BASE ? body.split(POST_IMAGE_BASE).join('') : body
+}
+function applyDefaultImageProps(blocks: unknown[]): void {
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object') continue
+    const b = block as { type?: unknown; props?: Record<string, unknown>; children?: unknown }
+    if (b.type === 'image' && b.props) {
+      if (typeof b.props.previewWidth !== 'number') b.props.previewWidth = DEFAULT_IMAGE_WIDTH
+      b.props.textAlignment = DEFAULT_IMAGE_ALIGNMENT
+    }
+    if (Array.isArray(b.children)) applyDefaultImageProps(b.children)
+  }
 }
 function autosaveKey(postId: string | null): string {
   return `${AUTOSAVE_PREFIX}${postId ?? 'new'}`
@@ -200,6 +215,7 @@ export default function EditorApp() {
   const [linkToBuilder, setLinkToBuilder] = useState(false)
   const [recoverableDraft, setRecoverableDraft] = useState<AutosaveSnapshot | null>(null)
   const [lastAutosavedAt, setLastAutosavedAt] = useState<number | null>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const photoRef = useRef<HTMLInputElement>(null)
   const promptedAutosaveKey = useRef<string | null>(null)
 
@@ -238,6 +254,7 @@ export default function EditorApp() {
         } else {
           // Legacy markdown bodies import through BlockNote's own parser.
           const blocks = await editor.tryParseMarkdownToBlocks(widened)
+          applyDefaultImageProps(blocks)
           editor.replaceBlocks(editor.document, blocks)
         }
         setBody(narrowImages(JSON.stringify(editor.document)))
@@ -306,6 +323,7 @@ export default function EditorApp() {
       editor.replaceBlocks(editor.document, JSON.parse(widened))
     } else {
       const blocks = await editor.tryParseMarkdownToBlocks(widened)
+      applyDefaultImageProps(blocks)
       editor.replaceBlocks(editor.document, blocks)
     }
     setBody(narrowImages(JSON.stringify(editor.document)))
@@ -423,7 +441,14 @@ export default function EditorApp() {
     try {
       const path = await uploadPostImage(s, file)
       editor.insertBlocks(
-        [{ type: 'image', props: { url: resolvePostImage(path), previewWidth: IMAGE_PRESETS[2].px } }],
+        [{
+          type: 'image',
+          props: {
+            url: resolvePostImage(path),
+            previewWidth: DEFAULT_IMAGE_WIDTH,
+            textAlignment: DEFAULT_IMAGE_ALIGNMENT,
+          },
+        }],
         editor.getTextCursorPosition().block,
         'after',
       )
@@ -440,7 +465,13 @@ export default function EditorApp() {
     setBusy(true)
     try {
       const path = await copySavedMapImage(s, map)
-      const props = { url: resolvePostImage(path), caption: map.name, name: map.name, previewWidth: sizePx }
+      const props = {
+        url: resolvePostImage(path),
+        caption: map.name,
+        name: map.name,
+        previewWidth: sizePx,
+        textAlignment: DEFAULT_IMAGE_ALIGNMENT,
+      }
       if (replaceTargetId && editor.getBlock(replaceTargetId)) {
         editor.updateBlock(replaceTargetId, { props })
       } else {
@@ -567,10 +598,7 @@ export default function EditorApp() {
                 <MapIcon size={13} className="mr-1.5 inline" /> Insert map
               </button>
               <button type="button"
-                onClick={() => {
-                  localStorage.setItem('synopsis-preview', JSON.stringify({ title, description: description.trim() || descriptionFromBody(body), body, at: Date.now() }))
-                  window.open('/synopsis/preview/', '_blank')
-                }}
+                onClick={() => setPreviewOpen(true)}
                 className={`ml-auto order-last ${BTN}`}>
                 <Eye size={13} className="mr-1.5 inline" /> Preview
               </button>
@@ -672,6 +700,40 @@ export default function EditorApp() {
             linkToBuilder={linkToBuilder}
             setLinkToBuilder={setLinkToBuilder}
           />
+        )}
+        {previewOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-3 py-6 md:px-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Post preview"
+          >
+            <div className="w-full max-w-5xl rounded-xl border border-[#2e4278]/70 bg-[#16224a] shadow-2xl">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#2e4278]/70 bg-[#16224a]/95 px-4 py-3 backdrop-blur">
+                <div className="text-sm font-medium text-slate-200">Preview</div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(false)}
+                  className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-100"
+                  aria-label="Close preview"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <article className="px-4 py-6 md:px-8">
+                <h1 className="text-3xl font-bold tracking-tight text-white">{title || 'Untitled'}</h1>
+                {(description.trim() || body.trim()) && (
+                  <p className="mt-3 text-lg leading-relaxed text-slate-300">
+                    {description.trim() || descriptionFromBody(body)}
+                  </p>
+                )}
+                <div className="faq-doc synopsis-body editor-preview-body mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
+                  <PostBody body={body} />
+                </div>
+              </article>
+              <Lightbox rootSelector=".editor-preview-body" />
+            </div>
+          </div>
         )}
       </main>
     </div>

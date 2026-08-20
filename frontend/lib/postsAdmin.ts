@@ -1,7 +1,7 @@
 // Admin-side post operations for the Synopsis editor (#36). All calls run as
 // the signed-in admin; RLS enforces the is_admin gate server-side.
 import { supabase } from './supabase'
-import { AFD_CATEGORY, isJsonBody, textFromJsonBody } from './posts'
+import { DISCUSSION_CATEGORY, isJsonBody, textFromJsonBody } from './posts'
 import { downloadImageBlob } from './storage'
 import type { SavedMap } from './database.types'
 
@@ -12,6 +12,8 @@ export type PostRow = {
   description: string
   body_md: string
   category: string
+  tags: string[]
+  regions: string[]
   event_date: string | null
   published: boolean
   publish_at: string | null
@@ -22,7 +24,7 @@ export type PostRow = {
 
 // Re-exported so admin modules keep importing it from here (defined in
 // ./posts because the public build-time list needs it to order posts).
-export { AFD_CATEGORY }
+export { DISCUSSION_CATEGORY }
 
 function requireSupabase() {
   if (!supabase) throw new Error('Accounts are not configured.')
@@ -43,6 +45,8 @@ export type PostInput = {
   title: string
   description: string
   body_md: string
+  tags?: string[]
+  regions?: string[]
   published: boolean
   publish_at: string | null
   published_at: string | null

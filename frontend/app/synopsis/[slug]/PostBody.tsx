@@ -27,7 +27,7 @@ export function PostBody({ body }: { body: string }) {
             {...props}
             alt={props.alt ?? ''}
             loading="lazy"
-            className="mx-auto max-w-full rounded-lg"
+            className="mx-auto w-[640px] max-w-full rounded-lg"
           />
         ),
         a: props => <a {...props} className={TEXT_LINK} />,

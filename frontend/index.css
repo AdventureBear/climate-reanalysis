@@ -76,6 +76,10 @@
   .faq-doc td {
     @apply border border-slate-700 px-3 py-2 align-top text-slate-300;
   }
+
+  .faq-doc.synopsis-body h3 {
+    @apply mx-auto mt-14 mb-3 max-w-2xl text-center text-base font-semibold leading-snug text-slate-100;
+  }
 }
 
 /* Synopsis post images carry inline pixel widths from the editor; never let

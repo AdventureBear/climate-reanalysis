@@ -1,18 +1,19 @@
 'use client'
 
-// New AFD (#76): generate a Synopsis post from an Area Forecast Discussion.
+// New WPC discussion post (#76): generate a Synopsis post from the WPC Short
+// Range Forecast Discussion.
 // Pick a date and issuance, click Generate — the backend fetches that day's
 // discussion, writes the post, renders the maps, and saves an unpublished
 // draft. This page polls until the draft exists, then links to the editor.
-// An AFD post is a historical forecast: the discussion as issued, with maps
-// of the setup on that same day (dates are pinned server-side).
+// The post is written from the discussion's same-day perspective, with maps of
+// the setup on that target day (dates are pinned server-side).
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '../../auth/authContext'
 import { EditorGate } from '../shared'
 import { PageShell } from '../../../ui/PageShell'
 import { API_BASE } from '../../../lib/api'
-import { AFD_CATEGORY, listAllPosts, type PostRow } from '../../../lib/postsAdmin'
+import { DISCUSSION_CATEGORY, listAllPosts, type PostRow } from '../../../lib/postsAdmin'
 import { statusOf } from '../shared'
 import { supabase } from '../../../lib/supabase'
 
@@ -27,9 +28,9 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Newest allowed day: reanalysis data lags real time by ~2 days.
+// Newest allowed day: reanalysis data lags real time by ~3 days.
 function newestAllowed(): string {
-  const d = new Date(Date.now() - 2 * 24 * 3600 * 1000)
+  const d = new Date(Date.now() - 3 * 24 * 3600 * 1000)
   return d.toISOString().slice(0, 10)
 }
 
@@ -40,23 +41,24 @@ type RunState =
   | { phase: 'done'; slug: string; postId: string }
   | { phase: 'error'; message: string }
 
-export default function NewAfdPage() {
+export default function NewWpcPage() {
   const { enabled: authEnabled, user, isAdmin } = useAuth()
   const [date, setDate] = useState(newestAllowed())
   const [issuance, setIssuance] = useState<'morning' | 'afternoon'>('morning')
   const [run, setRun] = useState<RunState>({ phase: 'idle' })
-  const [afdPosts, setAfdPosts] = useState<PostRow[] | null>(null)
+  const [discussionPosts, setDiscussionPosts] = useState<PostRow[] | null>(null)
 
   const ready = authEnabled && user && isAdmin
+  const runDone = run.phase === 'done'
 
-  // Load AFD posts (this generator's own output) on mount, and refresh
+  // Load WPC discussion posts (this generator's own output) on mount, and refresh
   // whenever a run finishes.
   useEffect(() => {
     if (!ready) return
     listAllPosts()
-      .then(rows => setAfdPosts(rows.filter(p => p.category === AFD_CATEGORY)))
-      .catch(() => setAfdPosts([]))
-  }, [ready, run.phase === 'done'])
+      .then(rows => setDiscussionPosts(rows.filter(p => p.category === DISCUSSION_CATEGORY)))
+      .catch(() => setDiscussionPosts([]))
+  }, [ready, runDone])
 
   // Poll for the draft once a run starts; the backend told us its slug.
   useEffect(() => {
@@ -118,11 +120,11 @@ export default function NewAfdPage() {
   return (
     <div className="flex-1 bg-[#16224a]">
       <PageShell>
-        <h1 className="text-xl font-semibold text-slate-200">New AFD post</h1>
+        <h1 className="text-xl font-semibold text-slate-200">New WPC discussion post</h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400">
-          Generates a draft from the NWS Area Forecast Discussion for the day you pick —
-          the discussion as issued, with maps of that day&apos;s setup. The draft appears
-          under All Posts; nothing publishes without you.
+          Generates a same-day setup draft from the NWS WPC Short Range Forecast
+          Discussion for the day you pick, with PyRe maps of that day&apos;s atmosphere.
+          The draft appears under All Posts; nothing publishes without you.
         </p>
 
         <div className="mt-6 flex flex-wrap items-end gap-3">
@@ -179,15 +181,15 @@ export default function NewAfdPage() {
 
         <div className="mt-10">
           <h2 className="text-sm font-medium uppercase tracking-wide text-slate-500">
-            Forecast-discussion posts
+            WPC discussion posts
           </h2>
-          {afdPosts === null && <p className="mt-3 text-sm text-slate-500">Loading…</p>}
-          {afdPosts?.length === 0 && (
+          {discussionPosts === null && <p className="mt-3 text-sm text-slate-500">Loading…</p>}
+          {discussionPosts?.length === 0 && (
             <p className="mt-3 text-sm text-slate-500">None yet — generate one above.</p>
           )}
-          {afdPosts && afdPosts.length > 0 && (
+          {discussionPosts && discussionPosts.length > 0 && (
             <ul className="mt-3 divide-y divide-[#2e4278]/40 rounded-lg border border-[#2e4278]/60 bg-[#1b2a55]/70">
-              {afdPosts.map(p => {
+              {discussionPosts.map(p => {
                 const st = statusOf(p)
                 return (
                   <li key={p.id} className="flex items-center gap-3 px-4 py-3">

@@ -1,11 +1,12 @@
 """
-Synopsis pipeline (#37): forecast discussion -> draft blog post with maps.
+Synopsis pipeline (#37): WPC discussion -> draft setup post with maps.
 
 One claude-opus-4-8 call turns a WPC Short Range Forecast Discussion into a
-post (headline, intro, sections, map params). Maps render in-process through
-create_map_buffer — no HTTP round trip to our own server. With publishing
-enabled, PNGs upload to the public post-images bucket and the post lands in
-the posts table as an unpublished draft with category 'forecast discussion'.
+same-day setup post plan (headline, map placements, captions, and tags). Maps render
+in-process through create_map_buffer — no HTTP round trip to our own server.
+With publishing enabled, PNGs upload to the public post-images bucket and the
+post lands in the posts table as an unpublished draft with category
+'wpc discussion'.
 
 Publishing needs two env vars (backend/.env in dev, Render env in prod):
 SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY. The model call needs
@@ -37,15 +38,15 @@ MODEL = "claude-opus-4-8"
 COST_PER_MTOK_IN = 5.00
 COST_PER_MTOK_OUT = 25.00
 HOURS = ["00", "03", "06", "09", "12", "15", "18", "21"]
-CATEGORY = "forecast discussion"
+CATEGORY = "wpc discussion"
 PROMPT_PATH = Path(__file__).with_name("synopsis_prompt.md")
 
-# PMDSPD text from the IEM AFOS archive (public domain NWS product). The
-# pipeline recaps a day that already happened, and CORe data lags real time
-# by 1-2 days — so the scheduled run reads the discussion from LAG_DAYS ago
-# (its morning issuance, whose valid period covers that same day).
+# PMDSPD text from the IEM AFOS archive (public domain NWS product). CORe
+# data lags real time by a few days, so the scheduled run reads the discussion
+# from LAG_DAYS ago. Editorially, that target date is still "today" for the
+# generated post; the lag is only a data-availability implementation detail.
 DISCUSSION_URL = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py"
-LAG_DAYS = 2
+LAG_DAYS = 3
 
 # Impact words that must come from the source, never from the model. The
 # check is textual and deterministic — a warning, not a rewrite, since
@@ -92,55 +93,103 @@ UI_TO_API = {(var, ui_level): (api_var, api_level)
              for var, levels in UI_CATALOG.items()
              for ui_level, api_var, api_level in levels}
 
+WEATHER_TAGS = [
+    "Cold Front", "Warm Front", "Stationary Front", "Occluded Front",
+    "Frontal Boundary", "Low Pressure", "High Pressure", "Trough", "Ridge",
+    "Shortwave", "Longwave", "Cyclone", "Cyclogenesis", "Jet Stream",
+    "Low-Level Jet", "Cold Air Advection", "Warm Air Advection",
+    "Moisture Advection", "Convergence", "Divergence", "Frontogenesis",
+    "Frontolysis", "Instability", "Inversion", "Orographic Lift",
+    "Overrunning", "Subsidence", "Wind Shear", "Vorticity Advection",
+    "Thunderstorms", "Severe Thunderstorms", "Tornadoes", "Hail",
+    "Damaging Winds", "Squall Line", "Lightning", "Heavy Rain",
+    "Flash Flooding", "Flooding", "Rain", "Showers", "Snow", "Heavy Snow",
+    "Blowing Snow", "Blizzard", "Sleet", "Freezing Rain",
+    "Freezing Drizzle", "Ice", "Icing", "Lake-Effect Snow", "Winter Storm",
+    "Tropical Cyclone", "Tropical Depression", "Tropical Storm", "Hurricane",
+    "Tropical Moisture", "Extreme Heat", "Heat Wave", "Cold",
+    "Extreme Cold", "Freeze", "Frost", "Fog", "High Winds", "Dust Storm",
+    "Smoke", "Drought", "Critical Fire Weather", "Elevated Fire Weather",
+    "Dry Thunderstorms", "Dry Lightning", "Low Relative Humidity",
+    "Dry Fuels", "Gusty Winds", "Wind Shift", "Monsoon",
+    "Monsoon Moisture", "Monsoonal Thunderstorms", "Downburst",
+    "Santa Ana Winds", "Diablo Winds", "Offshore Winds", "Downslope Winds",
+]
 
-# Structured-output schema: the per-map recipe uses builder vocabulary.
-# Flat date/hour here; to_map_recipe() folds them into the stored MapRecipe's
-# time object and applies house rules (barbs step 2, r2-daily climatology).
+REGION_TAGS = [
+    "Pacific Northwest", "Northern Intermountain Region", "Northern Rockies",
+    "California", "Central Great Basin", "Intermountain West", "Southwest",
+    "Central Rockies", "Southern Rockies", "Northern Plains",
+    "Central Plains", "Southern Plains", "Upper Mississippi Valley",
+    "Middle Mississippi Valley", "Lower Mississippi Valley",
+    "Upper Great Lakes", "Lower Great Lakes", "Ohio Valley",
+    "Tennessee Valley", "Northern Appalachians", "Central Appalachians",
+    "Southern Appalachians", "Northeast", "Mid-Atlantic", "Southeast",
+    "Cascades", "Sierra Nevada", "Northern High Plains",
+    "Central High Plains", "Southern High Plains", "Upper Missouri Valley",
+    "Middle Missouri Valley", "Lower Missouri Valley", "Upper Texas Coast",
+    "Central Gulf Coast", "Eastern Gulf Coast",
+]
+
+
+# Structured-output schema: the model edits the official discussion into
+# natural prose and chooses map callouts. The per-map recipe uses builder
+# vocabulary. Flat date/hour here; to_map_recipe() folds it into the stored
+# MapRecipe's time object and applies house rules (barbs step 2, r2-daily
+# climatology).
 _NULLABLE_FILL = {"anyOf": [{"type": "string", "enum": ["contours", "shaded"]},
                             {"type": "null"}]}
 _NULLABLE_CONTOURS = {"anyOf": [
     {"type": "array", "items": {"type": "string", "enum": ["pressure", "height", "temp"]}},
     {"type": "null"}]}
-POST_SCHEMA = {
+MAP_PLAN_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "id": {"type": "string"},
+        "caption": {"type": "string"},
+        "recipe": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "variable": {"type": "string"},
+                "level": {"type": "string"},
+                "region": {"type": "string"},
+                "date": {"type": "string"},
+                "hour": {"type": "string", "enum": HOURS},
+                "displayMode": {"type": "string", "enum": ["raw", "anomaly"]},
+                "wind": {"type": "boolean"},
+                "fillMode": _NULLABLE_FILL,
+                "contours": _NULLABLE_CONTOURS,
+                "centers": {"type": "boolean"},
+            },
+            "required": [
+                "variable", "level", "region", "date", "hour",
+                "displayMode", "wind", "fillMode", "contours",
+                "centers",
+            ],
+        },
+    },
+    "required": ["id", "caption", "recipe"],
+}
+PLAN_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
         "headline": {"type": "string"},
-        "post_date": {"type": "string"},
         "description": {"type": "string"},
         "intro": {"type": "string"},
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "regions": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
         "maps": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "id": {"type": "string"},
-                    "caption": {"type": "string"},
-                    "recipe": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "variable": {"type": "string"},
-                            "level": {"type": "string"},
-                            "region": {"type": "string"},
-                            "date": {"type": "string"},
-                            "hour": {"type": "string", "enum": HOURS},
-                            "displayMode": {"type": "string", "enum": ["raw", "anomaly"]},
-                            "wind": {"type": "boolean"},
-                            "fillMode": _NULLABLE_FILL,
-                            "contours": _NULLABLE_CONTOURS,
-                            "centers": {"type": "boolean"},
-                        },
-                        "required": [
-                            "variable", "level", "region", "date", "hour",
-                            "displayMode", "wind", "fillMode", "contours",
-                            "centers",
-                        ],
-                    },
-                },
-                "required": ["id", "caption", "recipe"],
-            },
+            "items": MAP_PLAN_SCHEMA,
         },
         "sections": {
             "type": "array",
@@ -156,7 +205,7 @@ POST_SCHEMA = {
             },
         },
     },
-    "required": ["headline", "post_date", "description", "intro", "maps", "sections"],
+    "required": ["headline", "description", "intro", "tags", "regions", "maps", "sections"],
 }
 
 
@@ -191,8 +240,8 @@ ARCHIVE_URL = "https://mesonet.agron.iastate.edu/wx/afos/p.php"
 
 def fetch_discussion(target_date: str | None = None, issuance: str = "morning") -> Discussion:
     """The PMDSPD issued on target_date (YYYYMMDD; default LAG_DAYS ago) in
-    the chosen issuance window. An AFD post is a historical forecast: the
-    discussion as issued, with maps of the setup on that same day."""
+    the chosen issuance window. The generated post uses the discussion as
+    issued, with maps of the setup on that same target day."""
     if target_date is None:
         target_date = default_target_date()
     if issuance not in ISSUANCE_WINDOWS:
@@ -251,20 +300,42 @@ def legal_values_block() -> str:
         "centers true adds H/L pressure markers (pairs well with temp surface_2m plus contours ['pressure']). "
         "wind true adds wind barbs — use it on wind_speed maps to show flow direction.",
         "Set fillMode and contours to null when unused.",
+        "",
+        "Weather tags: " + ", ".join(WEATHER_TAGS),
+        "",
+        "Region tags: " + ", ".join(REGION_TAGS),
     ]
     return "\n".join(lines)
+
+
+def discussion_paragraphs(discussion: str) -> list[str]:
+    """Official WPC text split into display/placement paragraphs.
+
+    Whitespace is normalized only at paragraph edges; interior line breaks stay
+    intact so the reposted product remains recognizably the source text.
+    """
+    return [p.strip() for p in re.split(r"\n\s*\n", discussion.strip()) if p.strip()]
+
+
+def numbered_discussion(discussion: str) -> str:
+    return "\n\n".join(
+        f"[{i}] {p}" for i, p in enumerate(discussion_paragraphs(discussion), start=1)
+    )
 
 
 def build_system_prompt(target_date: str | None = None) -> str:
     prompt = PROMPT_PATH.read_text() + "\n" + legal_values_block()
     if target_date:
-        prompt += (f"\nThis column covers {target_date} only. Every map uses date {target_date} — "
-                   "later days in the discussion are forecasts, and no data exists for them yet.")
+        prompt += (
+            f"\nThe target date is {target_date}. In the discussion, this date is 'today'; "
+            "choose maps and captions from that same-day perspective. Every map uses date "
+            f"{target_date}. Treat later days in the discussion as forecasts, using simple "
+            "future tense rather than hindsight in captions."
+        )
     return prompt
 
 
-def generate_post(discussion: str, target_date: str | None = None) -> tuple[dict, dict]:
-    """One model call: discussion text in, post JSON out. Returns (post, usage)."""
+def _anthropic_plan_call(messages: list[dict], target_date: str | None = None) -> tuple[dict, dict]:
     import anthropic
 
     client = anthropic.Anthropic()
@@ -273,8 +344,8 @@ def generate_post(discussion: str, target_date: str | None = None) -> tuple[dict
         max_tokens=16000,
         thinking={"type": "adaptive"},
         system=build_system_prompt(target_date),
-        output_config={"format": {"type": "json_schema", "schema": POST_SCHEMA}},
-        messages=[{"role": "user", "content": discussion}],
+        output_config={"format": {"type": "json_schema", "schema": PLAN_SCHEMA}},
+        messages=messages,
     )
     text = next(b.text for b in response.content if b.type == "text")
     usage = {
@@ -285,6 +356,59 @@ def generate_post(discussion: str, target_date: str | None = None) -> tuple[dict
         (usage["input_tokens"] * COST_PER_MTOK_IN
          + usage["output_tokens"] * COST_PER_MTOK_OUT) / 1_000_000, 4)
     return json.loads(text), usage
+
+
+def _add_usage(a: dict, b: dict) -> dict:
+    usage = {
+        "input_tokens": a.get("input_tokens", 0) + b.get("input_tokens", 0),
+        "output_tokens": a.get("output_tokens", 0) + b.get("output_tokens", 0),
+    }
+    usage["cost_usd"] = round(
+        (usage["input_tokens"] * COST_PER_MTOK_IN
+         + usage["output_tokens"] * COST_PER_MTOK_OUT) / 1_000_000, 4)
+    return usage
+
+
+def generate_plan(discussion: str, target_date: str | None = None,
+                  retries: int = 0) -> tuple[dict, dict]:
+    """Official discussion text in, raw enhancement plan out.
+
+    retries lets the caller test whether an invalid first plan can be repaired
+    before rendering or saving anything.
+    """
+    messages = [{"role": "user", "content": numbered_discussion(discussion)}]
+    plan, usage = _anthropic_plan_call(messages, target_date)
+    for _ in range(retries):
+        try:
+            validate_plan(plan)
+            return plan, usage
+        except ValueError as exc:
+            repair = (
+                f"The previous JSON was invalid: {exc}. Return a complete revised JSON object. "
+                "Keep the cleaned body prose, but populate all required fields: 3-7 maps, "
+                "3-12 legal weather tags, and 1-6 legal region tags. Use the fallback map "
+                "set if needed. Empty maps, tags, or regions are invalid."
+            )
+            next_plan, next_usage = _anthropic_plan_call(
+                [*messages,
+                 {"role": "assistant", "content": json.dumps(plan)},
+                 {"role": "user", "content": repair}],
+                target_date,
+            )
+            plan = next_plan
+            usage = _add_usage(usage, next_usage)
+    return plan, usage
+
+
+def generate_post(discussion: str, target_date: str | None = None) -> tuple[dict, dict]:
+    """One model call: official discussion text in, validated post object out.
+
+    The model lightly rewrites the source into natural prose, then chooses
+    maps, captions, insertion points, and controlled taxonomy. assemble_post()
+    keeps the official WPC text for audit/provenance.
+    """
+    plan, usage = generate_plan(discussion, target_date, retries=1)
+    return assemble_post(plan, discussion, target_date), usage
 
 
 def compose_title(post: dict) -> str:
@@ -304,17 +428,118 @@ def compose_slug(post: dict) -> str:
 
 
 def unsupported_words(post: dict, discussion: str) -> list[str]:
-    post_text = json.dumps(post).lower()
+    generated = {
+        "headline": post.get("headline", ""),
+        "description": post.get("description", ""),
+        "intro": post.get("intro", ""),
+        "sections": post.get("sections", []),
+        "tags": post.get("tags", []),
+        "regions": post.get("regions", []),
+        "maps": [
+            {
+                "caption": m.get("caption", ""),
+            }
+            for m in post.get("maps", [])
+        ],
+    }
+    post_text = json.dumps(generated).lower()
     source = discussion.lower()
     return [w for w in WATCH_WORDS if w in post_text and w not in source]
+
+
+def _legal_subset(values: list[str], legal: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    legal_set = set(legal)
+    for value in values or []:
+        if value in legal_set and value not in seen:
+            out.append(value)
+            seen.add(value)
+    return out
+
+
+def plan_maps(plan: dict) -> list[dict]:
+    """Return map plans from either the current slot schema or old list shape."""
+    maps = plan.get("maps") or {}
+    if isinstance(maps, list):
+        return maps
+    if not isinstance(maps, dict):
+        return []
+    out: list[dict] = []
+    for key in ("map1", "map2", "map3", "map4", "map5", "map6", "map7"):
+        m = maps.get(key)
+        if m:
+            raw = dict(m)
+            raw.setdefault("id", key)
+            out.append(raw)
+    return out
+
+
+def validate_plan(plan: dict) -> None:
+    """Fail fast when the model did not satisfy the editorial contract."""
+    section_count = len(plan.get("sections") or [])
+    if section_count < 2:
+        raise ValueError(f"plan must include 2 or more rewritten sections; got {section_count}")
+
+    map_count = len(plan_maps(plan))
+    if map_count < 3 or map_count > 7:
+        raise ValueError(f"plan must include 3-7 maps; got {map_count}")
+    map_ids = {str(m.get("id")) for m in plan_maps(plan)}
+    used_ids = {
+        str(mid)
+        for section in plan.get("sections") or []
+        for mid in section.get("map_ids", [])
+    }
+    unused = sorted(map_ids - used_ids)
+    missing = sorted(used_ids - map_ids)
+    if missing:
+        raise ValueError(f"section map_ids reference unknown maps: {', '.join(missing)}")
+    if unused:
+        raise ValueError(f"maps must be inserted from sections; unused maps: {', '.join(unused)}")
+
+    tags = _legal_subset(plan.get("tags") or [], WEATHER_TAGS)
+    if len(tags) < 3 or len(tags) > 12:
+        raise ValueError(f"plan must include 3-12 legal weather tags; got {len(tags)}")
+
+    regions = _legal_subset(plan.get("regions") or [], REGION_TAGS)
+    if len(regions) < 1 or len(regions) > 6:
+        raise ValueError(f"plan must include 1-6 legal region tags; got {len(regions)}")
+
+
+def assemble_post(plan: dict, discussion: str, target_date: str | None = None) -> dict:
+    """Plan JSON + source WPC text -> the post object used downstream."""
+    validate_plan(plan)
+    source_paragraphs = discussion_paragraphs(discussion)
+    post_date = target_date or plan.get("post_date") or default_target_date()
+    sections = plan.get("sections") or []
+    maps = []
+    for idx, m in enumerate(plan_maps(plan), start=1):
+        raw = dict(m)
+        raw.setdefault("id", f"map{idx}")
+        maps.append(raw)
+
+    post = {
+        "headline": plan["headline"],
+        "post_date": post_date,
+        "description": plan["description"],
+        "intro": plan["intro"],
+        "sections": sections,
+        "official_text": discussion,
+        "official_paragraphs": source_paragraphs,
+        "tags": _legal_subset(plan.get("tags") or [], WEATHER_TAGS),
+        "regions": _legal_subset(plan.get("regions") or [], REGION_TAGS),
+        "maps": maps,
+    }
+    normalize_recipes(post, post_date)
+    return post
 
 
 def to_map_recipe(raw: dict, target_date: str | None = None) -> dict:
     """The model's flat recipe -> the full MapRecipe shape stored in
     saved_maps.recipe and consumed by the map builder. Applies the house
-    rules deterministically: every map pinned to the discussion's own day
-    (later days are forecasts with no data), wind glyphs always barbs at
-    step 2, sub-monthly anomalies always r2-daily climatology."""
+    rules deterministically: every map pinned to the discussion's target day,
+    wind glyphs always barbs at step 2, sub-monthly anomalies always
+    r2-daily climatology."""
     date = target_date or raw["date"]
     iso = f"{date[:4]}-{date[4:6]}-{date[6:]}"
     recipe: dict = {
@@ -392,6 +617,80 @@ def builder_url(recipe: dict) -> str:
         return ""
 
 
+VARIABLE_TITLES = {
+    "absv": "Absolute Vorticity",
+    "cape": "CAPE",
+    "cin": "CIN",
+    "dewpoint_2m": "Dewpoint",
+    "height": "Geopotential Height",
+    "humidity": "Specific Humidity",
+    "olr": "Outgoing Longwave Radiation",
+    "omega": "Vertical Motion",
+    "precip_rate": "Precipitation Rate",
+    "precipitable_water": "Precipitable Water",
+    "pressure": "Mean Sea Level Pressure",
+    "rel_humidity": "Relative Humidity",
+    "snow_depth": "Snow Depth",
+    "temp": "Temperature",
+    "wind_speed": "Wind Speed",
+}
+
+LEVEL_TITLES = {
+    "ml_cape": "Mixed-Layer",
+    "ml_cin": "Mixed-Layer",
+    "mu_cape": "Most-Unstable",
+    "mu_cin": "Most-Unstable",
+    "surface_10m": "10m",
+    "surface_2m": "2m",
+    "surface_2m_dpt": "2m",
+    "surface_cape": "Surface",
+    "surface_cin": "Surface",
+    "surface_prate": "",
+    "surface_snod": "Surface",
+    "toa_olr": "Top-of-Atmosphere",
+    "total_column": "Total Column",
+}
+
+REGION_TITLES = {
+    "CONUS": "the continental United States",
+}
+
+
+def map_text_title(recipe: dict) -> str:
+    """Readable, indexable title for a generated map.
+
+    The PNG title is part of the image, so generated posts also need real text
+    near each map for SEO, accessibility, and normal scanning.
+    """
+    variable = recipe.get("variable", "")
+    level = str(recipe.get("level", ""))
+    variable_title = VARIABLE_TITLES.get(variable, variable.replace("_", " ").title())
+    level_title = LEVEL_TITLES.get(level, f"{level}mb" if level.isdigit() else level.replace("_", " ").title())
+    mode_title = " Anomaly" if recipe.get("displayMode") == "anomaly" else ""
+    field = " ".join(part for part in (level_title, f"{variable_title}{mode_title}") if part)
+
+    region = REGION_TITLES.get(recipe.get("region", ""), recipe.get("region", ""))
+    where = f" over {region}" if region else ""
+
+    t = recipe.get("time") or {}
+    when = ""
+    if t.get("scale") == "3-hourly" and t.get("date") and t.get("hour"):
+        try:
+            d = datetime.strptime(t["date"], "%Y-%m-%d")
+            when = f" at {t['hour']}Z on {d.strftime('%B')} {d.day}, {d.year}"
+        except ValueError:
+            when = f" at {t['hour']}Z on {t['date']}"
+    elif t.get("scale") == "daily" and t.get("date"):
+        try:
+            d = datetime.strptime(t["date"], "%Y-%m-%d")
+            when = f" on {d.strftime('%B')} {d.day}, {d.year}"
+        except ValueError:
+            when = f" on {t['date']}"
+    elif t.get("scale") == "monthly" and t.get("month"):
+        when = f" for {t['month']}"
+    return f"{field}{where}{when}".strip()
+
+
 def recipe_to_request(recipe: dict) -> MapRequest:
     return MapRequest(**recipe_to_params(recipe))
 
@@ -428,26 +727,35 @@ def _supabase() -> tuple[str, dict]:
 
 
 def build_body_md(post: dict, slug: str) -> str:
-    """Markdown body in the blog's existing format: images are bucket paths
-    ('post-images/...'), embedded at their first reference only. Each map's
-    caption ends with a /map deep link that reopens its recipe in the
-    builder. When the source discussion is known (post['source'], attached by
-    run_pipeline), a provenance line closes the post (#83) — derived from the
-    fetch, never written by the model."""
+    """Markdown body with rewritten WPC prose plus PyRe map insertions.
+
+    Images are bucket paths ('post-images/...'). Each map's caption ends with
+    a /map deep link that reopens its recipe in the builder. When the source
+    discussion is known (post['source'], attached by run_pipeline), a
+    provenance line closes the post (#83) — derived from the fetch, never
+    written by the model.
+    """
     maps = {m["id"]: m for m in post["maps"]}
-    lines = [post["intro"], ""]
     embedded: set[str] = set()
-    for s in post["sections"]:
-        lines += [f"## {s['heading']}", "", s["body"], ""]
-        for mid in s["map_ids"]:
+    lines = [post["intro"], ""]
+    for section in post["sections"]:
+        lines += [f"## {section['heading']}", "", section["body"], ""]
+        for mid in section["map_ids"]:
             if mid in embedded or mid not in maps:
                 continue
             embedded.add(mid)
             m = maps[mid]
             url = builder_url(m["recipe"])
             link = f" · [Open this map in the builder]({url})" if url else ""
-            lines += [f"![{m['caption']}](post-images/{slug}/{mid}.png)", "",
+            title = map_text_title(m["recipe"])
+            alt = f"{title}. {m['caption']}" if title else m["caption"]
+            lines += [f"### {title}", "",
+                      f"![{alt}](post-images/{slug}/{mid}.png)", "",
                       f"*{m['caption']}{link}*", ""]
+    return _append_source(lines, post).strip() + "\n"
+
+
+def _append_source(lines: list[str], post: dict) -> str:
     source = post.get("source") or {}
     if source.get("url"):
         issued = f", issued {source['issued']}" if source.get("issued") else ""
@@ -516,7 +824,9 @@ def event_date_iso(post_date: str) -> str:
 
 
 def upsert_draft(slug: str, title: str, description: str, body_md: str,
-                 event_date: str | None = None) -> str:
+                 event_date: str | None = None,
+                 tags: list[str] | None = None,
+                 regions: list[str] | None = None) -> str:
     """Insert the draft, or refresh it if a draft with this slug exists.
     A published post is never touched — regeneration then reports and stops.
     event_date (YYYY-MM-DD) is the weather day the post describes (#82)."""
@@ -535,6 +845,10 @@ def upsert_draft(slug: str, title: str, description: str, body_md: str,
               "category": CATEGORY, "published": False}
     if event_date:
         fields["event_date"] = event_date
+    if tags is not None:
+        fields["tags"] = tags
+    if regions is not None:
+        fields["regions"] = regions
     if rows:
         resp = requests.patch(
             f"{url}/rest/v1/posts?id=eq.{rows[0]['id']}",
@@ -554,12 +868,12 @@ def upsert_draft(slug: str, title: str, description: str, body_md: str,
 
 # ── Library save ─────────────────────────────────────────────────────────────
 # Each generated map becomes a real saved_maps row (recipe JSON + PNG +
-# thumbnail in the private maps bucket) under the admin's "Forecast
-# Discussions" project, one folder per post slug — so every AFD map opens in
-# the builder exactly like a user-saved map. Failed maps are saved too, with
-# no image: their recipe is what the editor needs to debug them.
+# thumbnail in the private maps bucket) under the admin's "WPC Discussions"
+# project, one folder per post slug — so every generated map
+# opens in the builder exactly like a user-saved map. Failed maps are saved
+# too, with no image: their recipe is what the editor needs to debug them.
 
-LIBRARY_PROJECT = "Forecast Discussions"
+LIBRARY_PROJECT = "WPC Discussions"
 MAPS_BUCKET = "maps"
 THUMB_MAX_WIDTH = 480  # mirror of frontend lib/images.ts
 
@@ -659,7 +973,6 @@ def run_pipeline(discussion: str, save_draft: bool = False,
                  source: Discussion | None = None) -> dict:
     """The whole job. Returns a summary dict (also logged)."""
     post, usage = generate_post(discussion, target_date)
-    normalize_recipes(post, target_date)
     if source:
         # Travels inside the post dict so saved post.json reruns keep it.
         post["source"] = {"url": source.url, "issued": source.issued}
@@ -685,6 +998,8 @@ def run_pipeline(discussion: str, save_draft: bool = False,
         result["draft"] = upsert_draft(
             slug, post["title"], post["description"], build_body_md(post, slug),
             event_date=event_date_iso(post["post_date"]),
+            tags=post.get("tags", []),
+            regions=post.get("regions", []),
         )
         save_library_maps(slug, post, images)
     return result

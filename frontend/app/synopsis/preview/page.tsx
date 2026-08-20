@@ -46,7 +46,7 @@ export default function DraftPreview() {
           {draft.description && (
             <p className="mt-3 text-lg leading-relaxed text-slate-300">{draft.description}</p>
           )}
-          <div className="faq-doc mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
+          <div className="faq-doc synopsis-body mt-8 rounded-2xl border border-[#2e4278]/60 bg-[#1b2a55]/70 p-6 md:p-8">
             <PostBody body={draft.body} />
           </div>
           <Lightbox />

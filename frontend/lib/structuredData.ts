@@ -73,6 +73,7 @@ export function articleSchema(post: Post) {
     // still machine-readable below, in temporalCoverage.
     headline: displayHeadline(post),
     description: post.description,
+    ...(post.tags.length || post.regions.length ? { keywords: [...post.tags, ...post.regions] } : {}),
     url,
     datePublished: post.published_at ?? post.updated_at,
     dateModified: post.updated_at,

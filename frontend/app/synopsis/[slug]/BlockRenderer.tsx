@@ -52,7 +52,7 @@ function imageBlock(b: Block, key: string): ReactNode {
   if (!url) return null
   const width = typeof p.previewWidth === 'number' ? p.previewWidth : undefined
   const align = p.textAlignment
-  const margin = align === 'left' ? '0 auto 0 0' : align === 'right' ? '0 0 0 auto' : '0 auto'
+  const margin = align === 'right' ? '0 0 0 auto' : '0 auto'
   const caption = typeof p.caption === 'string' ? p.caption : ''
   return (
     <figure key={key} style={{ margin: '1.25rem 0' }}>

@@ -45,9 +45,9 @@ export default function PostsList() {
             className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-slate-700">
             New Post
           </Link>
-          <Link href="/admin/afd/"
+          <Link href="/admin/wpc/"
             className="rounded-md border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-slate-700">
-            New AFD
+            New WPC
           </Link>
         </div>
 

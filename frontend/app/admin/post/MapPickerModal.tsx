@@ -8,7 +8,7 @@ import { ChevronRight, X } from 'lucide-react'
 import { listAllFolders, listAllMaps, listProjects } from '../../../lib/library'
 import type { Folder, Project, SavedMap } from '../../../lib/database.types'
 import { signedUrls } from '../../../lib/storage'
-import { IMAGE_PRESETS } from './EditorApp'
+import { DEFAULT_IMAGE_WIDTH, IMAGE_PRESETS } from './EditorApp'
 
 export function MapPickerModal({ onPick, onClose, linkToBuilder, setLinkToBuilder, initialSizePx, title = 'Insert a saved map' }: {
   onPick: (map: SavedMap, sizePx: number) => void
@@ -20,7 +20,7 @@ export function MapPickerModal({ onPick, onClose, linkToBuilder, setLinkToBuilde
 }) {
   // WordPress-style: the insert size is chosen here, before the click.
   // When replacing, it starts at the image's current size.
-  const [sizePx, setSizePx] = useState<number>(initialSizePx ?? IMAGE_PRESETS[IMAGE_PRESETS.length - 1].px)
+  const [sizePx, setSizePx] = useState<number>(initialSizePx ?? DEFAULT_IMAGE_WIDTH)
   const [projects, setProjects] = useState<Project[]>([])
   const [folders, setFolders] = useState<Folder[]>([])
   const [maps, setMaps] = useState<SavedMap[]>([])

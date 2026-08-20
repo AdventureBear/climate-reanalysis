@@ -12,23 +12,25 @@ export type Post = {
   description: string
   body_md: string
   category: string
-  // The weather day this post is about (#82). AFD posts get it from the
-  // pipeline; hand-written posts can carry one too, since they're also about
-  // a specific day's weather.
+  tags: string[]
+  regions: string[]
+  // The weather day this post is about (#82). WPC discussion posts get it
+  // from the pipeline; hand-written posts can carry one too, since they're
+  // also about a specific day's weather.
   event_date: string | null
   published_at: string | null
   updated_at: string
 }
 
-// Posts generated from an Area Forecast Discussion (#37).
-export const AFD_CATEGORY = 'forecast discussion'
+// Posts generated from the WPC Short Range Forecast Discussion (#37).
+export const DISCUSSION_CATEGORY = 'wpc discussion'
 
-// AFD posts are a daily record — they read as a chronological series of the
-// weather itself. Everything else is a retrospective article, written and
-// filed on the day it was published. That difference decides both the byline
-// and the list order below.
+// WPC discussion posts are a daily record — they read as a chronological
+// series of the weather setup itself. Everything else is a retrospective
+// article, written and filed on the day it was published. That difference
+// decides both the byline and the list order below.
 export function isDailyRecord(p: Post): boolean {
-  return p.category === AFD_CATEGORY
+  return p.category === DISCUSSION_CATEGORY
 }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -46,18 +48,29 @@ export function resolvePostImage(src: string): string {
   return POST_IMAGE_BASE + src
 }
 
-async function restFetch(query: string): Promise<Post[]> {
+function normalizePosts(rows: Partial<Post>[]): Post[] {
+  return rows.map(row => ({
+    ...row,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    regions: Array.isArray(row.regions) ? row.regions : [],
+  })) as Post[]
+}
+
+async function restFetch(query: string, fallbackQuery?: string): Promise<Post[]> {
   if (!SUPABASE_URL || !ANON_KEY) return []
   // No cache directive: static export requires build-time fetches to be
   // cacheable, and every build starts fresh anyway.
   const res = await fetch(`${SUPABASE_URL}/rest/v1/posts?${query}`, {
     headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
   })
-  if (!res.ok) throw new Error(`posts fetch failed: HTTP ${res.status}`)
-  return (await res.json()) as Post[]
+  if (!res.ok) {
+    if (res.status === 400 && fallbackQuery) return restFetch(fallbackQuery)
+    throw new Error(`posts fetch failed: HTTP ${res.status}`)
+  }
+  return normalizePosts(await res.json())
 }
 
-// The date a post is filed under: the weather day for a daily AFD record, the
+// The date a post is filed under: the weather day for a daily WPC discussion record, the
 // publish date for a retrospective article (which may also carry a weather
 // date, but was deliberately written and filed later).
 //
@@ -71,6 +84,8 @@ export function effectiveDate(p: Post): string {
 
 export async function listPublishedPosts(): Promise<Post[]> {
   const posts = await restFetch(
+    'select=id,slug,title,description,body_md,category,tags,regions,event_date,published_at,updated_at'
+    + '&published=eq.true',
     'select=id,slug,title,description,body_md,category,event_date,published_at,updated_at'
     + '&published=eq.true',
   )
@@ -93,7 +108,7 @@ function localDate(ymd: string): Date {
 }
 
 // The headline without the "US Weather <weekday> <month> <day>, <year>: "
-// prefix that compose_title adds to AFD posts (#88). The prefix is rebuilt
+// prefix that compose_title adds to WPC discussion posts (#88). The prefix is rebuilt
 // exactly from event_date and stripped; hand-written posts (no event_date)
 // keep their title as-is. The full title stays the SEO <title> / OG value.
 export function displayHeadline(p: Post): string {
@@ -105,7 +120,7 @@ export function displayHeadline(p: Post): string {
   return p.title.startsWith(prefix) ? p.title.slice(prefix.length) : p.title
 }
 
-// The byline date, matching the order key. A daily AFD record is bylined with
+// The byline date, matching the order key. A daily WPC discussion record is bylined with
 // the weather day it documents ("Thursday, July 16, 2026"); a retrospective
 // article is bylined with its publish date ("July 15, 2026") even when it
 // carries a weather date, because it was deliberately written later.
@@ -119,7 +134,7 @@ export function bylineDate(p: Post): string {
     : ''
 }
 
-// All image paths in a post body, as stored bucket paths. AFD bodies are
+// All image paths in a post body, as stored bucket paths. WPC discussion bodies are
 // markdown (![caption](post-images/...)); hand-written posts are BlockNote
 // JSON with image blocks.
 export function imagePaths(body: string): string[] {
@@ -140,7 +155,7 @@ export function imagePaths(body: string): string[] {
 }
 
 // Lead thumbnail (#84): a varied pick from the post's images, seeded by slug
-// so each post shows a different map (AFDs all open with the 500mb overview,
+// so each post shows a different map (generated setup posts all open with the 500mb overview,
 // so the first image would look repetitive). Deterministic — stable across
 // builds. Null when the post has no image.
 export function leadImagePath(body: string, seed: string): string | null {
@@ -169,6 +184,8 @@ export function textFromJsonBody(body: string): string {
 
 export async function getPublishedPost(slug: string): Promise<Post | null> {
   const rows = await restFetch(
+    'select=id,slug,title,description,body_md,category,tags,regions,event_date,published_at,updated_at'
+    + `&published=eq.true&slug=eq.${encodeURIComponent(slug)}&limit=1`,
     'select=id,slug,title,description,body_md,category,event_date,published_at,updated_at'
     + `&published=eq.true&slug=eq.${encodeURIComponent(slug)}&limit=1`,
   )
