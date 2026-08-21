@@ -295,7 +295,9 @@ export function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFami
           ? 'Column'
           : variable.startsWith('cloud_cover_')
             ? 'Layer'
-            : variable === 'olr' ? 'TOA' : 'Surface',
+            : variable === 'olr' || variable.endsWith('_toa')
+              ? 'TOA'
+              : 'Surface',
         levels: [1000],
         description: 'This field has one fixed vertical coordinate in CORe.',
       },

@@ -23,6 +23,8 @@ import {
   MONTHLY_UNAVAILABLE_API_VARIABLES,
   RAW_ONLY_API_VARIABLES,
   type HumidityType,
+  type RadiationDirection,
+  type RadiationWaveband,
   apiLevelForSelection,
   apiVariableForSelection,
   levelForVariableChange,
@@ -63,6 +65,8 @@ export function useCompositeRecipe() {
   const [variable, setVariable] = useState('wind_speed')
   const [level,    setLevel]    = useState('850')
   const [humidityType, setHumidityType] = useState<HumidityType>('relative')
+  const [radiationWaveband, setRadiationWaveband] = useState<RadiationWaveband>('shortwave')
+  const [radiationDirection, setRadiationDirection] = useState<RadiationDirection>('down')
 
   const [region,      setRegion]      = useState('CONUS')
 
@@ -115,7 +119,7 @@ export function useCompositeRecipe() {
     } catch { /* nothing to do if storage is unavailable */ }
   }
 
-  const apiVariable = apiVariableForSelection(variable, level, humidityType)
+  const apiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection)
   const apiLevel = apiLevelForSelection(variable, level)
   const levelOptions = levelOptionsForVariable(variable, humidityType)
   const isClimo     = timeScale === 'climatology'
@@ -169,7 +173,7 @@ export function useCompositeRecipe() {
 
   function setPrecipWindow(next: PrecipWindow) {
     setPrecipWindowState(next)
-    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total') {
+    if (apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection) === 'precip_total') {
       setTimeScale(next === '24' ? 'daily' : '3-hourly')
       if (dateSubMode === 'range') applyPrecipWindowRange(next)
     }
@@ -177,11 +181,11 @@ export function useCompositeRecipe() {
 
   function chooseTimeScale(next: TimeScale) {
     setTimeScale(next)
-    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total' && next === 'daily') {
+    if (apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection) === 'precip_total' && next === 'daily') {
       setPrecipWindowState('24')
       if (dateSubMode === 'range') applyPrecipWindowRange('24')
     }
-    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total' && next === '3-hourly') {
+    if (apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection) === 'precip_total' && next === '3-hourly') {
       const nextWindow = precipWindow === '24' || !PRECIP_WINDOW_PRESETS.has(precipWindow) ? '12' : precipWindow
       setPrecipWindowState(nextWindow)
       if (dateSubMode === 'range') applyPrecipWindowRange(nextWindow)
@@ -238,6 +242,8 @@ export function useCompositeRecipe() {
       variable,
       level,
       humidityType: variable === 'humidity' ? humidityType : undefined,
+      radiationWaveband: variable === 'radiation' ? radiationWaveband : undefined,
+      radiationDirection: variable === 'radiation' ? radiationDirection : undefined,
       region,
       displayMode,
       climoSource,
@@ -311,12 +317,24 @@ export function useCompositeRecipe() {
     }
 
     if (recipe.variable) {
-      setVariable(recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m' ? 'humidity' : recipe.variable)
+      setVariable(
+        recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m'
+          ? 'humidity'
+          : recipe.variable === 'olr'
+            ? 'radiation'
+            : recipe.variable,
+      )
     }
-    if (recipe.level) setLevel(recipe.level)
+    if (recipe.level) setLevel(recipe.variable === 'olr' ? 'toa_radiation' : recipe.level)
     if (recipe.humidityType) setHumidityType(recipe.humidityType)
     else if (recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m') setHumidityType('relative')
     else if (recipe.variable === 'humidity') setHumidityType('specific')
+    if (recipe.radiationWaveband) setRadiationWaveband(recipe.radiationWaveband)
+    if (recipe.radiationDirection) setRadiationDirection(recipe.radiationDirection)
+    if (recipe.variable === 'olr') {
+      setRadiationWaveband('longwave')
+      setRadiationDirection('up')
+    }
     if (recipe.region) setRegion(recipe.region)
     if (recipe.displayMode) setDisplayMode(recipe.displayMode)
     if (recipe.climoSource) setClimoSource(recipe.climoSource)
@@ -333,11 +351,15 @@ export function useCompositeRecipe() {
     const recipeVariable =
       recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m'
         ? 'humidity'
+        : recipe.variable === 'olr'
+          ? 'radiation'
         : recipe.variable ?? variable
     const recipeApiVariable = apiVariableForSelection(
       recipeVariable,
-      recipe.level ?? level,
+      recipe.variable === 'olr' ? 'toa_radiation' : recipe.level ?? level,
       recipe.humidityType ?? humidityType,
+      recipe.radiationWaveband ?? radiationWaveband,
+      recipe.radiationDirection ?? radiationDirection,
     )
     const recipeIsWindVariable = recipeApiVariable === 'wind_speed' || recipeApiVariable === 'wind_10m'
     if (recipe.wind) {
@@ -378,12 +400,19 @@ export function useCompositeRecipe() {
     // Monthly obs composites are not wired for most surface/named-level
     // fields (MSLP is exempt — its monthly archive record is wired).
     if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
+    if (variable === 'radiation' && level === 'toa_radiation' && radiationWaveband === 'longwave' && radiationDirection === 'down') {
+      setRadiationDirection('up')
+    }
   }, [
     displayMode,
     rawOnlyVariable,
     monthlyUnavailable,
     timeScale,
     isThreeHourly,
+    variable,
+    level,
+    radiationWaveband,
+    radiationDirection,
   ])
 
   useEffect(() => {
@@ -451,6 +480,8 @@ export function useCompositeRecipe() {
     climoMonth, setClimoMonth,
     variable, setVariable,
     humidityType, setHumidityType,
+    radiationWaveband, setRadiationWaveband,
+    radiationDirection, setRadiationDirection,
     level, setLevel,
     region, setRegion,
     displayMode, setDisplayMode,

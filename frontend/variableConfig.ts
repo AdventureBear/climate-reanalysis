@@ -18,6 +18,8 @@ type VariableConfig = {
 }
 
 export type HumidityType = 'relative' | 'specific'
+export type RadiationWaveband = 'shortwave' | 'longwave'
+export type RadiationDirection = 'down' | 'up'
 
 function pressureLevels(apiVariable: string): VariableLevelConfig[] {
   return PRESSURE_LEVELS.map(level => ({
@@ -106,10 +108,12 @@ const VARIABLE_CONFIG = {
       { value: 'convective_cloud', label: 'Convective cloud', apiVariable: 'cloud_cover_convective', apiLevel: '1000', levelKind: 'layer' },
     ],
   },
-  olr: {
-    label: 'Outgoing Longwave Radiation',
+  radiation: {
+    label: 'Radiation',
+    group: 'multi',
     levels: [
-      { value: 'toa_olr', label: 'Top of atmosphere', apiVariable: 'olr', apiLevel: '1000', levelKind: 'toa' },
+      { value: 'surface_radiation', label: 'Surface', apiVariable: 'radiation_sw_down_surface', apiLevel: '1000', levelKind: 'surface' },
+      { value: 'toa_radiation', label: 'Top of atmosphere', apiVariable: 'radiation_sw_down_toa', apiLevel: '1000', levelKind: 'toa' },
     ],
   },
   cape: {
@@ -153,13 +157,19 @@ const BUILDER_VARIABLE_GROUPS = {
   single: 'Surface / single-level variables',
 } as const
 
-const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => ({
-  value,
-  label: config.label,
-  group: config.group ?? (config.levels.some(level => level.levelKind === 'pressure')
-    ? BUILDER_VARIABLE_GROUPS.multi
-    : BUILDER_VARIABLE_GROUPS.single),
-}))
+const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => {
+  const explicitGroup = 'group' in config ? config.group : undefined
+  const group = explicitGroup
+    ? BUILDER_VARIABLE_GROUPS[explicitGroup]
+    : config.levels.some(level => level.levelKind === 'pressure')
+      ? BUILDER_VARIABLE_GROUPS.multi
+      : BUILDER_VARIABLE_GROUPS.single
+  return {
+    value,
+    label: config.label,
+    group,
+  }
+})
 
 export const VARIABLES: SelectOption[] = [
   ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.multi),
@@ -186,6 +196,12 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'cloud_cover_high', label: 'High Cloud Cover' },
   { value: 'cloud_cover_boundary', label: 'Boundary-Layer Cloud Cover' },
   { value: 'cloud_cover_convective', label: 'Convective Cloud Cover' },
+  { value: 'radiation_sw_down_surface', label: 'Surface Downward Shortwave Radiation' },
+  { value: 'radiation_sw_up_surface', label: 'Surface Upward Shortwave Radiation' },
+  { value: 'radiation_lw_down_surface', label: 'Surface Downward Longwave Radiation' },
+  { value: 'radiation_lw_up_surface', label: 'Surface Upward Longwave Radiation' },
+  { value: 'radiation_sw_down_toa', label: 'TOA Downward Shortwave Radiation' },
+  { value: 'radiation_sw_up_toa', label: 'TOA Upward Shortwave Radiation' },
   { value: 'olr', label: 'Outgoing Longwave Radiation' },
   { value: 'cape', label: 'CAPE (Surface-Based)' },
   { value: 'cape_ml', label: 'CAPE (Mixed-Layer)' },
@@ -200,7 +216,8 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
 
 export const SURFACE_LEVELS = new Set([
   'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'surface_ptotal',
-  'atmos_col_cloud', 'low_cloud', 'middle_cloud', 'high_cloud', 'boundary_cloud', 'convective_cloud', 'toa_olr',
+  'atmos_col_cloud', 'low_cloud', 'middle_cloud', 'high_cloud', 'boundary_cloud', 'convective_cloud',
+  'surface_radiation', 'toa_radiation',
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
   'surface_2m_dpt', 'surface_2m_rh', 'surface_snod',
 ])
@@ -210,17 +227,23 @@ export const SURFACE_LEVELS = new Set([
 export const MONTHLY_UNAVAILABLE_API_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'precip_total',
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
+  'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
+  'radiation_sw_down_toa', 'radiation_sw_up_toa',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 // Surface/named-level API variables: wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total',
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
+  'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
+  'radiation_sw_down_toa', 'radiation_sw_up_toa',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total',
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
+  'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
+  'radiation_sw_down_toa', 'radiation_sw_up_toa',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 
@@ -230,21 +253,51 @@ export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
 // (humidity: no daily R2 shum file; rel_humidity: derived baseline deferred;
 // precip_rate/precip_total: precip anomaly product design deferred;
 // cloud_cover_*: TCDC baseline/product design deferred;
+// radiation_*: radiation flux baseline/product design deferred; olr remains
+// climatology-capable because it was wired before the grouped Radiation UI.
 // cape/cin/dewpoint/absv/snow_depth: no R2 source, or derivation deferred —
 // see config.py comments.)
 export const RAW_ONLY_API_VARIABLES = new Set([
   'humidity', 'rel_humidity', 'precip_rate', 'precip_total',
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective',
+  'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
+  'radiation_sw_down_toa', 'radiation_sw_up_toa',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
   'dewpoint_2m', 'rel_humidity_2m', 'absv', 'snow_depth',
 ])
 
-const API_TO_UI_SELECTION = new Map<string, { variable: string; level: string }>()
+const RADIATION_API_VARIABLES: Record<string, string> = {
+  'surface_radiation:shortwave:down': 'radiation_sw_down_surface',
+  'surface_radiation:shortwave:up': 'radiation_sw_up_surface',
+  'surface_radiation:longwave:down': 'radiation_lw_down_surface',
+  'surface_radiation:longwave:up': 'radiation_lw_up_surface',
+  'toa_radiation:shortwave:down': 'radiation_sw_down_toa',
+  'toa_radiation:shortwave:up': 'radiation_sw_up_toa',
+  'toa_radiation:longwave:up': 'olr',
+}
+
+type UiSelection = {
+  variable: string
+  level: string
+  radiationWaveband?: RadiationWaveband
+  radiationDirection?: RadiationDirection
+}
+
+const API_TO_UI_SELECTION = new Map<string, UiSelection>()
 for (const [variable, config] of Object.entries(VARIABLE_CONFIG)) {
   for (const level of config.levels) {
     API_TO_UI_SELECTION.set(`${level.apiVariable}:${level.apiLevel}`, { variable, level: level.value })
     API_TO_UI_SELECTION.set(level.apiVariable, { variable, level: level.value })
   }
+}
+for (const [key, apiVariable] of Object.entries(RADIATION_API_VARIABLES)) {
+  const [level, waveband, direction] = key.split(':') as [string, RadiationWaveband, RadiationDirection]
+  API_TO_UI_SELECTION.set(apiVariable, {
+    variable: 'radiation',
+    level,
+    radiationWaveband: waveband,
+    radiationDirection: direction,
+  })
 }
 
 export function levelOptionsForVariable(variable: string, humidityType: HumidityType = 'relative'): SelectOption[] {
@@ -293,11 +346,22 @@ export function levelForVariableChange(nextVariable: string, currentLevel: strin
   )?.value ?? '850'
 }
 
-export function apiVariableForSelection(variable: string, level: string, humidityType: HumidityType = 'relative'): string {
+export function apiVariableForSelection(
+  variable: string,
+  level: string,
+  humidityType: HumidityType = 'relative',
+  radiationWaveband: RadiationWaveband = 'shortwave',
+  radiationDirection: RadiationDirection = 'down',
+): string {
   if (variable === 'humidity') {
     const levelConfig = VARIABLE_CONFIG.humidity.levels.find(option => option.value === level)
     return humidityType === 'specific' ? 'humidity' : levelConfig?.apiVariable ?? 'rel_humidity'
   }
+  if (variable === 'radiation') {
+    const safeDirection = level === 'toa_radiation' && radiationWaveband === 'longwave' ? 'up' : radiationDirection
+    return RADIATION_API_VARIABLES[`${level}:${radiationWaveband}:${safeDirection}`] ?? 'radiation_sw_down_surface'
+  }
+  if (variable === 'olr') return 'olr'
   return VARIABLE_CONFIG[variable as UiVariableKey]?.levels.find(option => option.value === level)?.apiVariable ?? variable
 }
 
@@ -305,7 +369,7 @@ export function apiLevelForSelection(variable: string, level: string): string {
   return VARIABLE_CONFIG[variable as UiVariableKey]?.levels.find(option => option.value === level)?.apiLevel ?? level
 }
 
-export function uiSelectionForApiVariable(apiVariable: string, apiLevel: string): { variable: string; level: string } {
+export function uiSelectionForApiVariable(apiVariable: string, apiLevel: string): UiSelection {
   if (apiVariable === 'rel_humidity' || apiVariable === 'humidity') {
     return { variable: 'humidity', level: apiLevel }
   }

@@ -83,6 +83,13 @@ FLX_INDEX_SAMPLE = """\
 10:1381001:d=2026051303:PWAT:atmos col:anl:ens mean
 21:3125677:d=2026051303:TMP:2 m above ground:anl:ens mean"""
 
+FLX_RADIATION_INDEX_SAMPLE = """\
+1:0:d=2026010100:DLWRF:surface:anl:ens mean
+2:176057:d=2026010100:ULWRF:surface:anl:ens mean
+56:5677108:d=2026010100:DLWRF:surface:0-3 hour ave fcst:ens mean
+57:5850401:d=2026010100:ULWRF:surface:0-3 hour ave fcst:ens mean
+72:7458297:d=2026010100:DSWRF:top of atmosphere:0-3 hour ave fcst:ens mean"""
+
 
 # ── Unit: URL construction ───────────────────────────────────────────────────────
 
@@ -264,6 +271,12 @@ class TestParseIndexText:
         assert ("WIND", "10 m above ground") in fields
         assert ("PRES", "surface") in fields
         assert ("PWAT", "atmos col") in fields
+
+    def test_flx_format_preserves_time_stat_for_duplicate_radiation_levels(self):
+        records = parse_index_text(FLX_RADIATION_INDEX_SAMPLE)
+        matches = [r for r in records if r.variable == "DLWRF" and r.level == "surface"]
+
+        assert [r.time_stat for r in matches] == ["anl", "0-3 hour ave fcst"]
 
     def test_850mb_level_string(self):
         records = parse_index_text(NOMADS_INDEX_SAMPLE)

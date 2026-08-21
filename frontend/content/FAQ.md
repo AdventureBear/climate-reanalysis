@@ -78,7 +78,7 @@ R2 is used as a **climatology baseline** — the reference against which we meas
 | Precipitation Rate | Displayed mm/day or in/day | 0–3 h average forecast field, not instantaneous; raw maps only |
 | Precipitation Total | Displayed mm or inches | Accumulated from PRATE over 3/6/12/24 h windows; raw maps only |
 | Cloud Cover | Total-column and layer cloud cover (%) | 0–3 h average forecast field, not instantaneous; raw maps only |
-| Outgoing Longwave Radiation | ULWRF at top of atmosphere | 0–3 h average forecast field |
+| Radiation | Surface and top-of-atmosphere shortwave/longwave fluxes | 0–3 h average forecast fields; non-OLR options are raw maps only |
 | CAPE / CIN | Three parcel variants each — see Q22 | Raw maps only |
 | 2m Dewpoint | Displayed °F | Raw maps only |
 | Snow Depth | Displayed inches | Raw maps only |
@@ -116,7 +116,7 @@ Before subtraction, PyRe interpolates the coarser climatology grid onto the CORe
 
 Specific humidity, relative humidity, precipitation, and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
 
-Precipitation and total cloud cover come from CORe forecast-background FLX fields. They are useful for broad case-study context, but they are not gauge/radar-observed precipitation totals or direct station-observed sky-condition reports.
+Precipitation, total cloud cover, and radiation fluxes come from CORe forecast-background FLX fields. They are useful for broad case-study context, but they are not gauge/radar-observed precipitation totals, direct station-observed sky-condition reports, or point pyranometer measurements.
 
 Normalized anomaly is not offered on 3-hourly maps. See the next question.
 

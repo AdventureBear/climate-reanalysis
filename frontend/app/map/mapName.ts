@@ -37,6 +37,11 @@ function variableLabel(variable: string | undefined, recipe?: MapRecipe): string
   if (variable === 'precip_total') {
     return `${recipe?.precipWindow ?? '3'} Hour Precip Total`
   }
+  if (variable === 'radiation') {
+    const direction = recipe?.radiationDirection === 'up' ? 'Upward' : 'Downward'
+    const waveband = recipe?.radiationWaveband === 'longwave' ? 'Longwave' : 'Shortwave'
+    return `${direction} ${waveband} Radiation`
+  }
   return VARIABLES.find(option => option.value === variable)?.label ?? variable
 }
 

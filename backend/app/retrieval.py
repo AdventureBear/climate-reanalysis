@@ -227,6 +227,7 @@ class IndexRecord:
     byte_start: int
     variable: str
     level: str  # e.g. "850 mb", "surface"
+    time_stat: str = ""  # e.g. "anl", "0-3 hour ave fcst"
 
 
 def parse_index_text(text: str) -> list[IndexRecord]:
@@ -242,6 +243,7 @@ def parse_index_text(text: str) -> list[IndexRecord]:
                 byte_start=int(parts[1]),
                 variable=parts[3],
                 level=parts[4],
+                time_stat=parts[5] if len(parts) > 5 else "",
             ))
         except (ValueError, IndexError):
             continue
@@ -297,18 +299,30 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
     return records, grib_url
 
 
-def _fetch_record_by_level(grib_url: str, records: list[IndexRecord], variable: str, level_name: str) -> xr.DataArray:
+def _fetch_record_by_level(
+    grib_url: str,
+    records: list[IndexRecord],
+    variable: str,
+    level_name: str,
+    time_stat: str | None = None,
+) -> xr.DataArray:
     """
     Issue an HTTP Range request for one GRIB2 record and return it as a
     loaded DataArray. Uses a temp file because cfgrib requires a file path;
     the file is deleted before returning.
     """
     match_idx = next(
-        (i for i, r in enumerate(records) if r.variable == variable and r.level == level_name),
+        (
+            i for i, r in enumerate(records)
+            if r.variable == variable
+            and r.level == level_name
+            and (time_stat is None or r.time_stat == time_stat)
+        ),
         None
     )
     if match_idx is None:
-        raise ValueError(f"{variable} at {level_name} not found in index")
+        suffix = f" ({time_stat})" if time_stat else ""
+        raise ValueError(f"{variable} at {level_name}{suffix} not found in index")
 
     rec = records[match_idx]
     if match_idx + 1 < len(records):
@@ -348,10 +362,10 @@ def _fetch_record(grib_url: str, records: list[IndexRecord], variable: str, leve
     return _fetch_record_by_level(grib_url, records, variable, f"{level} mb")
 
 
-def fetch_flx_field(date: str, hour: str, variable: str, level_name: str) -> xr.DataArray:
+def fetch_flx_field(date: str, hour: str, variable: str, level_name: str, time_stat: str | None = None) -> xr.DataArray:
     """Surgically fetch a single CORe flx field by GRIB variable and level string."""
     records, grib_url = _fetch_flx_index_and_url(date, hour)
-    da = _fetch_record_by_level(grib_url, records, variable, level_name)
+    da = _fetch_record_by_level(grib_url, records, variable, level_name, time_stat=time_stat)
     da.attrs["_pyre_obs_source"] = "CORe-flx-gcs" if grib_url.startswith(GCS_FLX_BASE) else "CORe-flx-nomads"
     return da
 
