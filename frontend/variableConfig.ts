@@ -14,6 +14,7 @@ type VariableLevelConfig = {
 type VariableConfig = {
   label: string
   levels: readonly VariableLevelConfig[]
+  group?: 'multi' | 'single'
 }
 
 export type HumidityType = 'relative' | 'specific'
@@ -93,6 +94,18 @@ const VARIABLE_CONFIG = {
       { value: 'surface_ptotal', label: 'Surface', apiVariable: 'precip_total', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
+  cloud_cover: {
+    label: 'Cloud Cover',
+    group: 'multi',
+    levels: [
+      { value: 'atmos_col_cloud', label: 'Total column', apiVariable: 'cloud_cover_total', apiLevel: '1000', levelKind: 'column' },
+      { value: 'low_cloud', label: 'Low cloud layer', apiVariable: 'cloud_cover_low', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'middle_cloud', label: 'Middle cloud layer', apiVariable: 'cloud_cover_middle', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'high_cloud', label: 'High cloud layer', apiVariable: 'cloud_cover_high', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'boundary_cloud', label: 'Boundary layer cloud', apiVariable: 'cloud_cover_boundary', apiLevel: '1000', levelKind: 'layer' },
+      { value: 'convective_cloud', label: 'Convective cloud', apiVariable: 'cloud_cover_convective', apiLevel: '1000', levelKind: 'layer' },
+    ],
+  },
   olr: {
     label: 'Outgoing Longwave Radiation',
     levels: [
@@ -143,9 +156,9 @@ const BUILDER_VARIABLE_GROUPS = {
 const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => ({
   value,
   label: config.label,
-  group: config.levels.some(level => level.levelKind === 'pressure')
+  group: config.group ?? (config.levels.some(level => level.levelKind === 'pressure')
     ? BUILDER_VARIABLE_GROUPS.multi
-    : BUILDER_VARIABLE_GROUPS.single,
+    : BUILDER_VARIABLE_GROUPS.single),
 }))
 
 export const VARIABLES: SelectOption[] = [
@@ -167,6 +180,12 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'omega', label: 'Omega (Vertical Velocity)' },
   { value: 'precip_rate', label: 'Precipitation Rate' },
   { value: 'precip_total', label: 'Precipitation Total' },
+  { value: 'cloud_cover_total', label: 'Total Cloud Cover' },
+  { value: 'cloud_cover_low', label: 'Low Cloud Cover' },
+  { value: 'cloud_cover_middle', label: 'Middle Cloud Cover' },
+  { value: 'cloud_cover_high', label: 'High Cloud Cover' },
+  { value: 'cloud_cover_boundary', label: 'Boundary-Layer Cloud Cover' },
+  { value: 'cloud_cover_convective', label: 'Convective Cloud Cover' },
   { value: 'olr', label: 'Outgoing Longwave Radiation' },
   { value: 'cape', label: 'CAPE (Surface-Based)' },
   { value: 'cape_ml', label: 'CAPE (Mixed-Layer)' },
@@ -180,7 +199,8 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
 ]
 
 export const SURFACE_LEVELS = new Set([
-  'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'surface_ptotal', 'toa_olr',
+  'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'surface_ptotal',
+  'atmos_col_cloud', 'low_cloud', 'middle_cloud', 'high_cloud', 'boundary_cloud', 'convective_cloud', 'toa_olr',
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
   'surface_2m_dpt', 'surface_2m_rh', 'surface_snod',
 ])
@@ -188,16 +208,19 @@ export const SURFACE_LEVELS = new Set([
 // wired (MSLP has a monthly archive record and is exempt). Mirrors the
 // backend gate keyed on monthly_grib_name in config.py.
 export const MONTHLY_UNAVAILABLE_API_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
+  'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'precip_total',
+  'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 // Surface/named-level API variables: wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
+  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total',
+  'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
+  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total',
+  'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 
@@ -206,10 +229,13 @@ export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
 // variable_modes); update both together when a baseline is wired.
 // (humidity: no daily R2 shum file; rel_humidity: derived baseline deferred;
 // precip_rate/precip_total: precip anomaly product design deferred;
+// cloud_cover_*: TCDC baseline/product design deferred;
 // cape/cin/dewpoint/absv/snow_depth: no R2 source, or derivation deferred —
 // see config.py comments.)
 export const RAW_ONLY_API_VARIABLES = new Set([
-  'humidity', 'rel_humidity', 'precip_rate', 'precip_total', 'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
+  'humidity', 'rel_humidity', 'precip_rate', 'precip_total',
+  'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
   'dewpoint_2m', 'rel_humidity_2m', 'absv', 'snow_depth',
 ])
 

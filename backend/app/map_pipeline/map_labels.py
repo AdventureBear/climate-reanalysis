@@ -158,6 +158,8 @@ def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
     if is_surface_or_named_level(req.variable):
         if req.variable == "precip_total":
             return f"{req.precip_window}-hour {VARIABLES[req.variable]['name']} ({units})"
+        if req.variable.startswith("cloud_cover_"):
+            return f"{VARIABLES[req.variable]['name']} (3-hour average) ({units})"
         return f"{VARIABLES[req.variable]['name']} ({units})"
     if use_vector_wind_anomaly:
         if req.mode == "normalized":

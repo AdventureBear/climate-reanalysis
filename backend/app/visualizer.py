@@ -517,6 +517,16 @@ def _precip_rate_unit_label(precip_unit: str) -> str:
     return "in/day" if precip_unit == "in" else "mm/day"
 
 
+_CLOUD_COVER_LABELS = {
+    "cloud_cover_total": "Total Cloud Cover",
+    "cloud_cover_low": "Low Cloud Cover",
+    "cloud_cover_middle": "Middle Cloud Cover",
+    "cloud_cover_high": "High Cloud Cover",
+    "cloud_cover_boundary": "Boundary-Layer Cloud Cover",
+    "cloud_cover_convective": "Convective Cloud Cover",
+}
+
+
 def display_unit(
     variable: str,
     level: int,
@@ -549,6 +559,8 @@ def display_unit(
         return _precip_rate_unit_label(precip_unit)
     if variable == "precip_total":
         return _precip_unit_label(precip_unit)
+    if variable in _CLOUD_COVER_LABELS:
+        return "%"
     if variable == "olr":
         return "W/m²"
     if variable in {"cape", "cape_ml", "cape_mu", "cin", "cin_ml", "cin_mu"}:
@@ -767,6 +779,18 @@ _PRECIP_TOTAL_SCALE_CONFIG = {
     "white_below": 0.5,
 }
 
+# Cloud cover in %. CORe TCDC fields are 0-3 hour average forecast fields, so
+# these are sky conditions over the preceding window, not snapshots.
+_CLOUD_COVER_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 100.0,
+    "anchor_values": [0.0, 10.0, 25.0, 50.0, 75.0, 90.0, 100.0],
+    "anchor_colors": ["#ffffff", "#f7f7f7", "#e0e0e0", "#bdbdbd", "#969696", "#636363", "#252525"],
+    "key_breakpoints": [25.0, 75.0],
+    "step": 5.0,
+}
+
 # OLR in W/m². Low OLR = cold cloud tops / deep convection (cool purples and
 # blues); high OLR = warm clear-sky surfaces (oranges).
 _OLR_SCALE_CONFIG = {
@@ -860,6 +884,10 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
     "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0,  "label": "Precipitation Rate", "extend": "max",
                     "to_display": precipitation_rate_to_mm_day},
     "precip_total": {**_PRECIP_TOTAL_SCALE_CONFIG, "tick_every": 25.0, "label": "Precipitation Total", "extend": "max"},
+    **{
+        variable: {**_CLOUD_COVER_SCALE_CONFIG, "tick_every": 20.0, "label": label, "extend": "neither"}
+        for variable, label in _CLOUD_COVER_LABELS.items()
+    },
     "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
     "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
     "cape_ml":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},

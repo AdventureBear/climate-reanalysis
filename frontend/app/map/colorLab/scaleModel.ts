@@ -291,7 +291,11 @@ export function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFami
     return [
       {
         key: 'surface',
-        label: variable === 'precipitable_water' ? 'Column' : variable === 'olr' ? 'TOA' : 'Surface',
+        label: variable === 'precipitable_water' || variable === 'cloud_cover_total'
+          ? 'Column'
+          : variable.startsWith('cloud_cover_')
+            ? 'Layer'
+            : variable === 'olr' ? 'TOA' : 'Surface',
         levels: [1000],
         description: 'This field has one fixed vertical coordinate in CORe.',
       },

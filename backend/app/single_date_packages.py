@@ -639,9 +639,9 @@ def evaluate_triggers(
     if diag["jet_max_kt"] >= TRIG_JET_KT:
         fired.append((f"Jet overhead: 300mb max {diag['jet_max_kt']:.0f} kt nearby", []))
     if diag["cloud_pct"] <= TRIG_CLEAR_PCT:
-        fired.append((f"Bluebird day: only {diag['cloud_pct']:.0f}% average cloud cover", []))
+        fired.append((f"Bluebird day: only {diag['cloud_pct']:.0f}% 3-hour average cloud cover", []))
     elif diag["cloud_pct"] >= TRIG_OVERCAST_PCT:
-        fired.append((f"Socked in: {diag['cloud_pct']:.0f}% cloud cover all day", []))
+        fired.append((f"Socked in: {diag['cloud_pct']:.0f}% 3-hour average cloud cover", []))
     if diag["h500_sigma"] is not None and abs(diag["h500_sigma"]) >= TRIG_H500_SIGMA:
         shape = "monster ridge" if diag["h500_sigma"] > 0 else "deep trough"
         fired.append(
@@ -747,7 +747,7 @@ def summary_lines(diag: dict[str, Any], highlights: list[str], place: str, date:
         f"2m temperature      : {temp_f:.0f} F ({diag['t2m_c']:.1f} C)",
         f"vs normal           : {delta_celsius_to_delta_fahrenheit(diag['t2m_anom_c']):+.0f} F ({diag['t2m_sigma']:+.1f} sigma)",
         f"day's high / low    : {diag['t2m_max_f']:.0f} / {diag['t2m_min_f']:.0f} F (analysis extremes)",
-        f"sky cover           : {diag['cloud_pct']:.0f}% ({_sky_words(diag['cloud_pct'])})",
+        f"sky cover (3h avg)  : {diag['cloud_pct']:.0f}% ({_sky_words(diag['cloud_pct'])})",
         _line_or_na("dewpoint            : {:.0f} F", diag["dewpoint_f"]),
         _line_or_na("10m wind            : {:.0f} kt", diag["wind10_kt"]),
         _line_or_na("500mb heights       : {:+.1f} sigma from normal", diag["h500_sigma"]),

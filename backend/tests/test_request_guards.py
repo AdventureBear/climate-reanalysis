@@ -109,6 +109,86 @@ def test_precip_total_anomaly_is_raw_only(monkeypatch):
     assert "raw maps only" in response.json()["detail"]
 
 
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "cloud_cover_total",
+        "cloud_cover_low",
+        "cloud_cover_middle",
+        "cloud_cover_high",
+        "cloud_cover_boundary",
+        "cloud_cover_convective",
+    ],
+)
+def test_cloud_cover_raw_map_is_available(monkeypatch, variable):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": variable,
+            "level": "1000",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("variable", ["cloud_cover_total", "cloud_cover_low"])
+def test_cloud_cover_anomaly_is_raw_only(monkeypatch, variable):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": variable,
+            "level": "1000",
+            "region": "CONUS",
+            "mode": "anomaly",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "raw maps only" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "cloud_cover_total",
+        "cloud_cover_low",
+        "cloud_cover_middle",
+        "cloud_cover_high",
+        "cloud_cover_boundary",
+        "cloud_cover_convective",
+    ],
+)
+def test_cloud_cover_scale_meta_uses_percent_fixed_scale(variable):
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/scale-meta",
+        params={
+            "variable": variable,
+            "level": "1000",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scale_kind"] == f"fixed-{variable.replace('_', '-')}"
+    assert payload["unit"] == "%"
+    assert payload["domain_min"] == 0
+    assert payload["domain_max"] == 100
+
+
 def test_precip_window_is_only_for_precip_total(monkeypatch):
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)

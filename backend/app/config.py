@@ -243,6 +243,22 @@ _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
 # anomaly maps. Grid points where the observed value is below this threshold are
 # masked after the sigma-validity mask. Wind anomalies/normalized anomalies use
 # vector U/V departures instead of scalar wind-speed departures.
+
+def _cloud_cover_variable(name: str, flx_level: str, display_level: str) -> dict:
+    return {
+        "name": name,
+        "units": "%",
+        "stream": "flx",
+        "grib_name": "TCDC",   # 0-3 hour average forecast field, not instantaneous
+        "flx_level": flx_level,
+        "display_level": display_level,
+        # R2 has daily tcdc on the gaussian grid, but the CORe field semantics
+        # and baseline product design need review before exposing anomalies.
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    }
+
+
 VARIABLES = {
     "wind_speed": {
         "name": "Wind Speed",
@@ -397,6 +413,12 @@ VARIABLES = {
         "climo_sources": (),
         "normalized_mask_threshold": None,
     },
+    "cloud_cover_total": _cloud_cover_variable("Total Cloud Cover", "atmos col", "atmospheric column"),
+    "cloud_cover_low": _cloud_cover_variable("Low Cloud Cover", "low cloud layer", "low cloud layer"),
+    "cloud_cover_middle": _cloud_cover_variable("Middle Cloud Cover", "middle cloud layer", "middle cloud layer"),
+    "cloud_cover_high": _cloud_cover_variable("High Cloud Cover", "high cloud layer", "high cloud layer"),
+    "cloud_cover_boundary": _cloud_cover_variable("Boundary-Layer Cloud Cover", "boundary layer cloud layer", "boundary layer cloud layer"),
+    "cloud_cover_convective": _cloud_cover_variable("Convective Cloud Cover", "convective cloud layer", "convective cloud layer"),
     "olr": {
         "name": "Outgoing Longwave Radiation",
         "units": "W/m²",
