@@ -99,7 +99,8 @@ def test_build_body_md_appends_map_gallery_after_prose():
     image = body.index("![500mb Geopotential Height")
     trigger = body.index("A cold front is focusing")
     later = body.index("By Tuesday")
-    gallery = body.index("## Setup Maps")
+    assert "## Atmospheric Setup Maps for " in body
+    gallery = body.index("## Atmospheric Setup Maps for ")
     assert trigger < later < gallery < image
     assert "Short Range Forecast Discussion\nNWS Weather Prediction Center" not in body
     assert "Source: [NWS WPC Short Range Forecast Discussion, issued 359 AM EDT Mon Aug 17 2026]" in body
