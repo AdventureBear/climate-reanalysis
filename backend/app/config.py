@@ -244,16 +244,45 @@ _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
 # masked after the sigma-validity mask. Wind anomalies/normalized anomalies use
 # vector U/V departures instead of scalar wind-speed departures.
 
-def _cloud_cover_variable(name: str, flx_level: str, display_level: str) -> dict:
-    return {
+def _cloud_cover_variable(
+    name: str,
+    flx_level: str,
+    display_level: str,
+    *,
+    time_stat: str | None = None,
+    source_time_offset_hours: int = 0,
+) -> dict:
+    cfg = {
         "name": name,
         "units": "%",
         "stream": "flx",
-        "grib_name": "TCDC",   # 0-3 hour average forecast field, not instantaneous
+        "grib_name": "TCDC",
         "flx_level": flx_level,
         "display_level": display_level,
         # R2 has daily tcdc on the gaussian grid, but the CORe field semantics
         # and baseline product design need review before exposing anomalies.
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    }
+    if time_stat is not None:
+        cfg["time_stat"] = time_stat
+    if source_time_offset_hours:
+        cfg["source_time_offset_hours"] = source_time_offset_hours
+    return cfg
+
+
+def _radiation_variable(name: str, grib_name: str, flx_level: str, display_level: str) -> dict:
+    return {
+        "name": name,
+        "units": "W/m²",
+        "stream": "flx",
+        "grib_name": grib_name,   # 0-3 hour average forecast flux field
+        "flx_level": flx_level,
+        "display_level": display_level,
+        "time_stat": "0-3 hour ave fcst",
+        "source_time_offset_hours": -3,
+        # Flux anomalies need a dedicated baseline review. OLR at TOA is the
+        # existing exception below because its R2/R1 specs were already wired.
         "climo_sources": (),
         "normalized_mask_threshold": None,
     }
@@ -413,12 +442,48 @@ VARIABLES = {
         "climo_sources": (),
         "normalized_mask_threshold": None,
     },
-    "cloud_cover_total": _cloud_cover_variable("Total Cloud Cover", "atmos col", "atmospheric column"),
-    "cloud_cover_low": _cloud_cover_variable("Low Cloud Cover", "low cloud layer", "low cloud layer"),
-    "cloud_cover_middle": _cloud_cover_variable("Middle Cloud Cover", "middle cloud layer", "middle cloud layer"),
-    "cloud_cover_high": _cloud_cover_variable("High Cloud Cover", "high cloud layer", "high cloud layer"),
-    "cloud_cover_boundary": _cloud_cover_variable("Boundary-Layer Cloud Cover", "boundary layer cloud layer", "boundary layer cloud layer"),
+    "cloud_cover_total": _cloud_cover_variable(
+        "Total Cloud Cover",
+        "atmos col",
+        "atmospheric column",
+        time_stat="0-3 hour ave fcst",
+        source_time_offset_hours=-3,
+    ),
+    "cloud_cover_low": _cloud_cover_variable(
+        "Low Cloud Cover",
+        "low cloud layer",
+        "low cloud layer",
+        time_stat="0-3 hour ave fcst",
+        source_time_offset_hours=-3,
+    ),
+    "cloud_cover_middle": _cloud_cover_variable(
+        "Middle Cloud Cover",
+        "middle cloud layer",
+        "middle cloud layer",
+        time_stat="0-3 hour ave fcst",
+        source_time_offset_hours=-3,
+    ),
+    "cloud_cover_high": _cloud_cover_variable(
+        "High Cloud Cover",
+        "high cloud layer",
+        "high cloud layer",
+        time_stat="0-3 hour ave fcst",
+        source_time_offset_hours=-3,
+    ),
+    "cloud_cover_boundary": _cloud_cover_variable(
+        "Boundary-Layer Cloud Cover",
+        "boundary layer cloud layer",
+        "boundary layer cloud layer",
+        time_stat="0-3 hour ave fcst",
+        source_time_offset_hours=-3,
+    ),
     "cloud_cover_convective": _cloud_cover_variable("Convective Cloud Cover", "convective cloud layer", "convective cloud layer"),
+    "radiation_sw_down_surface": _radiation_variable("Surface Downward Shortwave Radiation", "DSWRF", "surface", "surface"),
+    "radiation_sw_up_surface": _radiation_variable("Surface Upward Shortwave Radiation", "USWRF", "surface", "surface"),
+    "radiation_lw_down_surface": _radiation_variable("Surface Downward Longwave Radiation", "DLWRF", "surface", "surface"),
+    "radiation_lw_up_surface": _radiation_variable("Surface Upward Longwave Radiation", "ULWRF", "surface", "surface"),
+    "radiation_sw_down_toa": _radiation_variable("TOA Downward Shortwave Radiation", "DSWRF", "top of atmosphere", "top of atmosphere"),
+    "radiation_sw_up_toa": _radiation_variable("TOA Upward Shortwave Radiation", "USWRF", "top of atmosphere", "top of atmosphere"),
     "olr": {
         "name": "Outgoing Longwave Radiation",
         "units": "W/m²",
@@ -426,6 +491,8 @@ VARIABLES = {
         "grib_name": "ULWRF",   # 0-3 hour average forecast field
         "flx_level": "top of atmosphere",
         "display_level": "top of atmosphere",
+        "time_stat": "0-3 hour ave fcst",
+        "source_time_offset_hours": -3,
         "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
         "r2_climo": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "gaussian_grid"},
         "r1_4xday": {"file": "ulwrf.ntat", "var": "ulwrf", "dataset": "other_gauss"},

@@ -1,5 +1,13 @@
 import { HOURS, normalizeColorStep } from './sharedOptions'
-import { RAW_ONLY_API_VARIABLES, apiLevelForSelection, apiVariableForSelection, type HumidityType, uiSelectionForApiVariable } from './variableConfig'
+import {
+  RAW_ONLY_API_VARIABLES,
+  apiLevelForSelection,
+  apiVariableForSelection,
+  type HumidityType,
+  type RadiationDirection,
+  type RadiationWaveband,
+  uiSelectionForApiVariable,
+} from './variableConfig'
 
 // Mirror the backend request guards (MAX_COMPOSITE_DATES / MAX_COMPOSITE_MONTHS
 // in backend/app/main.py) so users get instant feedback instead of a 422.
@@ -38,6 +46,8 @@ export type MapRecipe = {
   variable?: string
   level?: string
   humidityType?: HumidityType
+  radiationWaveband?: RadiationWaveband
+  radiationDirection?: RadiationDirection
   region?: string
   displayMode?: DisplayMode
   climoSource?: ClimoSource
@@ -339,7 +349,13 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     return { ok: false, error: 'Choose a time period.' }
   }
 
-  const variable = apiVariableForSelection(recipe.variable, recipe.level, recipe.humidityType)
+  const variable = apiVariableForSelection(
+    recipe.variable,
+    recipe.level,
+    recipe.humidityType,
+    recipe.radiationWaveband,
+    recipe.radiationDirection,
+  )
   const level = apiLevelForSelection(recipe.variable, recipe.level)
   const params: Record<string, string> = { variable, level, region: recipe.region }
 

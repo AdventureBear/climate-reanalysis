@@ -7,6 +7,8 @@ import {
   apiVariableForSelection,
   levelForVariableChange,
   shouldDefaultWindOverlay,
+  type RadiationDirection,
+  type RadiationWaveband,
 } from '../../../variableConfig'
 import { CardRow, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState, TemperatureUnit } from './useCompositeRecipe'
@@ -16,6 +18,8 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
   const {
     variable, setVariable,
     humidityType, setHumidityType,
+    radiationWaveband, setRadiationWaveband,
+    radiationDirection, setRadiationDirection,
     level, setLevel,
     levelOptions,
     windUnit, setWindUnit,
@@ -39,7 +43,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                     setVariable(nextVariable)
                     const nextLevel = levelForVariableChange(nextVariable, level, humidityType)
                     setLevel(nextLevel)
-                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel, humidityType))) {
+                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel, humidityType, radiationWaveband, radiationDirection))) {
                       setWindOn(true)
                       setWindType('barbs')
                     }
@@ -53,7 +57,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                 options={levelOptions}
                 onChange={nextLevel => {
                   setLevel(nextLevel)
-                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel, humidityType))) {
+                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel, humidityType, radiationWaveband, radiationDirection))) {
                     setWindOn(true)
                     setWindType('barbs')
                   }
@@ -64,7 +68,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total') && (
+            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total' || variable === 'radiation') && (
             <CardRow>
                 {variable === 'wind_speed' && (
                   <VariableDisplayControl label="Wind Units">
@@ -126,6 +130,32 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                       fullWidth
                     />
                   </VariableDisplayControl>
+                )}
+                {variable === 'radiation' && (
+                  <>
+                    <VariableDisplayControl label="Waveband">
+                      <TabStrip
+                        options={[
+                          { value: 'shortwave', label: 'Shortwave' },
+                          { value: 'longwave', label: 'Longwave' },
+                        ]}
+                        value={radiationWaveband}
+                        onChange={v => setRadiationWaveband(v as RadiationWaveband)}
+                        fullWidth
+                      />
+                    </VariableDisplayControl>
+                    <VariableDisplayControl label="Direction">
+                      <TabStrip
+                        options={[
+                          { value: 'down', label: 'Down', disabled: level === 'toa_radiation' && radiationWaveband === 'longwave' },
+                          { value: 'up', label: 'Up' },
+                        ]}
+                        value={radiationDirection}
+                        onChange={v => setRadiationDirection(v as RadiationDirection)}
+                        fullWidth
+                      />
+                    </VariableDisplayControl>
+                  </>
                 )}
                 {variable === 'height' && (
                   <VariableDisplayControl label="Height Display">

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar as cal
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 import xarray as xr
@@ -95,9 +96,22 @@ def _uses_10m_wind_overlay(variable: str) -> bool:
     return is_surface_or_named_level(variable)
 
 
+def _apply_source_time_offset(date: str, hour: str, offset_hours: int) -> tuple[str, str]:
+    source = datetime.strptime(f"{date}{hour}", "%Y%m%d%H") + timedelta(hours=offset_hours)
+    return source.strftime("%Y%m%d"), source.strftime("%H")
+
+
 def _flx_field(req: FetchRequest, date: str, hour: str):
     cfg = VARIABLES[req.variable]
-    return fetch_flx_field(date, hour, cfg["grib_name"], cfg["flx_level"])
+    offset = int(cfg.get("source_time_offset_hours", 0))
+    source_date, source_hour = _apply_source_time_offset(date, hour, offset) if offset else (date, hour)
+    return fetch_flx_field(
+        source_date,
+        source_hour,
+        cfg["grib_name"],
+        cfg["flx_level"],
+        time_stat=cfg.get("time_stat"),
+    )
 
 
 def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):

@@ -527,6 +527,16 @@ _CLOUD_COVER_LABELS = {
 }
 
 
+_RADIATION_LABELS = {
+    "radiation_sw_down_surface": "Surface Downward Shortwave Radiation",
+    "radiation_sw_up_surface": "Surface Upward Shortwave Radiation",
+    "radiation_lw_down_surface": "Surface Downward Longwave Radiation",
+    "radiation_lw_up_surface": "Surface Upward Longwave Radiation",
+    "radiation_sw_down_toa": "TOA Downward Shortwave Radiation",
+    "radiation_sw_up_toa": "TOA Upward Shortwave Radiation",
+}
+
+
 def display_unit(
     variable: str,
     level: int,
@@ -561,6 +571,8 @@ def display_unit(
         return _precip_unit_label(precip_unit)
     if variable in _CLOUD_COVER_LABELS:
         return "%"
+    if variable in _RADIATION_LABELS:
+        return "W/m²"
     if variable == "olr":
         return "W/m²"
     if variable in {"cape", "cape_ml", "cape_mu", "cin", "cin_ml", "cin_mu"}:
@@ -803,6 +815,42 @@ _OLR_SCALE_CONFIG = {
     "step": 5.0,
 }
 
+# Shortwave radiation in W/m². Zero is night/no sunlight; the upper bounds
+# cover 0-3 hour mean daytime fluxes without using auto-scaling.
+_SW_DOWN_RADIATION_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 1200.0,
+    "anchor_values": [0.0, 50.0, 150.0, 300.0, 500.0, 800.0, 1000.0, 1200.0],
+    "anchor_colors": ["#ffffff", "#f7fbff", "#d9f0ff", "#fee8a8", "#fdbb58", "#ef7f34", "#cf3a27", "#8c1d18"],
+    "key_breakpoints": [300.0, 800.0],
+    "step": 25.0,
+    "white_below": 5.0,
+}
+
+_SW_UP_RADIATION_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 600.0,
+    "anchor_values": [0.0, 25.0, 75.0, 150.0, 250.0, 400.0, 600.0],
+    "anchor_colors": ["#ffffff", "#f7fbff", "#d9f0ff", "#b7d9f2", "#74a9cf", "#2b8cbe", "#045a8d"],
+    "key_breakpoints": [100.0, 300.0],
+    "step": 25.0,
+    "white_below": 5.0,
+}
+
+# Surface longwave flux in W/m². The everyday band is broad, so keep the
+# anchors warm but restrained; OLR at TOA keeps its separate cloud-top scale.
+_LW_SURFACE_RADIATION_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 100.0,
+    "domain_max": 600.0,
+    "anchor_values": [100.0, 200.0, 300.0, 375.0, 450.0, 525.0, 600.0],
+    "anchor_colors": ["#f7fbff", "#d9f0ff", "#b7e2d8", "#fee8a8", "#fdbb58", "#ef7f34", "#b30000"],
+    "key_breakpoints": [300.0, 450.0],
+    "step": 10.0,
+}
+
 # CAPE in J/kg. White below convective relevance, then the familiar
 # yellow → orange → red → magenta severity ramp.
 _CAPE_SCALE_CONFIG = {
@@ -888,6 +936,12 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
         variable: {**_CLOUD_COVER_SCALE_CONFIG, "tick_every": 20.0, "label": label, "extend": "neither"}
         for variable, label in _CLOUD_COVER_LABELS.items()
     },
+    "radiation_sw_down_surface": {**_SW_DOWN_RADIATION_SCALE_CONFIG, "tick_every": 200.0, "label": _RADIATION_LABELS["radiation_sw_down_surface"], "extend": "max"},
+    "radiation_sw_down_toa": {**_SW_DOWN_RADIATION_SCALE_CONFIG, "tick_every": 200.0, "label": _RADIATION_LABELS["radiation_sw_down_toa"], "extend": "max"},
+    "radiation_sw_up_surface": {**_SW_UP_RADIATION_SCALE_CONFIG, "tick_every": 100.0, "label": _RADIATION_LABELS["radiation_sw_up_surface"], "extend": "max"},
+    "radiation_sw_up_toa": {**_SW_UP_RADIATION_SCALE_CONFIG, "tick_every": 100.0, "label": _RADIATION_LABELS["radiation_sw_up_toa"], "extend": "max"},
+    "radiation_lw_down_surface": {**_LW_SURFACE_RADIATION_SCALE_CONFIG, "tick_every": 100.0, "label": _RADIATION_LABELS["radiation_lw_down_surface"], "extend": "both"},
+    "radiation_lw_up_surface": {**_LW_SURFACE_RADIATION_SCALE_CONFIG, "tick_every": 100.0, "label": _RADIATION_LABELS["radiation_lw_up_surface"], "extend": "both"},
     "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
     "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
     "cape_ml":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
