@@ -175,7 +175,7 @@ def print_plan_summary(post: dict) -> None:
             f"{recipe['region']} {t['date']} {t['hour']}z"
         )
     for section in post.get("sections") or []:
-        print(f"    section '{section['heading']}' maps: {', '.join(section['map_ids'])}")
+        print(f"    section: {section['heading']}")
     print("  tags:", ", ".join(post.get("tags") or []))
     print("  regions:", ", ".join(post.get("regions") or []))
 
@@ -210,6 +210,7 @@ def main() -> int:
         post = json.loads(Path(args.from_json).read_text())
         post.setdefault("title", synopsis.compose_title(post))
         images, errors = synopsis.render_all_maps(post)
+        synopsis.apply_data_driven_captions(post)
         result = {"post": post, "images": images, "map_errors": errors,
                   "review_flags": [], "slug": synopsis.compose_slug(post)}
         if args.draft:
@@ -261,6 +262,8 @@ def main() -> int:
         u = result["usage"]
         print(f"  tokens: {u['input_tokens']} in / {u['output_tokens']} out"
               f"  (~${u['cost_usd']:.3f})")
+        for reason in u.get("repair_reasons") or []:
+            print(f"  repaired plan: {reason}")
 
     post = result["post"]
     for map_id, png in result["images"].items():
