@@ -80,6 +80,10 @@
   .faq-doc.synopsis-body h3 {
     @apply mx-auto mt-14 mb-3 max-w-2xl text-center text-base font-semibold leading-snug text-slate-100;
   }
+
+  .faq-doc.synopsis-body p:has(a[href^="/map?"]) {
+    @apply my-2 text-center text-sm;
+  }
 }
 
 /* Synopsis post images carry inline pixel widths from the editor; never let

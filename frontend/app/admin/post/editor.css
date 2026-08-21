@@ -34,6 +34,19 @@
   border-color: #5a6472;
 }
 
+.synopsis-editor .bn-editor h3,
+.synopsis-editor .bn-editor [data-content-type="heading"][data-level="3"] {
+  max-width: 42rem;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.synopsis-editor .bn-editor p:has(a[href^="/map?"]),
+.synopsis-editor .bn-editor [data-content-type="paragraph"]:has(a[href^="/map?"]) {
+  text-align: center;
+}
+
 /* Images can carry pixel widths wider than the column (legacy content,
    generous presets): clamp them so they and their resize handles always
    stay inside the editing surface. */

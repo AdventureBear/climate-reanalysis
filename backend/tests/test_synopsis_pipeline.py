@@ -94,8 +94,8 @@ def test_build_body_md_appends_map_gallery_after_prose():
 
     body = synopsis.build_body_md(post, "us-weather-monday-august-17-2026")
 
-    assert "### 500mb Geopotential Height over the continental United States at 12Z on August 17, 2026" in body
-    assert "![500mb Geopotential Height over the continental United States at 12Z on August 17, 2026. A 500mb trough helps steer" in body
+    assert "### 500mb Geopotential Height, 8/17/2026 12Z" in body
+    assert "![500mb Geopotential Height, 8/17/2026 12Z. A 500mb trough helps steer" in body
     image = body.index("![500mb Geopotential Height")
     trigger = body.index("A cold front is focusing")
     later = body.index("By Tuesday")

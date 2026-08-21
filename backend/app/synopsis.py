@@ -902,9 +902,20 @@ LEVEL_TITLES = {
     "total_column": "Total Column",
 }
 
-REGION_TITLES = {
-    "CONUS": "the continental United States",
-}
+def _short_date_label(value: str) -> str:
+    try:
+        d = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return value
+    return f"{d.month}/{d.day}/{d.year}"
+
+
+def _friendly_date_label(value: str) -> str:
+    try:
+        d = datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return value
+    return f"{d.strftime('%B')} {d.day}, {d.year}"
 
 
 def map_text_title(recipe: dict) -> str:
@@ -918,28 +929,21 @@ def map_text_title(recipe: dict) -> str:
     variable_title = VARIABLE_TITLES.get(variable, variable.replace("_", " ").title())
     level_title = LEVEL_TITLES.get(level, f"{level}mb" if level.isdigit() else level.replace("_", " ").title())
     mode_title = " Anomaly" if recipe.get("displayMode") == "anomaly" else ""
-    field = " ".join(part for part in (level_title, f"{variable_title}{mode_title}") if part)
-
-    region = REGION_TITLES.get(recipe.get("region", ""), recipe.get("region", ""))
-    where = f" over {region}" if region else ""
+    if variable == "pressure" and level == "surface_mslp":
+        field = f"{variable_title}{mode_title}"
+    else:
+        field = " ".join(part for part in (level_title, f"{variable_title}{mode_title}") if part)
 
     t = recipe.get("time") or {}
     when = ""
-    if t.get("scale") == "3-hourly" and t.get("date") and t.get("hour"):
-        try:
-            d = datetime.strptime(t["date"], "%Y-%m-%d")
-            when = f" at {t['hour']}Z on {d.strftime('%B')} {d.day}, {d.year}"
-        except ValueError:
-            when = f" at {t['hour']}Z on {t['date']}"
+    if t.get("scale") == "3-hourly" and t.get("date"):
+        hour = f" {t['hour']}Z" if t.get("hour") else ""
+        when = f", {_short_date_label(t['date'])}{hour}"
     elif t.get("scale") == "daily" and t.get("date"):
-        try:
-            d = datetime.strptime(t["date"], "%Y-%m-%d")
-            when = f" on {d.strftime('%B')} {d.day}, {d.year}"
-        except ValueError:
-            when = f" on {t['date']}"
+        when = f", {_short_date_label(t['date'])}"
     elif t.get("scale") == "monthly" and t.get("month"):
         when = f" for {t['month']}"
-    return f"{field}{where}{when}".strip()
+    return f"{field}{when}".strip()
 
 
 def recipe_to_request(recipe: dict) -> MapRequest:
@@ -980,7 +984,7 @@ def _supabase() -> tuple[str, dict]:
 def build_body_md(post: dict, slug: str) -> str:
     """Markdown body with rewritten WPC prose plus an ordered PyRe map gallery.
 
-    Images are bucket paths ('post-images/...'). Each map's caption ends with
+    Images are bucket paths ('post-images/...'). Each map title is followed by
     a /map deep link that reopens its recipe in the builder. When the source
     discussion is known (post['source'], attached by run_pipeline), a
     provenance line closes the post (#83) — derived from the fetch, never
@@ -990,16 +994,17 @@ def build_body_md(post: dict, slug: str) -> str:
     for section in post["sections"]:
         lines += [f"## {section['heading']}", "", section["body"], ""]
 
-    lines += ["## Setup Maps", ""]
+    lines += [f"## Atmospheric Setup Maps for {_friendly_date_label(post['post_date'])}", ""]
     for m in post["maps"]:
         mid = m["id"]
         url = builder_url(m["recipe"])
-        link = f" · [Open this map in the builder]({url})" if url else ""
         title = map_text_title(m["recipe"])
         alt = f"{title}. {m['caption']}" if title else m["caption"]
-        lines += [f"### {title}", "",
-                  f"![{alt}](post-images/{slug}/{mid}.png)", "",
-                  f"*{m['caption']}{link}*", ""]
+        lines += [f"### {title}", ""]
+        if url:
+            lines += [f"[Open this map in the builder]({url})", ""]
+        lines += [f"![{alt}](post-images/{slug}/{mid}.png)", "",
+                  f"*{m['caption']}*", ""]
     return _append_source(lines, post).strip() + "\n"
 
 
