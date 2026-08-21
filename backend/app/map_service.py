@@ -328,7 +328,10 @@ def create_map_buffer(req: MapRequest):
     base_array = None
     if req.mode in ("anomaly", "normalized") and has_anomaly_base_contours(req.variable):
         base_array = obs_subset
-        base_unit = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit, temp_unit=req.temp_unit)
+        base_unit = display_unit(
+            req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit,
+            temp_unit=req.temp_unit, precip_unit=req.precip_unit,
+        )
         date_str = f"{date_str}\nContours: raw field ({base_unit})"
 
     if req.mode == "climatology" and (req.wind_step > 0 or req.isotachs):

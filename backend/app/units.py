@@ -7,6 +7,7 @@ MS_TO_KT = 1.0 / KT_TO_MS
 MM_TO_IN = 0.03937007874
 M_TO_IN = 39.3701
 PRATE_TO_MM_DAY = 86400.0
+PRATE_TO_MM_3H = 3 * 3600.0
 PA_TO_HPA = 0.01
 VORTICITY_TO_1E5 = 1e5
 KELVIN_OFFSET_C = 273.15
@@ -30,6 +31,14 @@ def meters_to_inches(value: Any) -> Any:
 
 def precipitation_rate_to_mm_day(value: Any) -> Any:
     return value * PRATE_TO_MM_DAY
+
+
+def precipitation_rate_to_inches_day(value: Any) -> Any:
+    return precipitation_rate_to_mm_day(value) * MM_TO_IN
+
+
+def precipitation_rate_to_3h_mm(value: Any) -> Any:
+    return value * PRATE_TO_MM_3H
 
 
 def pascals_to_hpa(value: Any) -> Any:

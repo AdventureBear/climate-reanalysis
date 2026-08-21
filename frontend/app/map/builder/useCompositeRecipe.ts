@@ -8,6 +8,8 @@ import {
   type DisplayMode,
   type FillMode,
   type MapRecipe,
+  type PrecipUnit,
+  type PrecipWindow,
   type PwatUnit,
   type SubMode,
   type TimeRecipe,
@@ -31,6 +33,7 @@ import {
 export type TemperatureUnit = 'auto' | 'F' | 'C'
 
 const CORE_CLIMO_STORAGE_KEY = 'pyre.preferCoreClimo'
+const PRECIP_WINDOW_PRESETS = new Set(['3', '6', '12', '24'])
 
 export function defaultDate(): string {
   const d = new Date()
@@ -46,6 +49,7 @@ export function useCompositeRecipe() {
   const [date,        setDate]        = useState(defaultDate)
   const [startDate,   setStartDate]   = useState(defaultDate)
   const [endDate,     setEndDate]     = useState(defaultDate)
+  const [startHour,   setStartHour]   = useState('21')
   const [hour,        setHour]        = useState('00')
   const [customDates, setCustomDates] = useState<string[]>([defaultDate()])
 
@@ -78,6 +82,8 @@ export function useCompositeRecipe() {
   const [contourOverlays, setContourOverlays] = useState<string[]>([])
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
+  const [precipUnit, setPrecipUnit] = useState<PrecipUnit>('in')
+  const [precipWindow, setPrecipWindowState] = useState<PrecipWindow>('3')
   const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
   const [fillMode, setFillMode] = useState<FillMode>('contours')
   const [colorStep, setColorStep] = useState('1')
@@ -117,6 +123,8 @@ export function useCompositeRecipe() {
   const isThreeHourly = timeScale === '3-hourly'
   const monthlyUnavailable = MONTHLY_UNAVAILABLE_API_VARIABLES.has(apiVariable)
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
+  const precipTotalVariable = apiVariable === 'precip_total'
+  const precipTotalDailyWindow = precipTotalVariable && precipWindow === '24'
   // Wind maps style themselves (shaded/barbs/vectors/isotachs) — a separate
   // "wind overlay" on a wind map would draw the same data twice. The map mode
   // decides the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
@@ -137,11 +145,76 @@ export function useCompositeRecipe() {
   }
   const windLayerCount = Object.values(windLayersOn).filter(Boolean).length
 
+  function shiftDateHour(dateValue: string, hourValue: string, deltaHours: number) {
+    const parsed = new Date(`${dateValue}T${hourValue}:00:00Z`)
+    if (Number.isNaN(parsed.valueOf())) return null
+    parsed.setUTCHours(parsed.getUTCHours() + deltaHours)
+    return {
+      date: parsed.toISOString().slice(0, 10),
+      hour: parsed.toISOString().slice(11, 13),
+    }
+  }
+
+  function applyPrecipWindowRange(windowHours: PrecipWindow) {
+    const hours = Number(windowHours)
+    if (!Number.isFinite(hours)) return
+    const end = endDate || date
+    const start = shiftDateHour(end, hour, -hours)
+    if (!start) return
+    setStartDate(start.date)
+    setStartHour(start.hour)
+    setEndDate(end)
+    setDate(end)
+  }
+
+  function setPrecipWindow(next: PrecipWindow) {
+    setPrecipWindowState(next)
+    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total') {
+      setTimeScale(next === '24' ? 'daily' : '3-hourly')
+      if (dateSubMode === 'range') applyPrecipWindowRange(next)
+    }
+  }
+
+  function chooseTimeScale(next: TimeScale) {
+    setTimeScale(next)
+    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total' && next === 'daily') {
+      setPrecipWindowState('24')
+      if (dateSubMode === 'range') applyPrecipWindowRange('24')
+    }
+    if (apiVariableForSelection(variable, level, humidityType) === 'precip_total' && next === '3-hourly') {
+      const nextWindow = precipWindow === '24' || !PRECIP_WINDOW_PRESETS.has(precipWindow) ? '12' : precipWindow
+      setPrecipWindowState(nextWindow)
+      if (dateSubMode === 'range') applyPrecipWindowRange(nextWindow)
+    }
+  }
+
+  function precipRangeWindowHours() {
+    const start = new Date(`${startDate}T${startHour}:00:00Z`)
+    const end = new Date(`${endDate}T${hour}:00:00Z`)
+    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) return null
+    const rangeHours = (end.valueOf() - start.valueOf()) / 3_600_000
+    return Number.isInteger(rangeHours) && rangeHours > 0 && rangeHours % 3 === 0 ? String(rangeHours) : null
+  }
+
+  const precipWindowSelection =
+    precipTotalVariable && dateSubMode === 'range'
+      ? (() => {
+          const rangeWindow = precipRangeWindowHours()
+          return rangeWindow && PRECIP_WINDOW_PRESETS.has(rangeWindow) ? rangeWindow : '__custom__'
+        })()
+      : precipWindow
+
   /** True when turning this layer off would leave a wind map with nothing drawn. */
   const isLastWindLayer = (layer: keyof typeof windLayersOn) =>
     isWindVariable && windLayersOn[layer] && windLayerCount === 1
 
   function currentTimeRecipe(): TimeRecipe {
+    if (precipTotalVariable) {
+      const scale = timeScale === 'daily' ? 'daily' : '3-hourly'
+      if (dateSubMode === 'single') return { scale, subMode: 'single', date, hour }
+      if (dateSubMode === 'range') return { scale, subMode: 'range', startDate, endDate, startHour, hour }
+      return { scale, subMode: 'list', customDates, hour }
+    }
     if (isClimo) {
       return { scale: 'climatology', climoMonth }
     }
@@ -152,7 +225,7 @@ export function useCompositeRecipe() {
     }
     if (isThreeHourly) {
       if (dateSubMode === 'single') return { scale: '3-hourly', subMode: 'single', date, hour }
-      if (dateSubMode === 'range') return { scale: '3-hourly', subMode: 'range', startDate, endDate, hour }
+      if (dateSubMode === 'range') return { scale: '3-hourly', subMode: 'range', startDate, endDate, startHour, hour }
       return { scale: '3-hourly', subMode: 'list', customDates, hour }
     }
     if (dateSubMode === 'single') return { scale: 'daily', subMode: 'single', date }
@@ -184,6 +257,8 @@ export function useCompositeRecipe() {
         : undefined,
       windUnit,
       pwatUnit,
+      precipUnit,
+      precipWindow: apiVariable === 'precip_total' ? precipWindow : undefined,
       fillMode,
       tempUnit: temperatureUnit === 'auto' ? undefined : temperatureUnit,
       centers: hlCenters || undefined,
@@ -212,10 +287,12 @@ export function useCompositeRecipe() {
           return
         case 'daily':
           setDateSubMode(time.subMode)
+          if ('hour' in time && time.hour) setHour(time.hour)
           if (time.subMode === 'single') setDate(time.date)
           if (time.subMode === 'range') {
             setStartDate(time.startDate)
             setEndDate(time.endDate)
+            if (time.startHour) setStartHour(time.startHour)
           }
           if (time.subMode === 'list') setCustomDates(time.customDates)
           return
@@ -226,6 +303,7 @@ export function useCompositeRecipe() {
           if (time.subMode === 'range') {
             setStartDate(time.startDate)
             setEndDate(time.endDate)
+            if (time.startHour) setStartHour(time.startHour)
           }
           if (time.subMode === 'list') setCustomDates(time.customDates)
           return
@@ -244,6 +322,8 @@ export function useCompositeRecipe() {
     if (recipe.climoSource) setClimoSource(recipe.climoSource)
     if (recipe.windUnit) setWindUnit(recipe.windUnit)
     if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
+    if (recipe.precipUnit) setPrecipUnit(recipe.precipUnit)
+    if (recipe.precipWindow) setPrecipWindowState(recipe.precipWindow)
     if (recipe.fillMode) setFillMode(recipe.fillMode)
     if (recipe.tempUnit) setTemperatureUnit(recipe.tempUnit)
     setHlCenters(Boolean(recipe.centers))
@@ -298,13 +378,54 @@ export function useCompositeRecipe() {
     // Monthly obs composites are not wired for most surface/named-level
     // fields (MSLP is exempt — its monthly archive record is wired).
     if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
-  }, [displayMode, rawOnlyVariable, monthlyUnavailable, timeScale, isThreeHourly])
+  }, [
+    displayMode,
+    rawOnlyVariable,
+    monthlyUnavailable,
+    timeScale,
+    isThreeHourly,
+  ])
 
   useEffect(() => {
     if (!levelOptions.some(opt => opt.value === level)) {
       setLevel(levelForVariableChange(variable, level, humidityType))
     }
   }, [humidityType, level, levelOptions, variable])
+
+  useEffect(() => {
+    if (!precipTotalVariable || dateSubMode === 'range') return
+    if (timeScale === 'daily' && precipWindow !== '24') {
+      setPrecipWindowState('24')
+      return
+    }
+    if (timeScale === '3-hourly' && (precipWindow === '24' || !PRECIP_WINDOW_PRESETS.has(precipWindow))) {
+      setPrecipWindowState('12')
+    }
+  }, [precipTotalVariable, dateSubMode, timeScale, precipWindow])
+
+  useEffect(() => {
+    if (!precipTotalVariable || dateSubMode !== 'range') return
+    const start = new Date(`${startDate}T${startHour}:00:00Z`)
+    const end = new Date(`${endDate}T${hour}:00:00Z`)
+    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) return
+    const rangeHours = (end.valueOf() - start.valueOf()) / 3_600_000
+    const next = Number.isInteger(rangeHours) && rangeHours > 0 && rangeHours % 3 === 0 ? String(rangeHours) : null
+    if (next) {
+      if (PRECIP_WINDOW_PRESETS.has(next) && next !== precipWindow) setPrecipWindowState(next)
+      return
+    }
+
+    const fallbackHours = Number(precipWindow)
+    if (!Number.isInteger(fallbackHours) || fallbackHours <= 0 || fallbackHours % 3 !== 0) return
+    const fallbackEnd = endDate || date
+    const fallbackStart = new Date(`${fallbackEnd}T${hour}:00:00Z`)
+    if (Number.isNaN(fallbackStart.valueOf())) return
+    fallbackStart.setUTCHours(fallbackStart.getUTCHours() - fallbackHours)
+    setStartDate(fallbackStart.toISOString().slice(0, 10))
+    setStartHour(fallbackStart.toISOString().slice(11, 13))
+    setEndDate(fallbackEnd)
+    setDate(fallbackEnd)
+  }, [precipTotalVariable, dateSubMode, startDate, startHour, endDate, hour, precipWindow, date])
 
   useEffect(() => {
     if (shouldDefaultWindOverlay(apiVariable)) {
@@ -314,12 +435,13 @@ export function useCompositeRecipe() {
   }, [apiVariable])
 
   return {
-    timeScale, setTimeScale,
+    timeScale, setTimeScale: chooseTimeScale,
     dateSubMode, setDateSubMode,
     monthSubMode, setMonthSubMode,
     date, setDate,
     startDate, setStartDate,
     endDate, setEndDate,
+    startHour, setStartHour,
     hour, setHour,
     customDates, setCustomDates,
     month, setMonth,
@@ -343,6 +465,9 @@ export function useCompositeRecipe() {
     contourOverlays, setContourOverlays,
     windUnit, setWindUnit,
     pwatUnit, setPwatUnit,
+    precipUnit, setPrecipUnit,
+    precipWindow, setPrecipWindow,
+    precipWindowSelection,
     temperatureUnit, setTemperatureUnit,
     fillMode, setFillMode,
     colorStep, setColorStep,
@@ -350,7 +475,7 @@ export function useCompositeRecipe() {
     preferCoreClimo, chooseCoreClimoPreference,
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
-    monthlyUnavailable, rawOnlyVariable, isWindVariable,
+    monthlyUnavailable, rawOnlyVariable, precipTotalVariable, precipTotalDailyWindow, isWindVariable,
     isWindControlActive,
     isLastWindLayer,
     currentMapRecipe, applyRecipeToState,

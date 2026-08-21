@@ -276,7 +276,10 @@ VARIABLES = {
         "name": "Relative Humidity",
         "units": "%",
         "grib_names": ["SPFH", "TMP"],
-        "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
+        # Raw obs are derived from CORe SPFH + TMP. Keep anomaly/climatology
+        # modes disabled until a consistent derived-RH baseline is wired and
+        # validated instead of mixing this path with direct R2 RH.
+        "climo_sources": (),
         "normalized_mask_threshold": None,
     },
     "rel_humidity_2m": {
@@ -372,12 +375,27 @@ VARIABLES = {
         "grib_name": "PRATE",   # 0-3 hour average forecast field, not instantaneous
         "flx_level": "surface",
         "display_level": "surface",
-        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        # Precipitation anomalies need a separate product design: short-window
+        # rate anomalies are timing-sensitive and zero-heavy. Keep raw-only
+        # until accumulated/percentile-style baselines are wired.
+        "climo_sources": (),
         "r2_climo": {"file": "prate.sfc", "var": "prate", "dataset": "gaussian_grid"},
         "r1_4xday": {"file": "prate.sfc", "var": "prate", "dataset": "surface_gauss"},
         # ~1 mm/day in native units: a high-σ precip anomaly over an
         # essentially dry background is noise, not signal.
         "normalized_mask_threshold": 1.16e-5,
+    },
+    "precip_total": {
+        "name": "Precipitation Total",
+        "units": "kg/m²",
+        "stream": "flx",
+        "grib_name": "PRATE",
+        "flx_level": "surface",
+        "display_level": "surface",
+        # Accumulated precip needs a like-for-like accumulated climatology
+        # window. Keep raw-only until that baseline is designed and wired.
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
     },
     "olr": {
         "name": "Outgoing Longwave Radiation",

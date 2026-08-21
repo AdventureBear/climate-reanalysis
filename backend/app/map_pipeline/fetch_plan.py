@@ -34,6 +34,12 @@ from ..retrieval import (
     fetch_monthly_wind_speed_composite,
     fetch_named_level_field_composite,
     fetch_named_level_field_daily_composite,
+    fetch_precip_rate,
+    fetch_precip_rate_composite,
+    fetch_precip_rate_daily_composite,
+    fetch_precip_total,
+    fetch_precip_total_composite,
+    fetch_precip_total_daily_composite,
     fetch_relative_humidity,
     fetch_relative_humidity_2m,
     fetch_relative_humidity_2m_composite,
@@ -66,9 +72,15 @@ class FetchRequest(Protocol):
     variable: str
     level: int
     hour: str
+    precip_window: int
+    skip_missing: int
 
 
 def _variable_fetch_key(variable: str) -> str:
+    if variable == "precip_rate":
+        return "precip_rate"
+    if variable == "precip_total":
+        return "precip_total"
     if VARIABLES[variable].get("stream") == "flx":
         return "flx"
     if VARIABLES[variable].get("stream") == "derived_surface":
@@ -175,6 +187,8 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_daily_composite(sel.date_list, sel.daily_hours, skip_missing=bool(req.skip_missing)),
+    ("daily", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate_daily_composite(sel.date_list, sel.daily_hours, skip_missing=bool(req.skip_missing)),
+    ("daily", "precip_total"): lambda req, sel, _grib: fetch_precip_total_daily_composite(sel.date_list, sel.daily_hours, req.precip_window, skip_missing=bool(req.skip_missing)),
     ("daily", "field"): lambda req, sel, grib: fetch_field_daily_composite(sel.date_list, sel.daily_hours, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_daily_composite(
         sel.date_list,
@@ -187,6 +201,8 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_composite(sel.date_list, req.hour, skip_missing=bool(req.skip_missing)),
+    ("composite", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate_composite(sel.date_list, req.hour, skip_missing=bool(req.skip_missing)),
+    ("composite", "precip_total"): lambda req, sel, _grib: fetch_precip_total_composite(sel.date_list, req.hour, req.precip_window, skip_missing=bool(req.skip_missing)),
     ("composite", "field"): lambda req, sel, grib: fetch_field_composite(sel.date_list, req.hour, grib, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "pgb_named_level"): lambda req, sel, _grib: fetch_named_level_field_composite(
         sel.date_list,
@@ -199,6 +215,8 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m(sel.date_list[0], req.hour),
+    ("single", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate(sel.date_list[0], req.hour),
+    ("single", "precip_total"): lambda req, sel, _grib: fetch_precip_total(sel.date_list[0], req.hour, req.precip_window),
     ("single", "field"): lambda req, sel, grib: fetch_field(sel.date_list[0], req.hour, grib, req.level),
     ("single", "pgb_named_level"): lambda req, sel, _grib: _pgb_named_level_field(req, sel.date_list[0], req.hour),
     ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),

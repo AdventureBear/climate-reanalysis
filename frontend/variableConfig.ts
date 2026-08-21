@@ -87,6 +87,12 @@ const VARIABLE_CONFIG = {
       { value: 'surface_prate', label: 'Surface', apiVariable: 'precip_rate', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
+  precip_total: {
+    label: 'Precipitation Total',
+    levels: [
+      { value: 'surface_ptotal', label: 'Surface', apiVariable: 'precip_total', apiLevel: '1000', levelKind: 'surface' },
+    ],
+  },
   olr: {
     label: 'Outgoing Longwave Radiation',
     levels: [
@@ -160,6 +166,7 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'precipitable_water', label: 'Precipitable Water' },
   { value: 'omega', label: 'Omega (Vertical Velocity)' },
   { value: 'precip_rate', label: 'Precipitation Rate' },
+  { value: 'precip_total', label: 'Precipitation Total' },
   { value: 'olr', label: 'Outgoing Longwave Radiation' },
   { value: 'cape', label: 'CAPE (Surface-Based)' },
   { value: 'cape_ml', label: 'CAPE (Mixed-Layer)' },
@@ -173,7 +180,7 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
 ]
 
 export const SURFACE_LEVELS = new Set([
-  'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'toa_olr',
+  'surface_10m', 'surface_2m', 'surface_mslp', 'total_column', 'surface_prate', 'surface_ptotal', 'toa_olr',
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
   'surface_2m_dpt', 'surface_2m_rh', 'surface_snod',
 ])
@@ -181,26 +188,28 @@ export const SURFACE_LEVELS = new Set([
 // wired (MSLP has a monthly archive record and is exempt). Mirrors the
 // backend gate keyed on monthly_grib_name in config.py.
 export const MONTHLY_UNAVAILABLE_API_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'olr',
+  'temp_2m', 'wind_10m', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 // Surface/named-level API variables: wind overlays use 10m winds.
 export const FLX_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
+  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
-  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'olr',
+  'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total', 'olr',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
 ])
 
 // API variables with no wired climatology baseline — raw display mode only.
 // Mirrors backend config.py VARIABLES[*].climo_sources (served at GET / as
 // variable_modes); update both together when a baseline is wired.
-// (humidity: no daily R2 shum file; cape/cin/dewpoint/absv/snow_depth: no
-// R2 source, or derivation deferred — see config.py comments.)
+// (humidity: no daily R2 shum file; rel_humidity: derived baseline deferred;
+// precip_rate/precip_total: precip anomaly product design deferred;
+// cape/cin/dewpoint/absv/snow_depth: no R2 source, or derivation deferred —
+// see config.py comments.)
 export const RAW_ONLY_API_VARIABLES = new Set([
-  'humidity', 'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
+  'humidity', 'rel_humidity', 'precip_rate', 'precip_total', 'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
   'dewpoint_2m', 'rel_humidity_2m', 'absv', 'snow_depth',
 ])
 

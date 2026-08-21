@@ -2,7 +2,7 @@
 // useScaleDesigner. All state lives in the designer (owned by App) so edits
 // survive close/reopen and the generate path can read them.
 import { Check, CircleHelp, Copy, Eye, EyeOff, Pencil, Plus, Trash2, X } from 'lucide-react'
-import type { DisplayMode, PwatUnit, WindUnit } from '../../../mapRecipe'
+import type { DisplayMode, PrecipUnit, PwatUnit, WindUnit } from '../../../mapRecipe'
 import { normalizeColorStep } from '../../../sharedOptions'
 import { COLOR_LAB_VARIABLES, PRESSURE_LEVELS, RAW_ONLY_API_VARIABLES } from '../../../variableConfig'
 import { SelectField, TabStrip } from '../../../ui/controls'
@@ -37,6 +37,8 @@ export default function ColorLabPanel({
   setWindUnit,
   pwatUnit,
   setPwatUnit,
+  precipUnit,
+  setPrecipUnit,
   onClose,
 }: {
   designer: ScaleDesigner
@@ -46,6 +48,8 @@ export default function ColorLabPanel({
   setWindUnit: (unit: WindUnit) => void
   pwatUnit: PwatUnit
   setPwatUnit: (unit: PwatUnit) => void
+  precipUnit: PrecipUnit
+  setPrecipUnit: (unit: PrecipUnit) => void
   onClose: () => void
 }) {
   const {
@@ -365,6 +369,13 @@ export default function ColorLabPanel({
 	                  options={[{ value: 'mm', label: 'mm' }, { value: 'in', label: 'inches' }]}
 	                  value={pwatUnit}
 	                  onChange={v => setPwatUnit(v as PwatUnit)}
+	                />
+	              )}
+	              {(labVariable === 'precip_rate' || labVariable === 'precip_total') && (
+	                <TabStrip
+	                  options={[{ value: 'mm', label: 'mm' }, { value: 'in', label: 'inches' }]}
+	                  value={precipUnit}
+	                  onChange={v => setPrecipUnit(v as PrecipUnit)}
 	                />
 	              )}
 	            </div>

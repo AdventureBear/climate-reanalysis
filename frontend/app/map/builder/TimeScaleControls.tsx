@@ -5,14 +5,14 @@ import type { CompositeRecipeState } from './useCompositeRecipe'
 // `header` renders the compact fixed-height variant that lines up with the
 // other nav-bar controls; the default stretches to fill panel layouts.
 export function TimeScaleControls({ recipe, header = false }: { recipe: CompositeRecipeState; header?: boolean }) {
-  const { timeScale, setTimeScale, monthlyUnavailable, rawOnlyVariable } = recipe
+  const { timeScale, setTimeScale, monthlyUnavailable, rawOnlyVariable, precipTotalVariable } = recipe
     return (
       <TabStrip
         options={[
           { value: '3-hourly',    label: '3-Hourly' },
           { value: 'daily',       label: 'Daily' },
-          { value: 'monthly',     label: 'Monthly', disabled: monthlyUnavailable },
-          { value: 'climatology', label: 'Climatology', disabled: rawOnlyVariable },
+          { value: 'monthly',     label: 'Monthly', disabled: monthlyUnavailable || precipTotalVariable },
+          { value: 'climatology', label: 'Climatology', disabled: rawOnlyVariable || precipTotalVariable },
         ]}
         value={timeScale}
         onChange={v => setTimeScale(v as TimeScale)}

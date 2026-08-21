@@ -32,6 +32,7 @@ from .units import (
     knots_to_meters_per_second,
     millimeters_to_inches,
     pascals_to_hpa,
+    precipitation_rate_to_inches_day,
     precipitation_rate_to_mm_day,
 )
 
@@ -508,7 +509,22 @@ def _temp_display_unit(variable: str, level: int, temp_unit: str = "") -> str:
     return cfg["unit"] if cfg else "C"
 
 
-def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm", temp_unit: str = "") -> str:
+def _precip_unit_label(precip_unit: str) -> str:
+    return "in" if precip_unit == "in" else "mm"
+
+
+def _precip_rate_unit_label(precip_unit: str) -> str:
+    return "in/day" if precip_unit == "in" else "mm/day"
+
+
+def display_unit(
+    variable: str,
+    level: int,
+    wind_unit: str = "kt",
+    pwat_unit: str = "mm",
+    temp_unit: str = "",
+    precip_unit: str = "mm",
+) -> str:
     """
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
@@ -530,7 +546,9 @@ def display_unit(variable: str, level: int, wind_unit: str = "kt", pwat_unit: st
     if variable == "omega":
         return "Pa/s"
     if variable == "precip_rate":
-        return "mm/day"
+        return _precip_rate_unit_label(precip_unit)
+    if variable == "precip_total":
+        return _precip_unit_label(precip_unit)
     if variable == "olr":
         return "W/m²"
     if variable in {"cape", "cape_ml", "cape_mu", "cin", "cin_ml", "cin_mu"}:
@@ -734,6 +752,21 @@ _PRECIP_RATE_SCALE_CONFIG = {
     "white_below": 1.0,
 }
 
+# Accumulated precipitation in display units (mm; native total is kg/m² == mm).
+_PRECIP_TOTAL_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": 0.0,
+    "domain_max": 150.0,
+    "anchor_values": [0.0, 1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 150.0],
+    "anchor_colors": [
+        "#ffffff", "#c7e9c0", "#74c476", "#238b45",
+        "#2b8cbe", "#08519c", "#54278f", "#7a0177",
+    ],
+    "key_breakpoints": [10.0, 50.0],
+    "step": 1.0,
+    "white_below": 0.5,
+}
+
 # OLR in W/m². Low OLR = cold cloud tops / deep convection (cool purples and
 # blues); high OLR = warm clear-sky surfaces (oranges).
 _OLR_SCALE_CONFIG = {
@@ -826,6 +859,7 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
     "omega":       {**_OMEGA_SCALE_CONFIG,       "tick_every": 0.5,   "label": "Omega",              "extend": "both"},
     "precip_rate": {**_PRECIP_RATE_SCALE_CONFIG, "tick_every": 10.0,  "label": "Precipitation Rate", "extend": "max",
                     "to_display": precipitation_rate_to_mm_day},
+    "precip_total": {**_PRECIP_TOTAL_SCALE_CONFIG, "tick_every": 25.0, "label": "Precipitation Total", "extend": "max"},
     "olr":         {**_OLR_SCALE_CONFIG,         "tick_every": 20.0,  "label": "OLR",                "extend": "both"},
     "cape":        {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
     "cape_ml":     {**_CAPE_SCALE_CONFIG,        "tick_every": 500.0, "label": "CAPE",               "extend": "max"},
@@ -840,6 +874,39 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
     "snow_depth":  {**_SNOW_DEPTH_SCALE_CONFIG,  "tick_every": 6.0,   "label": "Snow Depth",         "extend": "max",
                     "to_display": lambda v: v * M_TO_IN},
 }
+
+
+def _scale_config_to_inches(cfg: dict) -> dict:
+    scaled = dict(cfg)
+    for key in ("domain_min", "domain_max", "anchor_values", "key_breakpoints", "step", "tick_every", "white_below"):
+        value = scaled.get(key)
+        if isinstance(value, list):
+            scaled[key] = [round(millimeters_to_inches(v), 3) for v in value]
+        elif isinstance(value, (int, float)):
+            scaled[key] = round(millimeters_to_inches(value), 3)
+    return scaled
+
+
+def _fixed_scale_config(variable: str, precip_unit: str = "mm") -> dict:
+    cfg = _FIXED_SCALE_CONFIGS[variable]
+    if variable == "precip_rate" and precip_unit == "in":
+        return {
+            **_scale_config_to_inches(cfg),
+            "domain_max": 2.5,
+            "step": 0.05,
+            "tick_every": 0.5,
+            "to_display": precipitation_rate_to_inches_day,
+        }
+    if variable == "precip_total" and precip_unit == "in":
+        return {
+            **_scale_config_to_inches(cfg),
+            "domain_max": 6.0,
+            "step": 0.1,
+            "tick_every": 1.0,
+            "white_below": 0.05,
+            "to_display": millimeters_to_inches,
+        }
+    return cfg
 
 
 def _pwat_display_scale_config(pwat_unit: str) -> dict:
@@ -994,7 +1061,7 @@ def _temp_anomaly_scale(unit_letter: str, color_step: int, monthly: bool = False
 
 
 def _anomaly_scale_in_display_units(
-    variable: str, wind_unit: str, pwat_unit: str, monthly: bool = False
+    variable: str, wind_unit: str, pwat_unit: str, precip_unit: str = "mm", monthly: bool = False
 ) -> tuple[float, float]:
     """(max, step) for the diverging anomaly scale, in the requested display units."""
     max_val, step = _ANOMALY_SCALES.get(variable, (10.0, 1.0))
@@ -1005,6 +1072,8 @@ def _anomaly_scale_in_display_units(
     if variable in {"wind_speed", "wind_10m"} and wind_unit == "m/s":
         return max_val * KT_TO_MS, step * KT_TO_MS
     if variable == "precipitable_water" and pwat_unit == "in":
+        return max_val * MM_TO_IN, step * MM_TO_IN
+    if variable == "precip_rate" and precip_unit == "in":
         return max_val * MM_TO_IN, step * MM_TO_IN
     return max_val, step
 
@@ -1202,7 +1271,13 @@ def _wind_vector_normalized_config(color_step: int) -> dict[str, object]:
 
 
 def _anomaly_to_display_with_unit(
-    values: np.ndarray, variable: str, level: int, wind_unit: str = "kt", pwat_unit: str = "mm", temp_unit: str = ""
+    values: np.ndarray,
+    variable: str,
+    level: int,
+    wind_unit: str = "kt",
+    pwat_unit: str = "mm",
+    temp_unit: str = "",
+    precip_unit: str = "mm",
 ) -> np.ndarray:
     """Convert anomaly array from native units to the requested display units."""
     if variable in {"wind_speed", "wind_10m"}:
@@ -1218,7 +1293,9 @@ def _anomaly_to_display_with_unit(
     if variable == "precipitable_water":
         return _pwat_to_display(values, pwat_unit)
     if variable == "precip_rate":
-        return precipitation_rate_to_mm_day(values)
+        return precipitation_rate_to_inches_day(values) if precip_unit == "in" else precipitation_rate_to_mm_day(values)
+    if variable == "precip_total":
+        return millimeters_to_inches(values) if precip_unit == "in" else values
     return values
 
 
@@ -1371,6 +1448,7 @@ def _custom_scale_from_spec(
     wind_unit: str,
     pwat_unit: str,
     temp_unit: str = "",
+    precip_unit: str = "mm",
 ) -> dict[str, object] | None:
     if not scale_spec:
         return None
@@ -1420,7 +1498,10 @@ def _custom_scale_from_spec(
         "colors": colors,
         "ticks": [to_native(value) for value in tick_values],
         "ticklabels": [label_value(value) for value in tick_values],
-        "unit": spec.get("unit") or display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit),
+        "unit": spec.get("unit") or display_unit(
+            variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit,
+            temp_unit=temp_unit, precip_unit=precip_unit,
+        ),
     }
 
 
@@ -1440,6 +1521,7 @@ def describe_color_scale(
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
     temp_unit: str = "",
+    precip_unit: str = "mm",
     monthly_anomaly: bool = False,
 ) -> dict[str, object]:
     """
@@ -1467,11 +1549,19 @@ def describe_color_scale(
                 _, interval_colors = _make_diverging_scale(max_val, step, white_steps=1)
                 scale_kind = mode
         else:
-            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
-            unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
+            max_val, step = _anomaly_scale_in_display_units(
+                variable, wind_unit, pwat_unit, precip_unit=precip_unit, monthly=monthly_anomaly,
+            )
+            unit = display_unit(
+                variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit,
+                temp_unit=temp_unit, precip_unit=precip_unit,
+            )
             plot_values = (
                 np.asarray(
-                    _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit),
+                    _anomaly_to_display_with_unit(
+                        data_array.values, variable, level, wind_unit=wind_unit,
+                        pwat_unit=pwat_unit, temp_unit=temp_unit, precip_unit=precip_unit,
+                    ),
                     dtype=float,
                 )
                 if data_array is not None else None
@@ -1680,7 +1770,7 @@ def describe_color_scale(
         }
 
     if variable in _FIXED_SCALE_CONFIGS:
-        cfg_base = _FIXED_SCALE_CONFIGS[variable]
+        cfg_base = _fixed_scale_config(variable, precip_unit=precip_unit)
         step = max(color_step, 1) * cfg_base["step"]
         boundaries, interval_colors, cfg = _make_fixed_display_scale(cfg_base, step=step)
         to_display = cfg_base.get("to_display", lambda v: v)
@@ -1691,7 +1781,7 @@ def describe_color_scale(
         stats = _scale_data_stats(data_vals, boundaries) if data_vals is not None else {}
         return {
             "scale_kind": f"fixed-{variable.replace('_', '-')}",
-            "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+            "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, precip_unit=precip_unit),
             "step": step,
             "boundaries": boundaries,
             "interval_mids": _interval_midpoints(boundaries),
@@ -1706,7 +1796,7 @@ def describe_color_scale(
 
     return {
         "scale_kind": "fixed-scale-missing",
-        "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit),
+        "unit": display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, precip_unit=precip_unit),
         "step": color_step,
     }
 
@@ -1828,21 +1918,21 @@ def _draw_pressure_centers(ax, centers_da) -> None:
 
 # ── Core rendering function ──────────────────────────────────────────────────────
 
-def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
+def create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", precip_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
     with _RENDER_LOCK:
         return _create_map_product(
             data_array, region_bounds, var_name, date_str, variable=variable, level=level,
             region=region, u_array=u_array, v_array=v_array, wind_step=wind_step,
             wind_type=wind_type, color_step=color_step, mode=mode, scale_spec=scale_spec,
             scale_overrides=scale_overrides, wind_unit=wind_unit, pwat_unit=pwat_unit,
-            fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
+            precip_unit=precip_unit, fill_mode=fill_mode, temp_unit=temp_unit, base_array=base_array, isotachs=isotachs,
             centers_array=centers_array, contour_overlays=contour_overlays,
             monthly_anomaly=monthly_anomaly, missing_note=missing_note,
             marker=marker, title_note=title_note, isotach_interval=isotach_interval,
         )
 
 
-def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
+def _create_map_product(data_array, region_bounds, var_name, date_str, variable="wind_speed", level=850, region="CONUS", u_array=None, v_array=None, wind_step=0, wind_type="vectors", color_step=1, mode="raw", scale_spec: str | None = None, scale_overrides: dict[str, float] | None = None, wind_unit: str = "kt", pwat_unit: str = "mm", precip_unit: str = "mm", fill_mode: str = "contours", temp_unit: str = "", base_array=None, isotachs: bool = False, centers_array=None, contour_overlays=None, monthly_anomaly: bool = False, missing_note: str = "", marker: str = "", title_note: str = "", isotach_interval: int = 0):
     # OO API (no pyplot): keeps figures off pyplot's global registry so worker
     # threads cannot close each other's in-flight renders.
     fig = Figure(figsize=(14, 9))
@@ -1863,6 +1953,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         wind_unit=wind_unit,
         pwat_unit=pwat_unit,
         temp_unit=temp_unit,
+        precip_unit=precip_unit,
     )
 
     def draw_custom_filled(plot_values, *, ylabel: str, extend: str = "both"):
@@ -1898,9 +1989,17 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             unit_label = "σ"
             plot_vals  = data_array.values
         else:
-            max_val, step = _anomaly_scale_in_display_units(variable, wind_unit, pwat_unit, monthly=monthly_anomaly)
-            unit_label = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
-            plot_vals  = _anomaly_to_display_with_unit(data_array.values, variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, temp_unit=temp_unit)
+            max_val, step = _anomaly_scale_in_display_units(
+                variable, wind_unit, pwat_unit, precip_unit=precip_unit, monthly=monthly_anomaly,
+            )
+            unit_label = display_unit(
+                variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit,
+                temp_unit=temp_unit, precip_unit=precip_unit,
+            )
+            plot_vals  = _anomaly_to_display_with_unit(
+                data_array.values, variable, level, wind_unit=wind_unit,
+                pwat_unit=pwat_unit, temp_unit=temp_unit, precip_unit=precip_unit,
+            )
         if variable == "wind_speed" and mode in ("anomaly", "normalized"):
             native_cfg = (
                 _wind_vector_anomaly_native_config(wind_unit, color_step, plot_vals)
@@ -2146,9 +2245,9 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             }
 
     elif variable in _FIXED_SCALE_CONFIGS:
-        cfg_base = _FIXED_SCALE_CONFIGS[variable]
+        cfg_base = _fixed_scale_config(variable, precip_unit=precip_unit)
         plot_values = cfg_base.get("to_display", lambda v: v)(data_array.values)
-        unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit)
+        unit = display_unit(variable, level, wind_unit=wind_unit, pwat_unit=pwat_unit, precip_unit=precip_unit)
         ylabel = f"{cfg_base['label']} ({unit})"
         if not draw_custom_filled(plot_values, ylabel=ylabel, extend=cfg_base["extend"]):
             step = max(color_step, 1) * cfg_base["step"]

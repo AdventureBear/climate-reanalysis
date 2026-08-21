@@ -7,6 +7,13 @@ VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
 VALID_WIND_UNITS = ("kt", "m/s")
 VALID_PWAT_UNITS = ("mm", "in")
+VALID_PRECIP_UNITS = ("mm", "in")
+MAX_PRECIP_WINDOW_HOURS = 24 * 31
+VALID_PRECIP_WINDOWS = (3, 6, 12, 24)
+
+
+def valid_precip_window(value: int) -> bool:
+    return value > 0 and value % 3 == 0 and value <= MAX_PRECIP_WINDOW_HOURS
 
 VAR_NAMES = {
     "wind_speed": "Wind Speed",
@@ -21,6 +28,7 @@ VAR_NAMES = {
     "precipitable_water": "Precipitable Water",
     "omega": "Omega (Vertical Velocity)",
     "precip_rate": "Precipitation Rate",
+    "precip_total": "Precipitation Total",
     "olr": "Outgoing Longwave Radiation",
     "cape": "CAPE (Surface-Based)",
     "cape_ml": "CAPE (180-0 mb Mixed-Layer)",

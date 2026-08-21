@@ -35,9 +35,14 @@ from app.retrieval import (
     _gcs_url,
     _nomads_flx_url,
     _nomads_url,
+    _precip_rate_source_time,
     fetch_field,
     fetch_index,
+    fetch_precip_rate,
+    fetch_precip_total,
+    fetch_precip_total_composite,
     fetch_relative_humidity_2m,
+    precip_accumulation_pairs,
     parse_index_text,
 )
 
@@ -165,6 +170,72 @@ class TestValidHours:
     def test_covers_all_3_hour_increments(self):
         expected = {"00", "03", "06", "09", "12", "15", "18", "21"}
         assert set(VALID_HOURS) == expected
+
+
+class TestPrecipAccumulation:
+    def test_precip_rate_source_time_crosses_utc_day(self):
+        assert _precip_rate_source_time("20260811", "00") == ("20260810", "21")
+
+    def test_fetch_precip_rate_uses_period_ending_hour(self, monkeypatch):
+        calls = []
+
+        def fake_fetch(date, hour, variable, level_name):
+            calls.append((date, hour, variable, level_name))
+            return _tiny_da(2.0)
+
+        monkeypatch.setattr(retrieval, "fetch_flx_field", fake_fetch)
+
+        rate = fetch_precip_rate("20260811", "00")
+
+        assert calls == [("20260810", "21", "PRATE", "surface")]
+        assert rate.values.tolist() == [[2.0]]
+
+    def test_accumulation_pairs_cross_utc_day(self):
+        assert precip_accumulation_pairs("20260811", "00", 6) == [
+            ("20260810", "21"),
+            ("20260811", "00"),
+        ]
+
+    def test_24h_accumulation_uses_eight_3h_slices(self):
+        pairs = precip_accumulation_pairs("20260811", "12", 24)
+        assert len(pairs) == 8
+        assert pairs[0] == ("20260810", "15")
+        assert pairs[-1] == ("20260811", "12")
+
+    def test_36h_accumulation_uses_twelve_3h_slices(self):
+        pairs = precip_accumulation_pairs("20260812", "12", 36)
+        assert len(pairs) == 12
+        assert pairs[0] == ("20260811", "03")
+        assert pairs[-1] == ("20260812", "12")
+
+    def test_fetch_precip_total_sums_prate_as_3h_amounts(self, monkeypatch):
+        calls = []
+
+        def fake_fetch(date, hour):
+            calls.append((date, hour))
+            return _tiny_da(2.0)
+
+        monkeypatch.setattr(retrieval, "fetch_precip_rate", fake_fetch)
+
+        total = fetch_precip_total("20260811", "00", 6)
+
+        assert calls == [
+            ("20260810", "21"),
+            ("20260811", "00"),
+        ]
+        assert total.attrs["_pyre_precip_window_hours"] == 6
+        assert total.attrs["_pyre_units"] == "mm"
+        assert total.values.tolist() == [[2.0 * 3 * 3600 * 2]]
+
+    def test_precip_total_date_range_sums_members(self, monkeypatch):
+        def fake_total(date, _hour, _window_hours):
+            return _tiny_da(1.0 if date == "20260810" else 2.0)
+
+        monkeypatch.setattr(retrieval, "fetch_precip_total", fake_total)
+
+        total = fetch_precip_total_composite(["20260810", "20260811"], "00", 24)
+
+        assert total.values.tolist() == [[3.0]]
 
 
 # ── Unit: index parsing ──────────────────────────────────────────────────────────

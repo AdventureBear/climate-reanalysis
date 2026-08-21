@@ -75,7 +75,8 @@ R2 is used as a **climatology baseline** — the reference against which we meas
 | 10m Wind Speed | Wind speed at 10 m | Climatology derived from R2 u/v per sample |
 | Mean Sea Level Pressure | MSLP | |
 | Precipitable Water | Total-column water vapor | |
-| Precipitation Rate | Displayed mm/day | 0–3 h average forecast field, not instantaneous |
+| Precipitation Rate | Displayed mm/day or in/day | 0–3 h average forecast field, not instantaneous; raw maps only |
+| Precipitation Total | Displayed mm or inches | Accumulated from PRATE over 3/6/12/24 h windows; raw maps only |
 | Outgoing Longwave Radiation | ULWRF at top of atmosphere | 0–3 h average forecast field |
 | CAPE / CIN | Three parcel variants each — see Q22 | Raw maps only |
 | 2m Dewpoint | Displayed °F | Raw maps only |
@@ -112,7 +113,7 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 Before subtraction, PyRe interpolates the coarser climatology grid onto the CORe observation grid.
 
-Specific humidity and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
+Specific humidity, relative humidity, precipitation, and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
 
 Normalized anomaly is not offered on 3-hourly maps. See the next question.
 

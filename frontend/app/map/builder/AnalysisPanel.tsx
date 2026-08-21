@@ -14,6 +14,7 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
     displayMode, setDisplayMode,
     rawOnlyVariable,
     isThreeHourly,
+    precipTotalVariable,
   } = recipe
 
   function generateLabel(): string {
@@ -30,10 +31,10 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
     } else {
       if (dateSubMode === 'range' && startDate && endDate && startDate <= endDate) {
         const n = dateRange(startDate, endDate).length
-        if (n > 1) return `Composite (${n} days)`
+        if (n > 1) return precipTotalVariable ? `Total (${n} days)` : `Composite (${n} days)`
       } else if (dateSubMode === 'list') {
         const n = customDates.filter(Boolean).length
-        if (n > 1) return `Composite (${n} dates)`
+        if (n > 1) return precipTotalVariable ? `Total (${n} dates)` : `Composite (${n} dates)`
       }
     }
     return 'Generate Map'

@@ -1,5 +1,5 @@
 import { HOURS, normalizeColorStep } from './sharedOptions'
-import { apiLevelForSelection, apiVariableForSelection, type HumidityType, uiSelectionForApiVariable } from './variableConfig'
+import { RAW_ONLY_API_VARIABLES, apiLevelForSelection, apiVariableForSelection, type HumidityType, uiSelectionForApiVariable } from './variableConfig'
 
 // Mirror the backend request guards (MAX_COMPOSITE_DATES / MAX_COMPOSITE_MONTHS
 // in backend/app/main.py) so users get instant feedback instead of a 422.
@@ -14,6 +14,8 @@ export type WindUnit = 'kt' | 'm/s'
 export type WindOverlayType = 'vectors' | 'barbs' | 'isotachs'
 export type WindAnomalyOverlay = 'none' | WindOverlayType
 export type PwatUnit = 'mm' | 'in'
+export type PrecipUnit = 'mm' | 'in'
+export type PrecipWindow = string
 export type FillMode = 'contours' | 'shaded'
 export type TempUnit = 'F' | 'C'
 
@@ -26,11 +28,11 @@ export type TimeRecipe =
   | { scale: 'monthly'; subMode: 'range'; monthStart: string; monthEnd: string }
   | { scale: 'monthly'; subMode: 'list'; customMonths: string[] }
   | { scale: '3-hourly'; subMode: 'single'; date: string; hour: string }
-  | { scale: '3-hourly'; subMode: 'range'; startDate: string; endDate: string; hour: string }
+  | { scale: '3-hourly'; subMode: 'range'; startDate: string; endDate: string; startHour?: string; hour: string }
   | { scale: '3-hourly'; subMode: 'list'; customDates: string[]; hour: string }
-  | { scale: 'daily'; subMode: 'single'; date: string }
-  | { scale: 'daily'; subMode: 'range'; startDate: string; endDate: string }
-  | { scale: 'daily'; subMode: 'list'; customDates: string[] }
+  | { scale: 'daily'; subMode: 'single'; date: string; hour?: string }
+  | { scale: 'daily'; subMode: 'range'; startDate: string; endDate: string; startHour?: string; hour?: string }
+  | { scale: 'daily'; subMode: 'list'; customDates: string[]; hour?: string }
 
 export type MapRecipe = {
   variable?: string
@@ -58,6 +60,8 @@ export type MapRecipe = {
   }
   windUnit?: WindUnit
   pwatUnit?: PwatUnit
+  precipUnit?: PrecipUnit
+  precipWindow?: PrecipWindow
   fillMode?: FillMode
   tempUnit?: TempUnit
   // Stamp detected H/L MSLP centers on the map.
@@ -182,6 +186,29 @@ function pwatUnit(value: string | null): PwatUnit | undefined {
   return value === 'mm' || value === 'in' ? value : undefined
 }
 
+function precipUnit(value: string | null): PrecipUnit | undefined {
+  return value === 'mm' || value === 'in' ? value : undefined
+}
+
+function precipWindow(value: string | null): PrecipWindow | undefined {
+  if (!value) return undefined
+  const hours = Number(value)
+  return Number.isInteger(hours) && hours > 0 && hours % 3 === 0 ? String(hours) : undefined
+}
+
+function dateHourToUtc(date: string, hour: string): Date | null {
+  const parsed = new Date(`${date}T${hour}:00:00Z`)
+  return Number.isNaN(parsed.valueOf()) ? null : parsed
+}
+
+function hoursBetween(startDate: string, startHour: string, endDate: string, endHour: string): number | null {
+  const start = dateHourToUtc(startDate, startHour)
+  const end = dateHourToUtc(endDate, endHour)
+  if (!start || !end) return null
+  const hours = (end.valueOf() - start.valueOf()) / 3_600_000
+  return Number.isInteger(hours) ? hours : null
+}
+
 function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   if (time.scale === 'climatology') {
     // The year is arbitrary — climatology mode never fetches observations.
@@ -253,6 +280,57 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   return { ok: true, params }
 }
 
+function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
+  if (time.scale !== '3-hourly' && time.scale !== 'daily') {
+    return {
+      ok: false,
+      error: 'Precipitation totals use date/hour selections.',
+    }
+  }
+  const endHour = 'hour' in time && time.hour && HOURS.includes(time.hour) ? time.hour : '00'
+  if (time.subMode === 'single') {
+    return {
+      ok: true,
+      params: {
+        date: toApiDate(time.date),
+        date_mode: 'single',
+        [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
+      },
+    }
+  }
+  if (time.subMode !== 'range') {
+    const dates = time.customDates.filter(Boolean).map(toApiDate)
+    if (!dates.length) return { ok: false, error: 'Add at least one date.' }
+    if (dates.length > MAX_COMPOSITE_DATES) {
+      return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
+    }
+    return {
+      ok: true,
+      params: {
+        date_mode: 'list',
+        [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
+        ...(dates.length === 1 ? { date: dates[0] } : { dates: dates.join(',') }),
+      },
+    }
+  }
+  const startHour = time.startHour && HOURS.includes(time.startHour) ? time.startHour : '00'
+  const windowHours = hoursBetween(time.startDate, startHour, time.endDate, endHour)
+  if (!windowHours || windowHours <= 0 || windowHours % 3 !== 0) {
+    return { ok: false, error: 'Precipitation total ranges must end after the start time in 3-hour increments.' }
+  }
+  return {
+    ok: true,
+    params: {
+      date: toApiDate(time.endDate),
+      date_mode: 'range',
+      hour: endHour,
+      start_date: toApiDate(time.startDate),
+      start_hour: startHour,
+      precip_window: String(windowHours),
+    },
+  }
+}
+
 export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   if (!recipe.variable || !recipe.level || !recipe.region) {
     return { ok: false, error: 'Choose a variable, level, and region.' }
@@ -265,9 +343,13 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   const level = apiLevelForSelection(recipe.variable, recipe.level)
   const params: Record<string, string> = { variable, level, region: recipe.region }
 
-  if (recipe.displayMode && recipe.displayMode !== 'raw') params.mode = recipe.displayMode
+  const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(variable)
+  const renderMode = rawOnlyVariable ? 'raw' : recipe.displayMode
+  if (renderMode && renderMode !== 'raw') params.mode = renderMode
 
-  const timeParams = timeRecipeToParams(recipe.time)
+  const timeParams = variable === 'precip_total'
+    ? precipTotalTimeRecipeToParams(recipe.time)
+    : timeRecipeToParams(recipe.time)
   if (!timeParams.ok) return timeParams
   Object.assign(params, timeParams.params)
 
@@ -306,6 +388,12 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   }
   if (recipe.pwatUnit && variable === 'precipitable_water') {
     params.pwat_unit = recipe.pwatUnit
+  }
+  if (recipe.precipUnit && (variable === 'precip_rate' || variable === 'precip_total')) {
+    params.precip_unit = recipe.precipUnit
+  }
+  if (variable === 'precip_total' && !params.precip_window) {
+    params.precip_window = recipe.precipWindow ?? '3'
   }
   // Only contour-first variables have a shaded option; default stays contours.
   if (recipe.fillMode === 'shaded' && (variable === 'surface_pressure' || variable === 'height')) {
@@ -414,6 +502,42 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
   return undefined
 }
 
+function firstDateFromTimeRecipe(time: TimeRecipe): string | undefined {
+  if (time.scale !== '3-hourly' && time.scale !== 'daily') return undefined
+  if (time.subMode === 'single') return time.date
+  if (time.subMode === 'range') return time.startDate
+  return time.customDates[0]
+}
+
+function precipTotalTimeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
+  const parsed = timeRecipeFromUrl(params)
+  const explicitStartDate = params.get('start_date')
+  const explicitStartHour = params.get('start_hour')
+  const hour = params.get('hour')
+  const dailyHour = params.get('hours')?.split(',').map(s => s.trim()).find(h => HOURS.includes(h))
+  const validHour = hour && HOURS.includes(hour) ? hour : dailyHour ?? '00'
+  if (!parsed) return undefined
+  const date = firstDateFromTimeRecipe(parsed)
+  if (!date) return undefined
+  if (explicitStartDate) {
+    return {
+      scale: params.get('precip_window') === '24' ? 'daily' : '3-hourly',
+      subMode: 'range',
+      startDate: apiDateToIso(explicitStartDate),
+      endDate: date,
+      startHour: explicitStartHour && HOURS.includes(explicitStartHour) ? explicitStartHour : '00',
+      hour: validHour,
+    }
+  }
+  if (parsed.scale === 'daily' && parsed.subMode === 'single') {
+    return { ...parsed, hour: validHour }
+  }
+  if (parsed.scale === 'daily' && parsed.subMode === 'list') {
+    return { ...parsed, hour: validHour }
+  }
+  return parsed
+}
+
 export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   if (!params.toString()) return null
 
@@ -433,14 +557,18 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   const windStepUsable = Number(windStep) > 0 || windStep === AUTO_DENSITY
   const parsedColorStep = params.get('color_step')
   const isWindApiVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
+  const parsedDisplayMode = displayMode(params.get('mode'), params)
+  const parsedTime = apiVariable === 'precip_total'
+    ? precipTotalTimeRecipeFromUrl(params)
+    : timeRecipeFromUrl(params)
 
   return {
     ...uiSelection,
     humidityType: parsedHumidityType,
     region: params.get('region') ?? undefined,
-    displayMode: displayMode(params.get('mode'), params),
+    displayMode: apiVariable && RAW_ONLY_API_VARIABLES.has(apiVariable) ? 'raw' : parsedDisplayMode,
     climoSource: climoSource(params.get('climo_source')),
-    time: timeRecipeFromUrl(params),
+    time: parsedTime,
     // Old links may carry wind_overlay_mode; the glyph quantity now follows
     // the map mode (#47), so glyphs-on is all the URL needs to express.
     wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : {
@@ -453,6 +581,8 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     },
     windUnit: windUnit(params.get('wind_unit')),
     pwatUnit: pwatUnit(params.get('pwat_unit')),
+    precipUnit: precipUnit(params.get('precip_unit')),
+    precipWindow: precipWindow(params.get('precip_window')),
     fillMode: params.get('fill_mode') === 'shaded' ? 'shaded' : undefined,
     tempUnit: params.get('temp_unit') === 'F' || params.get('temp_unit') === 'C' ? (params.get('temp_unit') as TempUnit) : undefined,
     centers: params.get('centers') === '1' ? true : undefined,

@@ -17,6 +17,8 @@ class LabelRequest(Protocol):
     level: int
     wind_unit: str
     pwat_unit: str
+    precip_unit: str
+    precip_window: int
     temp_unit: str
 
 
@@ -125,12 +127,20 @@ def map_date_label(
 
     if selection.is_daily_composite:
         hours_label = "/".join(h + "z" for h in selection.daily_hours)
+        if req.variable == "precip_total":
+            if len(selection.date_list) == 1:
+                return f"Daily total · {req.precip_window}-hour ending {hours_label} · {fmt(selection.date_list[0])}"
+            return f"Daily total · {req.precip_window}-hour ending {hours_label} · {multi_date_label()}"
         if len(selection.date_list) == 1:
             return f"Daily composite · {hours_label} · {fmt(selection.date_list[0])}"
         return (
             f"Daily composite · {hours_label} · {multi_date_label()}"
         )
     if selection.composite:
+        if req.variable == "precip_total":
+            return (
+                f"Total · {req.hour}z · {multi_date_label()}"
+            )
         return (
             f"Composite mean · {req.hour}z · {multi_date_label()}"
         )
@@ -141,8 +151,13 @@ def map_date_label(
 
 
 def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
-    units = display_unit(req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit, temp_unit=req.temp_unit)
+    units = display_unit(
+        req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit,
+        temp_unit=req.temp_unit, precip_unit=req.precip_unit,
+    )
     if is_surface_or_named_level(req.variable):
+        if req.variable == "precip_total":
+            return f"{req.precip_window}-hour {VARIABLES[req.variable]['name']} ({units})"
         return f"{VARIABLES[req.variable]['name']} ({units})"
     if use_vector_wind_anomaly:
         if req.mode == "normalized":

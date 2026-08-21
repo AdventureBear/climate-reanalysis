@@ -26,9 +26,32 @@ const subModeOpts = [
     { value: 'list',   label: 'List'   },
 ]
 
+function dateHourToUtc(date: string, hour: string) {
+  const parsed = new Date(`${date}T${hour}:00:00Z`)
+  return Number.isNaN(parsed.valueOf()) ? null : parsed
+}
+
+function rangeHours(startDate: string, startHour: string, endDate: string, endHour: string) {
+  const start = dateHourToUtc(startDate, startHour)
+  const end = dateHourToUtc(endDate, endHour)
+  if (!start || !end) return null
+  return (end.valueOf() - start.valueOf()) / 3_600_000
+}
+
+function formatDuration(hours: number | null) {
+  if (!hours || hours <= 0) return ''
+  if (hours % 24 === 0) return `${hours / 24}d`
+  return `${hours}h`
+}
+
+function formatPrecipRangeDuration(startDate: string, startHour: string, endDate: string, endHour: string) {
+  return formatDuration(rangeHours(startDate, startHour, endDate, endHour))
+}
+
 export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeState; isVertical: boolean }) {
   const {
     isClimo, isMonthly, isThreeHourly,
+    precipTotalVariable,
     dateSubMode, setDateSubMode,
     monthSubMode, setMonthSubMode,
     climoMonth, setClimoMonth,
@@ -39,6 +62,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     date, setDate,
     startDate, setStartDate,
     endDate, setEndDate,
+    startHour, setStartHour,
     hour, setHour,
     customDates, setCustomDates,
   } = recipe
@@ -109,6 +133,67 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
             </div>
           )}
         </>
+      )
+    }
+
+    if (precipTotalVariable && dateSubMode === 'single') {
+      return (
+        <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input min-w-0 flex-1" />
+          <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+        </div>
+      )
+    }
+
+    if (precipTotalVariable && dateSubMode === 'range') {
+      const duration = formatPrecipRangeDuration(startDate, startHour, endDate, hour)
+      return (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex gap-1.5 items-center flex-wrap">
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input min-w-0" />
+            <HourStepper hour={startHour} setHour={setStartHour} compact={isVertical} />
+            <span className="text-slate-600 text-xs">→</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => {
+                setEndDate(e.target.value)
+                setDate(e.target.value)
+              }}
+              className="input min-w-0"
+            />
+            <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+            <span className="text-slate-500 text-xs">{duration}</span>
+          </div>
+        </div>
+      )
+    }
+
+    if (precipTotalVariable && dateSubMode === 'list') {
+      return (
+        <div className="flex flex-col gap-1.5">
+          <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Hour</span>
+            <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+          </div>
+          {customDates.map((d, i) => (
+            <div key={i} className="flex gap-1.5 items-center">
+              <input type="date" value={d}
+                onChange={e => setCustomDates(prev => prev.map((x, j) => j === i ? e.target.value : x))}
+                className="input flex-1" />
+              <button type="button" disabled={customDates.length === 1}
+                onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
+                className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
+                <Minus size={13} />
+              </button>
+            </div>
+          ))}
+          <button type="button"
+            onClick={() => setCustomDates(prev => [...prev, defaultDate()])}
+            className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+            <Plus size={12} /> Add Date
+          </button>
+        </div>
       )
     }
 

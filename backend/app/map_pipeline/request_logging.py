@@ -57,17 +57,19 @@ def obs_description(req: RequestLogContext, selection: TimeSelection) -> tuple[s
             ),
         )
     if selection.obs_kind == "daily":
+        aggregate = "sum" if req.variable == "precip_total" else "mean"
         return (
             f"{var_name}  |  {len(selection.date_list)} date(s) × {len(selection.daily_hours)} synoptic times",
             (
                 f"{obs_source} GCS archive  |  surgical byte-range  |  "
-                f"{len(selection.date_list) * len(selection.daily_hours)} fetches concurrent → mean"
+                f"{len(selection.date_list) * len(selection.daily_hours)} fetches concurrent → {aggregate}"
             ),
         )
     if selection.obs_kind == "composite":
+        aggregate = "sum" if req.variable == "precip_total" else "mean"
         return (
             f"{var_name}  |  {len(selection.date_list)} dates  {req.hour}z",
-            f"{obs_source} GCS archive  |  surgical byte-range  |  {len(selection.date_list)} fetches concurrent → mean",
+            f"{obs_source} GCS archive  |  surgical byte-range  |  {len(selection.date_list)} fetches concurrent → {aggregate}",
         )
     return (
         f"{var_name}  |  {selection.date_list[0]}  {req.hour}z",

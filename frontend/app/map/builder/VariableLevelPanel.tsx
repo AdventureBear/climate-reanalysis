@@ -1,6 +1,6 @@
 // Variable & Level card, including per-variable display controls (units,
 // shaded/contoured fill, humidity type) driven by the variable registry.
-import type { FillMode, PwatUnit, WindUnit } from '../../../mapRecipe'
+import type { FillMode, PrecipWindow, WindUnit } from '../../../mapRecipe'
 import {
   SURFACE_LEVELS,
   VARIABLES,
@@ -10,6 +10,7 @@ import {
 } from '../../../variableConfig'
 import { CardRow, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState, TemperatureUnit } from './useCompositeRecipe'
+import { WaterUnitToggle } from './WaterUnitToggle'
 
 export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState }) {
   const {
@@ -19,6 +20,8 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
     levelOptions,
     windUnit, setWindUnit,
     pwatUnit, setPwatUnit,
+    precipUnit, setPrecipUnit,
+    precipWindowSelection, setPrecipWindow,
     temperatureUnit, setTemperatureUnit,
     fillMode, setFillMode,
     setWindOn, setWindType,
@@ -61,7 +64,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water') && (
+            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total') && (
             <CardRow>
                 {variable === 'wind_speed' && (
                   <VariableDisplayControl label="Wind Units">
@@ -104,14 +107,22 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                   </VariableDisplayControl>
                 )}
                 {variable === 'precipitable_water' && (
-                  <VariableDisplayControl label="PWAT Units">
+                  <WaterUnitToggle label="PWAT Units" value={pwatUnit} onChange={setPwatUnit} />
+                )}
+                {(variable === 'precip_rate' || variable === 'precip_total') && (
+                  <WaterUnitToggle label="Precip Units" value={precipUnit} onChange={setPrecipUnit} />
+                )}
+                {variable === 'precip_total' && (
+                  <VariableDisplayControl label="Accumulation">
                     <TabStrip
                       options={[
-                        { value: 'mm', label: 'mm' },
-                        { value: 'in', label: 'inches' },
+                        { value: '3', label: '3 hr' },
+                        { value: '6', label: '6 hr' },
+                        { value: '12', label: '12 hr' },
+                        { value: '24', label: '24 hr' },
                       ]}
-                      value={pwatUnit}
-                      onChange={v => setPwatUnit(v as PwatUnit)}
+                      value={precipWindowSelection}
+                      onChange={v => setPrecipWindow(v as PrecipWindow)}
                       fullWidth
                     />
                   </VariableDisplayControl>

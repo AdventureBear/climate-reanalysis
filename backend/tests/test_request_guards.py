@@ -88,6 +88,200 @@ def test_duplicate_dates_are_rejected(monkeypatch):
     assert response.json()["detail"] == "dates contains duplicate dates"
 
 
+def test_precip_total_anomaly_is_raw_only(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "mode": "anomaly",
+            "precip_window": "24",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "raw maps only" in response.json()["detail"]
+
+
+def test_precip_window_is_only_for_precip_total(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "precip_rate",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "6",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "precip_window is only supported for precip_total maps"
+
+
+def test_precip_total_accepts_one_daily_hour(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hours": "00",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "24",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+def test_precip_total_rejects_multiple_daily_hours(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hours": "00,06,12,18",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "24",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "precip_total daily maps use one ending synoptic time."
+
+
+def test_precip_total_accepts_date_list(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "dates": "20260101,20260102",
+            "hour": "12",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "6",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+def test_precip_total_accepts_custom_3_hour_window(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260102",
+            "hour": "12",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "36",
+        },
+    )
+
+    assert response.status_code == 200
+
+
+def test_precip_total_range_metadata_must_match_window(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    ok = client.get(
+        "/api/map",
+        params={
+            "date": "20260102",
+            "hour": "12",
+            "start_date": "20260101",
+            "start_hour": "00",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "36",
+        },
+    )
+    bad = client.get(
+        "/api/map",
+        params={
+            "date": "20260102",
+            "hour": "12",
+            "start_date": "20260101",
+            "start_hour": "00",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "24",
+        },
+    )
+
+    assert ok.status_code == 200
+    assert bad.status_code == 422
+    assert "precip_window does not match" in bad.json()["detail"]
+
+
+def test_precip_total_rejects_non_3_hour_window(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260102",
+            "hour": "12",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "5",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "3-hour multiple" in response.json()["detail"]
+
+
+def test_precip_unit_is_only_for_precip_maps(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+            "precip_unit": "mm",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "precip_unit is only supported for precipitation maps"
+
+
 def test_daily_composite_date_hour_pairs_are_bounded(monkeypatch):
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)

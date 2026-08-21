@@ -17,11 +17,13 @@ from urllib3.util.retry import Retry
 from .climo_r2 import dap_fetch_with_retries
 from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
+from .api_options import MAX_PRECIP_WINDOW_HOURS
 from .met_math import (
     relative_humidity_from_components,
     relative_humidity_from_dewpoint_components,
     wind_speed_from_components,
 )
+from .units import PRATE_TO_MM_3H
 
 log = logging.getLogger("pyre.retrieval")
 
@@ -421,6 +423,59 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
     return wind_speed_from_components(u, v)
 
 
+def precip_accumulation_pairs(date: str, hour: str, window_hours: int) -> list[tuple[str, str]]:
+    """3-hourly PRATE ending valid times that make a preceding accumulation window."""
+    if window_hours <= 0 or window_hours % 3 != 0 or window_hours > MAX_PRECIP_WINDOW_HOURS:
+        raise ValueError(f"precip accumulation window must be a 3-hour multiple up to {MAX_PRECIP_WINDOW_HOURS} hours")
+    end = datetime.strptime(f"{date}{hour}", "%Y%m%d%H")
+    steps = window_hours // 3
+    return [
+        (valid.strftime("%Y%m%d"), valid.strftime("%H"))
+        for valid in (end - timedelta(hours=3 * offset) for offset in reversed(range(steps)))
+    ]
+
+
+def _precip_rate_source_time(date: str, hour: str) -> tuple[str, str]:
+    """CORe flx PRATE file time for a requested ending valid time."""
+    source = datetime.strptime(f"{date}{hour}", "%Y%m%d%H") - timedelta(hours=3)
+    return source.strftime("%Y%m%d"), source.strftime("%H")
+
+
+def fetch_precip_rate(date: str, hour: str) -> xr.DataArray:
+    """
+    Fetch the 0–3 hour average precipitation rate ending at date/hour.
+
+    CORe stores PRATE in the flx file initialized three hours earlier; cfgrib's
+    valid_time is the ending time. This keeps the API hour aligned with the map
+    title and with accumulated-total windows.
+    """
+    source_date, source_hour = _precip_rate_source_time(date, hour)
+    return fetch_flx_field(source_date, source_hour, "PRATE", "surface")
+
+
+def fetch_precip_total(date: str, hour: str, window_hours: int) -> xr.DataArray:
+    """
+    Accumulated precipitation in mm for the preceding window ending at date/hour.
+
+    CORe PRATE is a 0–3 hour average rate in kg/m²/s. For liquid-water depth,
+    kg/m² is numerically mm, so each slice contributes PRATE × 3 hours.
+    """
+    pairs = precip_accumulation_pairs(date, hour, window_hours)
+    total = None
+    latest_attrs = {}
+    for valid_date, valid_hour in pairs:
+        rate = fetch_precip_rate(valid_date, valid_hour)
+        latest_attrs = dict(rate.attrs)
+        amount = rate.drop_vars("valid_time", errors="ignore") * PRATE_TO_MM_3H
+        total = amount if total is None else total + amount
+    if total is None:
+        raise ValueError("precip accumulation window produced no members")
+    total.attrs = latest_attrs
+    total.attrs["_pyre_precip_window_hours"] = window_hours
+    total.attrs["_pyre_units"] = "mm"
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Composite (multi-date mean) helpers
 # ---------------------------------------------------------------------------
@@ -462,6 +517,20 @@ class _RunningMean:
             raise ValueError("no composite members were added")
         return xr.DataArray(
             self._sum / self._n,
+            coords=self._template.coords,
+            dims=self._template.dims,
+            attrs=self._template.attrs,
+        )
+
+
+class _RunningSum(_RunningMean):
+    """Streaming sum for accumulated fields such as precipitation totals."""
+
+    def mean(self) -> xr.DataArray:
+        if self._template is None:
+            raise ValueError("no composite members were added")
+        return xr.DataArray(
+            self._sum,
             coords=self._template.coords,
             dims=self._template.dims,
             attrs=self._template.attrs,
@@ -547,6 +616,21 @@ def _mean_of(fetch_fn, dates: list[str], hour: str, *args, skip_missing: bool = 
     return mean
 
 
+def _sum_of(fetch_fn, dates: list[str], hour: str, *args, skip_missing: bool = False) -> xr.DataArray:
+    """Fetch the same accumulated field for multiple dates and sum it."""
+    log.debug("TOTAL      %d dates  hour=%sz  (concurrent)", len(dates), hour)
+    t0 = time.perf_counter()
+    acc = _RunningSum()
+    with ThreadPoolExecutor(max_workers=min(len(dates), 8)) as pool:
+        futures = {pool.submit(fetch_fn, d, hour, *args): f"{d} {hour}z" for d in dates}
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=acc.add)
+    log.debug("TOTAL      done  %.1fs", time.perf_counter() - t0)
+
+    total = acc.mean()
+    _stamp_skipped(total, missing)
+    return total
+
+
 def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args, skip_missing: bool = False) -> xr.DataArray:
     """
     Fetch a field for multiple (date, hour) pairs concurrently and return the mean.
@@ -562,6 +646,30 @@ def _mean_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args, skip
     mean = acc.mean()
     _stamp_skipped(mean, missing)
     return mean
+
+
+def _sum_of_pairs(fetch_fn, date_hour_pairs: list[tuple[str, str]], *args, skip_missing: bool = False) -> xr.DataArray:
+    """Fetch an accumulated field for multiple date/hour pairs and sum it."""
+    log.debug("TOTAL      %d (date×hour) pairs  (concurrent)", len(date_hour_pairs))
+    t0 = time.perf_counter()
+    acc = _RunningSum()
+    with ThreadPoolExecutor(max_workers=min(len(date_hour_pairs), 8)) as pool:
+        futures = {pool.submit(fetch_fn, d, h, *args): f"{d} {h}z" for d, h in date_hour_pairs}
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=acc.add)
+    log.debug("TOTAL      done  %.1fs", time.perf_counter() - t0)
+    total = acc.mean()
+    _stamp_skipped(total, missing)
+    return total
+
+
+def fetch_precip_total_daily_composite(dates: list[str], hours: list[str], window_hours: int, *, skip_missing: bool = False) -> xr.DataArray:
+    """Sum of accumulated precip totals ending at each selected date/hour."""
+    return _sum_of_pairs(fetch_precip_total, [(d, h) for d in dates for h in hours], window_hours, skip_missing=skip_missing)
+
+
+def fetch_precip_rate_daily_composite(dates: list[str], hours: list[str], *, skip_missing: bool = False) -> xr.DataArray:
+    """Mean PRATE across ending valid date/hour pairs."""
+    return _mean_of_pairs(fetch_precip_rate, [(d, h) for d in dates for h in hours], skip_missing=skip_missing)
 
 
 def fetch_field_daily_composite(dates: list[str], hours: list[str], variable: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
@@ -618,6 +726,16 @@ def fetch_relative_humidity_2m_daily_composite(dates: list[str], hours: list[str
 
 def fetch_field_composite(dates: list[str], hour: str, variable: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
     return _mean_of(fetch_field, dates, hour, variable, level, skip_missing=skip_missing)
+
+
+def fetch_precip_total_composite(dates: list[str], hour: str, window_hours: int, *, skip_missing: bool = False) -> xr.DataArray:
+    """Sum of accumulated precip totals ending at the same hour on each date."""
+    return _sum_of(fetch_precip_total, dates, hour, window_hours, skip_missing=skip_missing)
+
+
+def fetch_precip_rate_composite(dates: list[str], hour: str, *, skip_missing: bool = False) -> xr.DataArray:
+    """Mean PRATE for the same ending valid hour on each date."""
+    return _mean_of(fetch_precip_rate, dates, hour, skip_missing=skip_missing)
 
 
 def fetch_named_level_field_composite(dates: list[str], hour: str, variable: str, level_name: str, *, skip_missing: bool = False) -> xr.DataArray:

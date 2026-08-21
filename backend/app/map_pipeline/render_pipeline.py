@@ -18,6 +18,7 @@ class RenderRequest(Protocol):
     mode: str
     wind_unit: str
     pwat_unit: str
+    precip_unit: str
     wind_step: int
     wind_type: str
     fill_mode: str
@@ -64,6 +65,7 @@ def render_map_product(
         scale_overrides=scale_overrides,
         wind_unit=req.wind_unit,
         pwat_unit=req.pwat_unit,
+        precip_unit=req.precip_unit,
         temp_unit=req.temp_unit,
         monthly_anomaly=monthly_anomaly,
     )
@@ -88,6 +90,7 @@ def render_map_product(
         scale_overrides=scale_overrides,
         wind_unit=req.wind_unit,
         pwat_unit=req.pwat_unit,
+        precip_unit=req.precip_unit,
         fill_mode=req.fill_mode,
         temp_unit=req.temp_unit,
         base_array=base_array,

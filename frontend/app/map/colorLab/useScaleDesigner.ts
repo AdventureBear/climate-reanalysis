@@ -3,7 +3,7 @@
 // the designer matches the map being rendered, its custom scale is attached to
 // the /api/map request via applyScaleToParams.
 import { useEffect, useRef, useState } from 'react'
-import type { DisplayMode, PwatUnit, WindUnit } from '../../../mapRecipe'
+import type { DisplayMode, PrecipUnit, PwatUnit, WindUnit } from '../../../mapRecipe'
 import { API_BASE } from '../../../lib/api'
 import { normalizeColorStep } from '../../../sharedOptions'
 import {
@@ -38,11 +38,12 @@ function designerSignature(anchors: ScaleAnchor[], segments: ScaleSegment[]): st
 }
 
 
-export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
+export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit, precipUnit }: {
   enabled: boolean
   colorStep: string
   windUnit: WindUnit
   pwatUnit: PwatUnit
+  precipUnit: PrecipUnit
 }) {
   const [labVariable, setLabVariable] = useState('wind_speed')
   const [labLevel, setLabLevel] = useState('850')
@@ -80,6 +81,9 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
       params.set('wind_unit', windUnit)
     }
     if (labVariable === 'precipitable_water') params.set('pwat_unit', pwatUnit)
+    if (labVariable === 'precip_rate' || labVariable === 'precip_total') {
+      params.set('precip_unit', precipUnit)
+    }
 
     const controller = new AbortController()
 
@@ -105,7 +109,7 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit }: {
     void loadScaleMeta()
 
     return () => controller.abort()
-  }, [enabled, colorStep, labLevel, labMode, labVariable, pwatUnit, windUnit])
+  }, [enabled, colorStep, labLevel, labMode, labVariable, precipUnit, pwatUnit, windUnit])
 
   useEffect(() => {
     const backendAnchors = anchorsFromScaleMeta(scaleMeta)

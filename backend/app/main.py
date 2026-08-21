@@ -13,12 +13,15 @@ from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 load_dotenv()
 
 from .api_options import (
+    MAX_PRECIP_WINDOW_HOURS,
     VALID_CLIMO_SOURCES,
     VALID_MODES,
+    VALID_PRECIP_UNITS,
     VALID_PWAT_UNITS,
     VALID_WIND_UNITS,
     scale_overrides_from_query,
     supported_modes,
+    valid_precip_window,
 )
 from .single_date_packages import (
     SingleDatePackageRequest,
@@ -93,6 +96,8 @@ def _validate_common(
     mode: str,
     wind_unit: str,
     pwat_unit: str,
+    precip_unit: str,
+    precip_window: int,
     scale_min: float | None,
     scale_max: float | None,
     color_step: int,
@@ -104,6 +109,11 @@ def _validate_common(
         (mode in VALID_MODES, f"mode must be one of {list(VALID_MODES)}"),
         (wind_unit in VALID_WIND_UNITS, f"wind_unit must be one of {list(VALID_WIND_UNITS)}"),
         (pwat_unit in VALID_PWAT_UNITS, f"pwat_unit must be one of {list(VALID_PWAT_UNITS)}"),
+        (precip_unit in VALID_PRECIP_UNITS, f"precip_unit must be one of {list(VALID_PRECIP_UNITS)}"),
+        (
+            valid_precip_window(precip_window),
+            f"precip_window must be a 3-hour multiple from 3 to {MAX_PRECIP_WINDOW_HOURS} hours",
+        ),
         (
             scale_min is None or scale_max is None or scale_min < scale_max,
             "scale_min must be less than scale_max",
@@ -120,6 +130,45 @@ def _validate_common(
             detail=(
                 f"'{variable}' currently supports raw maps only; "
                 "no climatology baseline is wired (see config.VARIABLES climo_sources)."
+            ),
+        )
+    if variable != "precip_total" and precip_window != 3:
+        raise HTTPException(status_code=422, detail="precip_window is only supported for precip_total maps")
+    if variable not in {"precip_rate", "precip_total"} and precip_unit != "in":
+        raise HTTPException(status_code=422, detail="precip_unit is only supported for precipitation maps")
+
+
+def _validate_precip_total_range_metadata(
+    *,
+    variable: str,
+    date: str,
+    hour: str,
+    start_date: str,
+    start_hour: str,
+    precip_window: int,
+) -> None:
+    if not start_date and not start_hour:
+        return
+    if variable != "precip_total":
+        raise HTTPException(status_code=422, detail="start_date/start_hour are only supported for precip_total maps")
+    if not start_date or not start_hour:
+        raise HTTPException(status_code=422, detail="precip_total ranges require both start_date and start_hour")
+    if start_hour not in VALID_HOURS:
+        raise HTTPException(status_code=422, detail=f"start_hour must be one of {VALID_HOURS}")
+    try:
+        start = datetime.strptime(f"{start_date}{start_hour}", "%Y%m%d%H")
+        end = datetime.strptime(f"{date}{hour}", "%Y%m%d%H")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start_date/date must be YYYYMMDD and hours must be HH")
+    window_hours = (end - start).total_seconds() / 3600
+    if not window_hours.is_integer() or window_hours <= 0 or int(window_hours) % 3 != 0:
+        raise HTTPException(status_code=422, detail="precip_total range must end after the start time in 3-hour increments")
+    if int(window_hours) != precip_window:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "precip_window does not match start_date/start_hour and ending date/hour "
+                f"({int(window_hours)} hours from range, {precip_window} from precip_window)"
             ),
         )
 
@@ -194,9 +243,11 @@ def get_scale_meta(
     scale_max: float | None = None,
     wind_unit: str = "kt",
     pwat_unit: str = "in",
+    precip_unit: str = "in",
+    precip_window: int = 3,
     temp_unit: str = "",
 ):
-    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if temp_unit not in {"", "F", "C"}:
         raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
 
@@ -208,6 +259,7 @@ def get_scale_meta(
         scale_overrides=scale_overrides_from_query(variable, scale_min, scale_max, wind_unit=wind_unit),
         wind_unit=wind_unit,
         pwat_unit=pwat_unit,
+        precip_unit=precip_unit,
         temp_unit=temp_unit,
     )
 
@@ -291,6 +343,10 @@ def get_map(
     climo_source: str = "monthly-pgb",
     wind_unit: str = "kt",
     pwat_unit: str = "in",
+    precip_unit: str = "in",
+    precip_window: int = 3,
+    start_date: str = "",
+    start_hour: str = "",
     fill_mode: str = "contours",
     temp_unit: str = "",
     isotachs: int = 0,
@@ -308,7 +364,7 @@ def get_map(
     # planning, rendering) keeps seeing a plain positive number (#45).
     if wind_step < 0:
         wind_step = DEFAULT_WIND_DENSITY
-    _validate_common(variable, level, mode, wind_unit, pwat_unit, scale_min, scale_max, color_step)
+    _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded", "none"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")
     if temp_unit not in {"", "F", "C"}:
@@ -336,6 +392,14 @@ def get_map(
         )
     if not months and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
+    _validate_precip_total_range_metadata(
+        variable=variable,
+        date=date,
+        hour=hour,
+        start_date=start_date,
+        start_hour=start_hour,
+        precip_window=precip_window,
+    )
     # Single-hour products (no `hours`, no `months`) compare against that
     # hour's normal, which is a mean-only baseline — there is no per-hour
     # sigma to normalize by (#72). The daily map answers the same question
@@ -361,6 +425,11 @@ def get_map(
             )
         if len(set(parsed_hours)) != len(parsed_hours):
             raise HTTPException(status_code=422, detail="hours contains duplicate synoptic times")
+        if variable == "precip_total" and len(parsed_hours) != 1:
+            raise HTTPException(
+                status_code=422,
+                detail="precip_total daily maps use one ending synoptic time.",
+            )
     parsed_dates: list[str] = []
     if dates:
         parsed_dates = [d.strip() for d in dates.split(",") if d.strip()]
@@ -436,8 +505,10 @@ def get_map(
                 climo_source=climo_source,
                 wind_unit=wind_unit,
                 pwat_unit=pwat_unit,
+                precip_unit=precip_unit,
                 fill_mode=fill_mode,
                 temp_unit=temp_unit,
+                precip_window=precip_window,
                 isotachs=isotachs,
                 isotach_interval=isotach_interval,
                 centers=centers,

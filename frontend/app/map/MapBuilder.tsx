@@ -44,6 +44,7 @@ export default function MapBuilder() {
     colorStep, setColorStep,
     windUnit, setWindUnit,
     pwatUnit, setPwatUnit,
+    precipUnit, setPrecipUnit,
     apiVariable, apiLevel, isClimo,
     preferCoreClimo, chooseCoreClimoPreference,
     currentMapRecipe, applyRecipeToState,
@@ -66,7 +67,7 @@ export default function MapBuilder() {
   // Color Lab: admins via profiles.is_admin; always on in local no-accounts
   // dev. (The old /admin escape-hatch route is gone.)
   const colorLabAccess = colorLabVisible
-  const scaleDesigner = useScaleDesigner({ enabled: colorLabAccess, colorStep, windUnit, pwatUnit })
+  const scaleDesigner = useScaleDesigner({ enabled: colorLabAccess, colorStep, windUnit, pwatUnit, precipUnit })
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
@@ -325,6 +326,8 @@ export default function MapBuilder() {
           setWindUnit={setWindUnit}
           pwatUnit={pwatUnit}
           setPwatUnit={setPwatUnit}
+          precipUnit={precipUnit}
+          setPrecipUnit={setPrecipUnit}
           onClose={() => setColorLabOpen(false)}
         />
       )}
