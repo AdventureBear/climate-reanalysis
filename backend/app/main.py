@@ -44,6 +44,7 @@ from .rate_limit import (
     enforce_rate_limit,
 )
 from .retrieval import DataUnavailableError, VALID_HOURS
+from .variable_resolution import resolve_variable_selection
 from .visualizer import DEFAULT_WIND_DENSITY, ISOTACH_INTERVALS_KT, describe_color_scale
 
 logging.basicConfig(
@@ -181,6 +182,16 @@ def root():
         "regions": list(REGIONS.keys()),
         "valid_hours": VALID_HOURS,
         "modes": list(VALID_MODES),
+        "variable_aliases": {
+            "cloud_cover": {
+                "levels": ["total_column", "low", "middle", "high", "boundary", "convective"],
+            },
+            "radiation": {
+                "levels": ["surface", "toa"],
+                "wavebands": ["shortwave", "longwave"],
+                "directions": ["down", "up"],
+            },
+        },
         # Per-variable mode availability, derived from config.VARIABLES
         # climo_sources. The frontend registry mirrors this.
         "variable_modes": {name: list(supported_modes(name)) for name in VARIABLES},
@@ -236,7 +247,9 @@ def synopsis_generate(
 @app.get("/api/scale-meta")
 def get_scale_meta(
     variable: str = "wind_speed",
-    level: int = 850,
+    level: str = "",
+    waveband: str = "",
+    direction: str = "",
     color_step: int = 1,
     mode: str = "raw",
     scale_min: float | None = None,
@@ -247,6 +260,11 @@ def get_scale_meta(
     precip_window: int = 3,
     temp_unit: str = "",
 ):
+    try:
+        resolved = resolve_variable_selection(variable, level, waveband=waveband, direction=direction)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    variable, level = resolved.variable, resolved.level
     _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if temp_unit not in {"", "F", "C"}:
         raise HTTPException(status_code=422, detail="temp_unit must be '', 'F', or 'C'")
@@ -330,7 +348,9 @@ def get_map(
     hour: str = "00",
     hours: str = "",
     variable: str = "wind_speed",
-    level: int = 850,
+    level: str = "",
+    waveband: str = "",
+    direction: str = "",
     region: str = "CONUS",
     wind_step: int = 0,
     wind_type: str = "vectors",
@@ -364,6 +384,11 @@ def get_map(
     # planning, rendering) keeps seeing a plain positive number (#45).
     if wind_step < 0:
         wind_step = DEFAULT_WIND_DENSITY
+    try:
+        resolved = resolve_variable_selection(variable, level, waveband=waveband, direction=direction)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    variable, level = resolved.variable, resolved.level
     _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded", "none"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")

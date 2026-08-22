@@ -276,6 +276,41 @@ const RADIATION_API_VARIABLES: Record<string, string> = {
   'toa_radiation:longwave:up': 'olr',
 }
 
+const CLOUD_COVER_URL_LEVELS: Record<string, string> = {
+  atmos_col_cloud: 'total_column',
+  low_cloud: 'low',
+  middle_cloud: 'middle',
+  high_cloud: 'high',
+  boundary_cloud: 'boundary',
+  convective_cloud: 'convective',
+}
+
+const URL_CLOUD_COVER_LEVELS: Record<string, string> = {
+  total: 'atmos_col_cloud',
+  total_column: 'atmos_col_cloud',
+  column: 'atmos_col_cloud',
+  atmos_col: 'atmos_col_cloud',
+  low: 'low_cloud',
+  middle: 'middle_cloud',
+  mid: 'middle_cloud',
+  high: 'high_cloud',
+  boundary: 'boundary_cloud',
+  boundary_layer: 'boundary_cloud',
+  convective: 'convective_cloud',
+}
+
+const RADIATION_URL_LEVELS: Record<string, string> = {
+  surface_radiation: 'surface',
+  toa_radiation: 'toa',
+}
+
+const URL_RADIATION_LEVELS: Record<string, string> = {
+  surface: 'surface_radiation',
+  sfc: 'surface_radiation',
+  toa: 'toa_radiation',
+  top_of_atmosphere: 'toa_radiation',
+}
+
 type UiSelection = {
   variable: string
   level: string
@@ -298,6 +333,72 @@ for (const [key, apiVariable] of Object.entries(RADIATION_API_VARIABLES)) {
     radiationWaveband: waveband,
     radiationDirection: direction,
   })
+}
+
+function normalizeUrlToken(value: string | undefined | null): string {
+  return (value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+}
+
+function urlRadiationWaveband(value: string | undefined | null): RadiationWaveband {
+  const key = normalizeUrlToken(value)
+  return key === 'longwave' || key === 'lw' ? 'longwave' : 'shortwave'
+}
+
+function urlRadiationDirection(value: string | undefined | null): RadiationDirection | undefined {
+  const key = normalizeUrlToken(value)
+  if (key === 'up' || key === 'upward' || key === 'outgoing' || key === 'out') return 'up'
+  if (key === 'down' || key === 'downward' || key === 'incoming' || key === 'in') return 'down'
+  return undefined
+}
+
+export function radiationDirectionForSelection(
+  level: string,
+  radiationWaveband: RadiationWaveband = 'shortwave',
+  radiationDirection: RadiationDirection = 'down',
+): RadiationDirection {
+  return level === 'toa_radiation' && radiationWaveband === 'longwave' ? 'up' : radiationDirection
+}
+
+export function urlVariableForSelection(
+  variable: string,
+  level: string,
+  humidityType: HumidityType = 'relative',
+  radiationWaveband: RadiationWaveband = 'shortwave',
+  radiationDirection: RadiationDirection = 'down',
+): string {
+  if (variable === 'cloud_cover') return 'cloud_cover'
+  if (variable === 'radiation') return 'radiation'
+  return apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection)
+}
+
+export function urlLevelForSelection(variable: string, level: string): string {
+  if (variable === 'cloud_cover') return CLOUD_COVER_URL_LEVELS[level] ?? 'total_column'
+  if (variable === 'radiation') return RADIATION_URL_LEVELS[level] ?? 'surface'
+  return apiLevelForSelection(variable, level)
+}
+
+export function uiSelectionForUrlVariable(
+  apiVariable: string,
+  apiLevel: string,
+  waveband?: string | null,
+  direction?: string | null,
+): UiSelection {
+  if (apiVariable === 'cloud_cover') {
+    const level = URL_CLOUD_COVER_LEVELS[normalizeUrlToken(apiLevel)] ?? 'atmos_col_cloud'
+    return { variable: 'cloud_cover', level }
+  }
+  if (apiVariable === 'radiation') {
+    const level = URL_RADIATION_LEVELS[normalizeUrlToken(apiLevel)] ?? 'surface_radiation'
+    const radiationWaveband = urlRadiationWaveband(waveband)
+    const parsedDirection = urlRadiationDirection(direction)
+    return {
+      variable: 'radiation',
+      level,
+      radiationWaveband,
+      radiationDirection: radiationDirectionForSelection(level, radiationWaveband, parsedDirection ?? 'down'),
+    }
+  }
+  return uiSelectionForApiVariable(apiVariable, apiLevel)
 }
 
 export function levelOptionsForVariable(variable: string, humidityType: HumidityType = 'relative'): SelectOption[] {
@@ -358,7 +459,7 @@ export function apiVariableForSelection(
     return humidityType === 'specific' ? 'humidity' : levelConfig?.apiVariable ?? 'rel_humidity'
   }
   if (variable === 'radiation') {
-    const safeDirection = level === 'toa_radiation' && radiationWaveband === 'longwave' ? 'up' : radiationDirection
+    const safeDirection = radiationDirectionForSelection(level, radiationWaveband, radiationDirection)
     return RADIATION_API_VARIABLES[`${level}:${radiationWaveband}:${safeDirection}`] ?? 'radiation_sw_down_surface'
   }
   if (variable === 'olr') return 'olr'

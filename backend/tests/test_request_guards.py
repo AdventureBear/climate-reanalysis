@@ -110,18 +110,25 @@ def test_precip_total_anomaly_is_raw_only(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "variable",
+    ("level", "resolved_variable"),
     [
-        "cloud_cover_total",
-        "cloud_cover_low",
-        "cloud_cover_middle",
-        "cloud_cover_high",
-        "cloud_cover_boundary",
-        "cloud_cover_convective",
+        ("total_column", "cloud_cover_total"),
+        ("low", "cloud_cover_low"),
+        ("middle", "cloud_cover_middle"),
+        ("high", "cloud_cover_high"),
+        ("boundary", "cloud_cover_boundary"),
+        ("convective", "cloud_cover_convective"),
     ],
 )
-def test_cloud_cover_raw_map_is_available(monkeypatch, variable):
-    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+def test_cloud_cover_public_variable_resolves_named_level(monkeypatch, level, resolved_variable):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["variable"] = req.variable
+        captured["level"] = req.level
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
     client = TestClient(main_module.app)
 
     response = client.get(
@@ -129,17 +136,17 @@ def test_cloud_cover_raw_map_is_available(monkeypatch, variable):
         params={
             "date": "20260101",
             "hour": "12",
-            "variable": variable,
-            "level": "1000",
+            "variable": "cloud_cover",
+            "level": level,
             "region": "CONUS",
         },
     )
 
     assert response.status_code == 200
+    assert captured == {"variable": resolved_variable, "level": 1000}
 
 
-@pytest.mark.parametrize("variable", ["cloud_cover_total", "cloud_cover_low"])
-def test_cloud_cover_anomaly_is_raw_only(monkeypatch, variable):
+def test_cloud_cover_rejects_numeric_alias_level(monkeypatch):
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)
 
@@ -148,8 +155,28 @@ def test_cloud_cover_anomaly_is_raw_only(monkeypatch, variable):
         params={
             "date": "20260101",
             "hour": "12",
-            "variable": variable,
+            "variable": "cloud_cover",
             "level": "1000",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "cloud_cover level must be one of" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("level", ["total_column", "low"])
+def test_cloud_cover_anomaly_is_raw_only(monkeypatch, level):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "cloud_cover",
+            "level": level,
             "region": "CONUS",
             "mode": "anomaly",
         },
@@ -189,19 +216,44 @@ def test_cloud_cover_scale_meta_uses_percent_fixed_scale(variable):
     assert payload["domain_max"] == 100
 
 
+def test_cloud_cover_scale_meta_accepts_public_variable_and_named_level():
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/scale-meta",
+        params={
+            "variable": "cloud_cover",
+            "level": "middle",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scale_kind"] == "fixed-cloud-cover-middle"
+    assert payload["unit"] == "%"
+
+
 @pytest.mark.parametrize(
-    "variable",
+    ("level", "waveband", "direction", "resolved_variable"),
     [
-        "radiation_sw_down_surface",
-        "radiation_sw_up_surface",
-        "radiation_lw_down_surface",
-        "radiation_lw_up_surface",
-        "radiation_sw_down_toa",
-        "radiation_sw_up_toa",
+        ("surface", "shortwave", "down", "radiation_sw_down_surface"),
+        ("surface", "shortwave", "up", "radiation_sw_up_surface"),
+        ("surface", "longwave", "down", "radiation_lw_down_surface"),
+        ("surface", "longwave", "up", "radiation_lw_up_surface"),
+        ("toa", "shortwave", "down", "radiation_sw_down_toa"),
+        ("toa", "shortwave", "up", "radiation_sw_up_toa"),
+        ("toa", "longwave", "up", "olr"),
     ],
 )
-def test_radiation_raw_map_is_available(monkeypatch, variable):
-    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+def test_radiation_public_variable_resolves_options(monkeypatch, level, waveband, direction, resolved_variable):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["variable"] = req.variable
+        captured["level"] = req.level
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
     client = TestClient(main_module.app)
 
     response = client.get(
@@ -209,17 +261,19 @@ def test_radiation_raw_map_is_available(monkeypatch, variable):
         params={
             "date": "20260101",
             "hour": "12",
-            "variable": variable,
-            "level": "1000",
+            "variable": "radiation",
+            "level": level,
+            "waveband": waveband,
+            "direction": direction,
             "region": "CONUS",
         },
     )
 
     assert response.status_code == 200
+    assert captured == {"variable": resolved_variable, "level": 1000}
 
 
-@pytest.mark.parametrize("variable", ["radiation_sw_down_surface", "radiation_lw_up_surface"])
-def test_radiation_anomaly_is_raw_only(monkeypatch, variable):
+def test_radiation_rejects_numeric_alias_level(monkeypatch):
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)
 
@@ -228,8 +282,59 @@ def test_radiation_anomaly_is_raw_only(monkeypatch, variable):
         params={
             "date": "20260101",
             "hour": "12",
-            "variable": variable,
+            "variable": "radiation",
             "level": "1000",
+            "waveband": "shortwave",
+            "direction": "down",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "radiation level must be 'surface' or 'toa'"
+
+
+def test_radiation_rejects_unavailable_option_combo(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "radiation",
+            "level": "toa",
+            "waveband": "longwave",
+            "direction": "down",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "radiation combination is not available" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("level", "waveband", "direction"),
+    [
+        ("surface", "shortwave", "down"),
+        ("surface", "longwave", "up"),
+    ],
+)
+def test_radiation_anomaly_is_raw_only(monkeypatch, level, waveband, direction):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "radiation",
+            "level": level,
+            "waveband": waveband,
+            "direction": direction,
             "region": "CONUS",
             "mode": "anomaly",
         },
@@ -266,6 +371,25 @@ def test_radiation_scale_meta_uses_fixed_watts_scale(variable, domain_max):
     assert payload["scale_kind"] == f"fixed-{variable.replace('_', '-')}"
     assert payload["unit"] == "W/m²"
     assert payload["domain_max"] == domain_max
+
+
+def test_radiation_scale_meta_accepts_public_variable_and_options():
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/scale-meta",
+        params={
+            "variable": "radiation",
+            "level": "toa",
+            "waveband": "shortwave",
+            "direction": "up",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scale_kind"] == "fixed-radiation-sw-up-toa"
+    assert payload["unit"] == "W/m²"
 
 
 def test_precip_window_is_only_for_precip_total(monkeypatch):
