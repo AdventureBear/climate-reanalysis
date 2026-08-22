@@ -1,14 +1,12 @@
 import { HOURS, normalizeColorStep } from './sharedOptions'
 import {
   RAW_ONLY_API_VARIABLES,
+  apiLevelForSelection,
   apiVariableForSelection,
-  radiationDirectionForSelection,
   type HumidityType,
   type RadiationDirection,
   type RadiationWaveband,
-  uiSelectionForUrlVariable,
-  urlLevelForSelection,
-  urlVariableForSelection,
+  uiSelectionForApiVariable,
 } from './variableConfig'
 
 // Mirror the backend request guards (MAX_COMPOSITE_DATES / MAX_COMPOSITE_MONTHS
@@ -358,20 +356,8 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     recipe.radiationWaveband,
     recipe.radiationDirection,
   )
-  const urlVariable = urlVariableForSelection(
-    recipe.variable,
-    recipe.level,
-    recipe.humidityType,
-    recipe.radiationWaveband,
-    recipe.radiationDirection,
-  )
-  const level = urlLevelForSelection(recipe.variable, recipe.level)
-  const params: Record<string, string> = { variable: urlVariable, level, region: recipe.region }
-  if (recipe.variable === 'radiation') {
-    const waveband = recipe.radiationWaveband ?? 'shortwave'
-    params.waveband = waveband
-    params.direction = radiationDirectionForSelection(recipe.level, waveband, recipe.radiationDirection ?? 'down')
-  }
+  const level = apiLevelForSelection(recipe.variable, recipe.level)
+  const params: Record<string, string> = { variable, level, region: recipe.region }
 
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(variable)
   const renderMode = rawOnlyVariable ? 'raw' : recipe.displayMode
@@ -573,21 +559,12 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
 
   const apiVariable = params.get('variable')
   const apiLevel = params.get('level') ?? '850'
-  const uiSelection = apiVariable ? uiSelectionForUrlVariable(apiVariable, apiLevel, params.get('waveband'), params.get('direction')) : undefined
+  const uiSelection = apiVariable ? uiSelectionForApiVariable(apiVariable, apiLevel) : {}
   const parsedHumidityType: HumidityType | undefined = apiVariable === 'humidity'
     ? 'specific'
     : apiVariable === 'rel_humidity' || apiVariable === 'rel_humidity_2m'
       ? 'relative'
       : undefined
-  const resolvedApiVariable = uiSelection?.variable && uiSelection.level
-    ? apiVariableForSelection(
-        uiSelection.variable,
-        uiSelection.level,
-        parsedHumidityType,
-        uiSelection.radiationWaveband,
-        uiSelection.radiationDirection,
-      )
-    : apiVariable
   const parsedWindType = windType(params.get('wind_type')) ?? 'barbs'
   const windStep = params.get('wind_step')
   // wind_step=0 (or junk) in a URL means "no glyph overlay", never "density
@@ -595,17 +572,17 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   // -1 is the auto sentinel: glyphs on, backend picks the density (#45).
   const windStepUsable = Number(windStep) > 0 || windStep === AUTO_DENSITY
   const parsedColorStep = params.get('color_step')
-  const isWindApiVariable = resolvedApiVariable === 'wind_speed' || resolvedApiVariable === 'wind_10m'
+  const isWindApiVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
   const parsedDisplayMode = displayMode(params.get('mode'), params)
-  const parsedTime = resolvedApiVariable === 'precip_total'
+  const parsedTime = apiVariable === 'precip_total'
     ? precipTotalTimeRecipeFromUrl(params)
     : timeRecipeFromUrl(params)
 
   return {
-    ...(uiSelection ?? {}),
+    ...uiSelection,
     humidityType: parsedHumidityType,
     region: params.get('region') ?? undefined,
-    displayMode: resolvedApiVariable && RAW_ONLY_API_VARIABLES.has(resolvedApiVariable) ? 'raw' : parsedDisplayMode,
+    displayMode: apiVariable && RAW_ONLY_API_VARIABLES.has(apiVariable) ? 'raw' : parsedDisplayMode,
     climoSource: climoSource(params.get('climo_source')),
     time: parsedTime,
     // Old links may carry wind_overlay_mode; the glyph quantity now follows
