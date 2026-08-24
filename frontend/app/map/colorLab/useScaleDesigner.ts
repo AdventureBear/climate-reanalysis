@@ -264,7 +264,7 @@ export function useScaleDesigner({ enabled, colorStep, windUnit, pwatUnit, preci
     const importedColorStep = Number(parsed.color_step)
     return {
       ok: true,
-      colorStep: Number.isFinite(importedColorStep) ? normalizeColorStep(importedColorStep) : undefined,
+      colorStep: Number.isFinite(importedColorStep) ? normalizeColorStep(String(importedColorStep)) : undefined,
     }
   }
 

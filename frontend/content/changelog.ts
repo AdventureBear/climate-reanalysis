@@ -5,6 +5,12 @@ export type ChangelogDay = {
 
 export const changelogEntries: ChangelogDay[] = [
   {
+    date: '2026-08-23',
+    changes: [
+      'Added lifted index, relative vorticity, storm helicity index, storm motion and wind gust variables'
+    ],
+  },
+  {
     date: '2026-08-21',
     changes: [
       'Added accumulated precipitation, cloud-cover layers, and radiation flux maps to the map builder.',
@@ -97,5 +103,5 @@ export const changelogEntries: ChangelogDay[] = [
         'Fetch a grib2 file and calculate wind speed for a location',
         'plot wind speed on a leaflet map'
     ],
-  },
+  }
 ]
