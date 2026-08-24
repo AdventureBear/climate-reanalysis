@@ -288,16 +288,24 @@ export function previewGradient(anchors: ScaleAnchor[], segments: ScaleSegment[]
 
 export function getScaleFamilies(variable: string, mode: DisplayMode): ScaleFamily[] {
   if (COLOR_LAB_SINGLE_LEVEL_VARIABLES.has(variable)) {
+    const label =
+      variable === 'precipitable_water' || variable === 'cloud_cover_total'
+        ? 'Column'
+        : variable.startsWith('cloud_cover_')
+          ? 'Layer'
+          : variable === 'storm_relative_helicity'
+            ? '0-3 km'
+            : variable === 'storm_motion'
+              ? '0-6 km'
+              : variable.startsWith('lifted_index_')
+                ? 'Parcel'
+                : variable === 'olr' || variable.endsWith('_toa')
+                  ? 'TOA'
+                  : 'Surface'
     return [
       {
         key: 'surface',
-        label: variable === 'precipitable_water' || variable === 'cloud_cover_total'
-          ? 'Column'
-          : variable.startsWith('cloud_cover_')
-            ? 'Layer'
-            : variable === 'olr' || variable.endsWith('_toa')
-              ? 'TOA'
-              : 'Surface',
+        label,
         levels: [1000],
         description: 'This field has one fixed vertical coordinate in CORe.',
       },

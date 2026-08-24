@@ -912,11 +912,15 @@ _ABSV_SCALE_CONFIG = {
 
 _REL_VORTICITY_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
-    "domain_min": -30.0,
-    "domain_max": 30.0,
-    "anchor_values": [-30.0, -16.0, -8.0, 0.0, 8.0, 16.0, 30.0],
-    "anchor_colors": ["#08306b", "#4292c6", "#c6dbef", "#f7f7f7", "#fdae6b", "#e6550d", "#7f2704"],
-    "key_breakpoints": [-8.0, 8.0],
+    "domain_min": -40.0,
+    "domain_max": 55.0,
+    "anchor_values": [-40.0, -30.0, -20.0, -10.0, -2.0, 0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0],
+    "anchor_colors": [
+        "#2b2b2b", "#6a6a6a", "#a6a6a6", "#d9d9d9", "#f7f7f7", "#fff36d",
+        "#ffc400", "#ff8c00", "#f04a00", "#c6003b", "#b000a8", "#730098",
+        "#30008a", "#00116e", "#234f93", "#62b8d0", "#8ff7f2",
+    ],
+    "key_breakpoints": [-20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0, 50.0],
     "step": 1.0,
 }
 
@@ -932,12 +936,22 @@ _SRH_SCALE_CONFIG = {
 
 _LIFTED_INDEX_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
-    "domain_min": -12.0,
-    "domain_max": 20.0,
-    "anchor_values": [-12.0, -8.0, -4.0, 0.0, 4.0, 8.0, 14.0, 20.0],
-    "anchor_colors": ["#7a0177", "#b30000", "#e6550d", "#fee391", "#f7f7f7", "#bdd7e7", "#3182bd", "#08519c"],
-    "key_breakpoints": [-6.0, -4.0, 0.0],
-    "step": 1.0,
+    "domain_min": -18.0,
+    "domain_max": 0.0,
+    "anchor_values": [
+        -18.0, -14.2, -14.0, -10.2, -10.0, -8.2, -8.0, -6.2,
+        -6.0, -4.2, -4.0, -2.2, -2.0, -0.2, 0.0,
+    ],
+    "anchor_colors": [
+        "#caa7a8", "#8a3e48", "#b2445a", "#e9bec4", "#db99e8",
+        "#73088a", "#8b0850", "#dc4211", "#e26f03", "#e9de97",
+        "#a8c8ce", "#37536a", "#696969", "#f0f0f0", "#ffffff",
+    ],
+    "key_breakpoints": [-14.0, -10.0, -8.0, -6.0, -4.0, -2.0],
+    "step": 0.2,
+    "tick_values": [-18.0, -14.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0],
+    "label_extensions": False,
+    "colorbar_spacing": "uniform_ticks",
 }
 
 # Snow depth in inches (native m). White → blues → purples.
@@ -1562,6 +1576,29 @@ def _uniform_tick_positions(boundaries: list[float], ticks: list[float]) -> list
     return np.interp(ticks, boundaries, idx).tolist()
 
 
+def _colors_resampled_to_uniform_ticks(
+    boundaries: list[float],
+    colors: list[tuple[float, float, float]],
+    ticks: list[float],
+) -> list[tuple[float, float, float]]:
+    if len(boundaries) < 2 or len(colors) < 2 or len(ticks) < 2:
+        return colors
+    source_mids = np.array(_interval_midpoints(boundaries), dtype=float)
+    source_rgb = np.array(colors, dtype=float)
+    visual_count = len(colors)
+    visual_coords = (np.arange(visual_count, dtype=float) + 0.5) / visual_count * (len(ticks) - 1)
+    tick_coords = np.arange(len(ticks), dtype=float)
+    sample_values = np.interp(visual_coords, tick_coords, np.array(ticks, dtype=float))
+    return [
+        (
+            float(np.interp(value, source_mids, source_rgb[:, 0])),
+            float(np.interp(value, source_mids, source_rgb[:, 1])),
+            float(np.interp(value, source_mids, source_rgb[:, 2])),
+        )
+        for value in sample_values
+    ]
+
+
 def _custom_scale_from_spec(
     scale_spec: str | None,
     *,
@@ -1825,6 +1862,7 @@ def describe_color_scale(
             "key_breakpoints": cfg["key_breakpoints"],
             "domain_min": cfg["domain_min"],
             "domain_max": cfg["domain_max"],
+            "colorbar_spacing": cfg.get("colorbar_spacing"),
             **stats,
         }
 
@@ -1848,6 +1886,7 @@ def describe_color_scale(
             "key_breakpoints": cfg["key_breakpoints"],
             "domain_min": cfg["domain_min"],
             "domain_max": cfg["domain_max"],
+            "colorbar_spacing": cfg.get("colorbar_spacing"),
             **stats,
         }
 
@@ -2389,12 +2428,16 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 transform=ccrs.PlateCarree(), extend=cfg_base["extend"],
             )
             tick_every = cfg_base["tick_every"]
-            ticks = np.arange(steps[0], steps[-1] + tick_every / 2, tick_every)
+            ticks = cfg_base.get("tick_values")
+            if ticks is None:
+                ticks = np.arange(steps[0], steps[-1] + tick_every / 2, tick_every).tolist()
             cbar_cfg = {
-                'ticks':      ticks.tolist(),
+                'ticks':      ticks,
                 'ticklabels': [f"{v:g}" for v in ticks],
                 'ylabel':     ylabel,
                 'extend':     cfg_base["extend"],
+                'label_extensions': cfg_base.get("label_extensions", True),
+                'colorbar_spacing': cfg_base.get("colorbar_spacing"),
                 'colors': interval_colors, 'boundaries': steps,
             }
 
@@ -2573,10 +2616,17 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         cb_colors = cbar_cfg.get('colors')
         cb_boundaries = cbar_cfg.get('boundaries')
         if cb_colors is not None and cb_boundaries is not None:
-            cb_axis_boundaries = list(np.arange(len(cb_boundaries), dtype=float))
-            cb_axis_values = [i + 0.5 for i in range(len(cb_colors))]
-            cb_cmap = mcolors.ListedColormap(cb_colors)
-            cb_norm = mcolors.BoundaryNorm(cb_axis_boundaries, ncolors=len(cb_colors), clip=True)
+            cb_display_colors = cb_colors
+            if cbar_cfg.get('colorbar_spacing') == 'uniform_ticks' and cbar_cfg.get('ticks'):
+                cb_display_colors = _colors_resampled_to_uniform_ticks(
+                    cb_boundaries,
+                    cb_colors,
+                    cbar_cfg['ticks'],
+                )
+            cb_axis_boundaries = list(np.arange(len(cb_display_colors) + 1, dtype=float))
+            cb_axis_values = [i + 0.5 for i in range(len(cb_display_colors))]
+            cb_cmap = mcolors.ListedColormap(cb_display_colors)
+            cb_norm = mcolors.BoundaryNorm(cb_axis_boundaries, ncolors=len(cb_display_colors), clip=True)
             # ColorbarBase respects our discrete interval boundaries exactly; the
             # generic ScalarMappable path was compressing some fixed scales into
             # the middle of the bar despite linear breakpoints.
@@ -2599,12 +2649,21 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         if cbar_cfg['ticks'] is not None:
             labels = list(cbar_cfg['ticklabels'])
             ext = cbar_cfg.get('extend', 'neither')
-            if ext in ('max', 'both'):
+            label_extensions = cbar_cfg.get('label_extensions', True)
+            if label_extensions and ext in ('max', 'both'):
                 labels[-1] = str(labels[-1]) + '+'
-            if ext in ('min', 'both'):
+            if label_extensions and ext in ('min', 'both'):
                 labels[0] = str(labels[0]) + '−'
             if cb_colors is not None and cb_boundaries is not None:
-                tick_positions = _uniform_tick_positions(cb_boundaries, cbar_cfg['ticks'])
+                if cbar_cfg.get('colorbar_spacing') == 'uniform_ticks':
+                    tick_positions = np.linspace(
+                        0,
+                        len(cb_display_colors),
+                        len(cbar_cfg['ticks']),
+                        dtype=float,
+                    ).tolist()
+                else:
+                    tick_positions = _uniform_tick_positions(cb_boundaries, cbar_cfg['ticks'])
                 cbar.set_ticks(tick_positions)
             else:
                 cbar.set_ticks(cbar_cfg['ticks'])

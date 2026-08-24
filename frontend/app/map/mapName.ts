@@ -34,6 +34,9 @@ function variableLabel(variable: string | undefined, recipe?: MapRecipe): string
   if (variable === 'humidity') {
     return recipe?.humidityType === 'specific' ? 'Specific Humidity' : 'Relative Humidity'
   }
+  if (variable === 'vorticity') {
+    return recipe?.vorticityType === 'absolute' ? 'Absolute Vorticity' : 'Relative Vorticity'
+  }
   if (variable === 'precip_total') {
     return `${recipe?.precipWindow ?? '3'} Hour Precip Total`
   }

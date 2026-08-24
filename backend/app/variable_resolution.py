@@ -72,6 +72,23 @@ RADIATION_VARIABLES = {
     ("toa", "longwave", "up"): "olr",
 }
 
+LIFTED_INDEX_LEVELS = {
+    "": "lifted_index_surface",
+    "surface": "lifted_index_surface",
+    "sfc": "lifted_index_surface",
+    "surface_parcel": "lifted_index_surface",
+    "4_layer": "lifted_index_best",
+    "4layer": "lifted_index_best",
+    "best": "lifted_index_best",
+    "best_4_layer": "lifted_index_best",
+    "best_4layer": "lifted_index_best",
+    "0_30mb": "lifted_index_parcel",
+    "0_30_mb": "lifted_index_parcel",
+    "30_0mb": "lifted_index_parcel",
+    "30_0_mb": "lifted_index_parcel",
+    "parcel": "lifted_index_parcel",
+}
+
 
 def _normal_key(value: object) -> str:
     return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -122,6 +139,13 @@ def resolve_variable_selection(
             )
         return ResolvedVariable(concrete, 1000)
 
+    if variable == "lifted_index":
+        concrete = LIFTED_INDEX_LEVELS.get(_normal_key(level))
+        if concrete is None:
+            allowed = ["surface", "4-layer", "0-30mb"]
+            raise ValueError(f"lifted_index level must be one of {allowed}")
+        return ResolvedVariable(concrete, 1000)
+
     if variable not in VARIABLES:
-        raise ValueError(f"variable must be one of {list(VARIABLES.keys()) + ['cloud_cover', 'radiation']}")
+        raise ValueError(f"variable must be one of {list(VARIABLES.keys()) + ['cloud_cover', 'radiation', 'lifted_index']}")
     return ResolvedVariable(variable, _parse_int_level(level))

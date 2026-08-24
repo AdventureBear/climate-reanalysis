@@ -26,6 +26,13 @@ npm run build     # tsc + vite production build
 npm run lint      # eslint
 ```
 
+### Local Workflow Preferences
+
+- Do not build or lint for minor/small updates. If it is unclear whether a change is small, ask first.
+- Build and/or lint after implementing a major feature, broad refactor, or cross-cutting behavior change.
+- Do not start, restart, or kill local frontend/backend servers unless the user explicitly asks. The user normally already has servers running.
+- When frontend behavior changes, tell the user which browser smoke tests to run. The user tests in their own browser and does not use Codex web preview.
+
 ---
 
 ## What This Project Is

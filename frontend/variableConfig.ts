@@ -18,6 +18,7 @@ type VariableConfig = {
 }
 
 export type HumidityType = 'relative' | 'specific'
+export type VorticityType = 'relative' | 'absolute'
 export type RadiationWaveband = 'shortwave' | 'longwave'
 export type RadiationDirection = 'down' | 'up'
 
@@ -138,9 +139,36 @@ const VARIABLE_CONFIG = {
       { value: 'surface_2m_dpt', label: 'Surface (2m)', apiVariable: 'dewpoint_2m', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
-  absv: {
-    label: 'Absolute Vorticity',
-    levels: pressureLevels('absv'),
+  vorticity: {
+    label: 'Vorticity',
+    levels: pressureLevels('rel_vorticity'),
+  },
+  storm_relative_helicity: {
+    label: 'Storm-Relative Helicity',
+    levels: [
+      { value: 'srh_0_3km', label: '0-3 km AGL', apiVariable: 'storm_relative_helicity', apiLevel: '1000', levelKind: 'layer' },
+    ],
+  },
+  wind_gust: {
+    label: 'Wind Gust',
+    levels: [
+      { value: 'surface_gust', label: 'Surface', apiVariable: 'wind_gust', apiLevel: '1000', levelKind: 'surface' },
+    ],
+  },
+  storm_motion: {
+    label: 'Storm Motion',
+    levels: [
+      { value: 'storm_motion_0_6km', label: '0-6 km AGL', apiVariable: 'storm_motion', apiLevel: '1000', levelKind: 'layer' },
+    ],
+  },
+  lifted_index: {
+    label: 'Lifted Index',
+    group: 'multi',
+    levels: [
+      { value: 'surface', label: 'Surface parcel', apiVariable: 'lifted_index_surface', apiLevel: '1000', levelKind: 'surface' },
+      { value: '4-layer', label: 'Best 4-layer', apiVariable: 'lifted_index_best', apiLevel: '1000', levelKind: 'surface' },
+      { value: '0-30mb', label: '0-30 mb parcel', apiVariable: 'lifted_index_parcel', apiLevel: '1000', levelKind: 'layer' },
+    ],
   },
   snow_depth: {
     label: 'Snow Depth',
@@ -211,6 +239,13 @@ export const COLOR_LAB_VARIABLES: SelectOption[] = [
   { value: 'cin_mu', label: 'CIN (Most-Unstable)' },
   { value: 'dewpoint_2m', label: '2m Dewpoint' },
   { value: 'absv', label: 'Absolute Vorticity' },
+  { value: 'rel_vorticity', label: 'Relative Vorticity' },
+  { value: 'storm_relative_helicity', label: 'Storm-Relative Helicity (0-3 km AGL)' },
+  { value: 'wind_gust', label: 'Wind Gust' },
+  { value: 'storm_motion', label: 'Storm Motion (0-6 km AGL)' },
+  { value: 'lifted_index_surface', label: 'Lifted Index (Surface)' },
+  { value: 'lifted_index_best', label: 'Lifted Index (Best 4-layer)' },
+  { value: 'lifted_index_parcel', label: 'Lifted Index (30-0 mb Parcel)' },
   { value: 'snow_depth', label: 'Snow Depth' },
 ]
 
@@ -219,7 +254,10 @@ export const SURFACE_LEVELS = new Set([
   'atmos_col_cloud', 'low_cloud', 'middle_cloud', 'high_cloud', 'boundary_cloud', 'convective_cloud',
   'surface_radiation', 'toa_radiation',
   'surface_cape', 'ml_cape', 'mu_cape', 'surface_cin', 'ml_cin', 'mu_cin',
-  'surface_2m_dpt', 'surface_2m_rh', 'surface_snod',
+  'surface_2m_dpt', 'surface_2m_rh',
+  'srh_0_3km', 'surface_gust', 'storm_motion_0_6km',
+  'surface', '4-layer', '0-30mb',
+  'surface_snod',
 ])
 // Surface/named-level API variables whose monthly obs composites are NOT
 // wired (MSLP has a monthly archive record and is exempt). Mirrors the
@@ -237,15 +275,25 @@ export const FLX_VARIABLES = new Set([
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
   'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
   'radiation_sw_down_toa', 'radiation_sw_up_toa',
-  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
+  'dewpoint_2m', 'rel_humidity_2m',
+  'storm_relative_helicity', 'wind_gust', 'storm_motion',
+  'lifted_index_surface', 'lifted_index_best', 'lifted_index_parcel',
+  'snow_depth',
 ])
 export const COLOR_LAB_SINGLE_LEVEL_VARIABLES = new Set([
   'temp_2m', 'wind_10m', 'surface_pressure', 'precipitable_water', 'precip_rate', 'precip_total',
   'cloud_cover_total', 'cloud_cover_low', 'cloud_cover_middle', 'cloud_cover_high', 'cloud_cover_boundary', 'cloud_cover_convective', 'olr',
   'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
   'radiation_sw_down_toa', 'radiation_sw_up_toa',
-  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu', 'dewpoint_2m', 'rel_humidity_2m', 'snow_depth',
+  'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
+  'dewpoint_2m', 'rel_humidity_2m',
+  'storm_relative_helicity', 'wind_gust', 'storm_motion',
+  'lifted_index_surface', 'lifted_index_best', 'lifted_index_parcel',
+  'snow_depth',
 ])
+
+export const WIND_UNIT_API_VARIABLES = new Set(['wind_speed', 'wind_10m', 'wind_gust', 'storm_motion'])
 
 // API variables with no wired climatology baseline — raw display mode only.
 // Mirrors backend config.py VARIABLES[*].climo_sources (served at GET / as
@@ -263,7 +311,10 @@ export const RAW_ONLY_API_VARIABLES = new Set([
   'radiation_sw_down_surface', 'radiation_sw_up_surface', 'radiation_lw_down_surface', 'radiation_lw_up_surface',
   'radiation_sw_down_toa', 'radiation_sw_up_toa',
   'cape', 'cape_ml', 'cape_mu', 'cin', 'cin_ml', 'cin_mu',
-  'dewpoint_2m', 'rel_humidity_2m', 'absv', 'snow_depth',
+  'dewpoint_2m', 'rel_humidity_2m', 'absv', 'rel_vorticity',
+  'storm_relative_helicity', 'wind_gust', 'storm_motion',
+  'lifted_index_surface', 'lifted_index_best', 'lifted_index_parcel',
+  'snow_depth',
 ])
 
 const RADIATION_API_VARIABLES: Record<string, string> = {
@@ -311,11 +362,34 @@ const URL_RADIATION_LEVELS: Record<string, string> = {
   top_of_atmosphere: 'toa_radiation',
 }
 
+const LIFTED_INDEX_URL_LEVELS: Record<string, string> = {
+  surface: 'surface',
+  '4-layer': '4-layer',
+  '0-30mb': '0-30mb',
+}
+
+const URL_LIFTED_INDEX_LEVELS: Record<string, string> = {
+  surface: 'surface',
+  sfc: 'surface',
+  surface_parcel: 'surface',
+  '4_layer': '4-layer',
+  '4layer': '4-layer',
+  best: '4-layer',
+  best_4_layer: '4-layer',
+  best_4layer: '4-layer',
+  '0_30mb': '0-30mb',
+  '0_30_mb': '0-30mb',
+  '30_0mb': '0-30mb',
+  '30_0_mb': '0-30mb',
+  parcel: '0-30mb',
+}
+
 type UiSelection = {
   variable: string
   level: string
   radiationWaveband?: RadiationWaveband
   radiationDirection?: RadiationDirection
+  vorticityType?: VorticityType
 }
 
 const API_TO_UI_SELECTION = new Map<string, UiSelection>()
@@ -365,15 +439,18 @@ export function urlVariableForSelection(
   humidityType: HumidityType = 'relative',
   radiationWaveband: RadiationWaveband = 'shortwave',
   radiationDirection: RadiationDirection = 'down',
+  vorticityType: VorticityType = 'relative',
 ): string {
   if (variable === 'cloud_cover') return 'cloud_cover'
   if (variable === 'radiation') return 'radiation'
-  return apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection)
+  if (variable === 'lifted_index') return 'lifted_index'
+  return apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection, vorticityType)
 }
 
 export function urlLevelForSelection(variable: string, level: string): string {
   if (variable === 'cloud_cover') return CLOUD_COVER_URL_LEVELS[level] ?? 'total_column'
   if (variable === 'radiation') return RADIATION_URL_LEVELS[level] ?? 'surface'
+  if (variable === 'lifted_index') return LIFTED_INDEX_URL_LEVELS[level] ?? 'surface'
   return apiLevelForSelection(variable, level)
 }
 
@@ -396,6 +473,17 @@ export function uiSelectionForUrlVariable(
       level,
       radiationWaveband,
       radiationDirection: radiationDirectionForSelection(level, radiationWaveband, parsedDirection ?? 'down'),
+    }
+  }
+  if (apiVariable === 'lifted_index') {
+    const level = URL_LIFTED_INDEX_LEVELS[normalizeUrlToken(apiLevel)] ?? 'surface'
+    return { variable: 'lifted_index', level }
+  }
+  if (apiVariable === 'absv' || apiVariable === 'rel_vorticity') {
+    return {
+      variable: 'vorticity',
+      level: apiLevel,
+      vorticityType: apiVariable === 'absv' ? 'absolute' : 'relative',
     }
   }
   return uiSelectionForApiVariable(apiVariable, apiLevel)
@@ -453,10 +541,14 @@ export function apiVariableForSelection(
   humidityType: HumidityType = 'relative',
   radiationWaveband: RadiationWaveband = 'shortwave',
   radiationDirection: RadiationDirection = 'down',
+  vorticityType: VorticityType = 'relative',
 ): string {
   if (variable === 'humidity') {
     const levelConfig = VARIABLE_CONFIG.humidity.levels.find(option => option.value === level)
     return humidityType === 'specific' ? 'humidity' : levelConfig?.apiVariable ?? 'rel_humidity'
+  }
+  if (variable === 'vorticity') {
+    return vorticityType === 'absolute' ? 'absv' : 'rel_vorticity'
   }
   if (variable === 'radiation') {
     const safeDirection = radiationDirectionForSelection(level, radiationWaveband, radiationDirection)
@@ -474,10 +566,21 @@ export function uiSelectionForApiVariable(apiVariable: string, apiLevel: string)
   if (apiVariable === 'rel_humidity' || apiVariable === 'humidity') {
     return { variable: 'humidity', level: apiLevel }
   }
+  if (apiVariable === 'absv' || apiVariable === 'rel_vorticity') {
+    return {
+      variable: 'vorticity',
+      level: apiLevel,
+      vorticityType: apiVariable === 'absv' ? 'absolute' : 'relative',
+    }
+  }
   return API_TO_UI_SELECTION.get(`${apiVariable}:${apiLevel}`) ?? API_TO_UI_SELECTION.get(apiVariable) ?? {
     variable: apiVariable,
     level: apiLevel,
   }
+}
+
+export function isWindUnitApiVariable(apiVariable: string): boolean {
+  return WIND_UNIT_API_VARIABLES.has(apiVariable)
 }
 
 export function shouldDefaultWindOverlay(apiVariable: string): boolean {

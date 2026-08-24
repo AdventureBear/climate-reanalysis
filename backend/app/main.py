@@ -191,6 +191,9 @@ def root():
                 "wavebands": ["shortwave", "longwave"],
                 "directions": ["down", "up"],
             },
+            "lifted_index": {
+                "levels": ["surface", "4-layer", "0-30mb"],
+            },
         },
         # Per-variable mode availability, derived from config.VARIABLES
         # climo_sources. The frontend registry mirrors this.

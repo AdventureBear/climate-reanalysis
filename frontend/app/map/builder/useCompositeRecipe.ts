@@ -25,8 +25,10 @@ import {
   type HumidityType,
   type RadiationDirection,
   type RadiationWaveband,
+  type VorticityType,
   apiLevelForSelection,
   apiVariableForSelection,
+  isWindUnitApiVariable,
   levelForVariableChange,
   levelOptionsForVariable,
   shouldDefaultWindOverlay,
@@ -65,6 +67,7 @@ export function useCompositeRecipe() {
   const [variable, setVariable] = useState('wind_speed')
   const [level,    setLevel]    = useState('850')
   const [humidityType, setHumidityType] = useState<HumidityType>('relative')
+  const [vorticityType, setVorticityType] = useState<VorticityType>('relative')
   const [radiationWaveband, setRadiationWaveband] = useState<RadiationWaveband>('shortwave')
   const [radiationDirection, setRadiationDirection] = useState<RadiationDirection>('down')
 
@@ -119,7 +122,7 @@ export function useCompositeRecipe() {
     } catch { /* nothing to do if storage is unavailable */ }
   }
 
-  const apiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection)
+  const apiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection, vorticityType)
   const apiLevel = apiLevelForSelection(variable, level)
   const levelOptions = levelOptionsForVariable(variable, humidityType)
   const isClimo     = timeScale === 'climatology'
@@ -242,6 +245,7 @@ export function useCompositeRecipe() {
       variable,
       level,
       humidityType: variable === 'humidity' ? humidityType : undefined,
+      vorticityType: variable === 'vorticity' ? vorticityType : undefined,
       radiationWaveband: variable === 'radiation' ? radiationWaveband : undefined,
       radiationDirection: variable === 'radiation' ? radiationDirection : undefined,
       region,
@@ -316,19 +320,22 @@ export function useCompositeRecipe() {
       }
     }
 
-    if (recipe.variable) {
-      setVariable(
-        recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m'
-          ? 'humidity'
-          : recipe.variable === 'olr'
-            ? 'radiation'
-            : recipe.variable,
-      )
-    }
+    const normalizedRecipeVariable =
+      recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m'
+        ? 'humidity'
+        : recipe.variable === 'olr'
+          ? 'radiation'
+          : recipe.variable === 'absv' || recipe.variable === 'rel_vorticity'
+            ? 'vorticity'
+            : recipe.variable
+    if (recipe.variable) setVariable(normalizedRecipeVariable ?? recipe.variable)
     if (recipe.level) setLevel(recipe.variable === 'olr' ? 'toa_radiation' : recipe.level)
     if (recipe.humidityType) setHumidityType(recipe.humidityType)
     else if (recipe.variable === 'rel_humidity' || recipe.variable === 'rel_humidity_2m') setHumidityType('relative')
     else if (recipe.variable === 'humidity') setHumidityType('specific')
+    if (recipe.vorticityType) setVorticityType(recipe.vorticityType)
+    else if (recipe.variable === 'absv') setVorticityType('absolute')
+    else if (recipe.variable === 'rel_vorticity') setVorticityType('relative')
     if (recipe.radiationWaveband) setRadiationWaveband(recipe.radiationWaveband)
     if (recipe.radiationDirection) setRadiationDirection(recipe.radiationDirection)
     if (recipe.variable === 'olr') {
@@ -353,13 +360,16 @@ export function useCompositeRecipe() {
         ? 'humidity'
         : recipe.variable === 'olr'
           ? 'radiation'
-        : recipe.variable ?? variable
+          : recipe.variable === 'absv' || recipe.variable === 'rel_vorticity'
+            ? 'vorticity'
+            : recipe.variable ?? variable
     const recipeApiVariable = apiVariableForSelection(
       recipeVariable,
       recipe.variable === 'olr' ? 'toa_radiation' : recipe.level ?? level,
       recipe.humidityType ?? humidityType,
       recipe.radiationWaveband ?? radiationWaveband,
       recipe.radiationDirection ?? radiationDirection,
+      recipe.vorticityType ?? (recipe.variable === 'absv' ? 'absolute' : recipe.variable === 'rel_vorticity' ? 'relative' : vorticityType),
     )
     const recipeIsWindVariable = recipeApiVariable === 'wind_speed' || recipeApiVariable === 'wind_10m'
     if (recipe.wind) {
@@ -480,6 +490,7 @@ export function useCompositeRecipe() {
     climoMonth, setClimoMonth,
     variable, setVariable,
     humidityType, setHumidityType,
+    vorticityType, setVorticityType,
     radiationWaveband, setRadiationWaveband,
     radiationDirection, setRadiationDirection,
     level, setLevel,
@@ -507,6 +518,7 @@ export function useCompositeRecipe() {
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, precipTotalVariable, precipTotalDailyWindow, isWindVariable,
+    isWindUnitVariable: isWindUnitApiVariable(apiVariable),
     isWindControlActive,
     isLastWindLayer,
     currentMapRecipe, applyRecipeToState,

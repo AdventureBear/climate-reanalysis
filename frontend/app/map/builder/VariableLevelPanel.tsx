@@ -5,10 +5,12 @@ import {
   SURFACE_LEVELS,
   VARIABLES,
   apiVariableForSelection,
+  isWindUnitApiVariable,
   levelForVariableChange,
   shouldDefaultWindOverlay,
   type RadiationDirection,
   type RadiationWaveband,
+  type VorticityType,
 } from '../../../variableConfig'
 import { CardRow, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState, TemperatureUnit } from './useCompositeRecipe'
@@ -18,6 +20,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
   const {
     variable, setVariable,
     humidityType, setHumidityType,
+    vorticityType, setVorticityType,
     radiationWaveband, setRadiationWaveband,
     radiationDirection, setRadiationDirection,
     level, setLevel,
@@ -30,6 +33,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
     fillMode, setFillMode,
     setWindOn, setWindType,
   } = recipe
+  const selectedApiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection, vorticityType)
 
   return (
           <Section className="w-full">
@@ -43,7 +47,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                     setVariable(nextVariable)
                     const nextLevel = levelForVariableChange(nextVariable, level, humidityType)
                     setLevel(nextLevel)
-                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel, humidityType, radiationWaveband, radiationDirection))) {
+                    if (shouldDefaultWindOverlay(apiVariableForSelection(nextVariable, nextLevel, humidityType, radiationWaveband, radiationDirection, vorticityType))) {
                       setWindOn(true)
                       setWindType('barbs')
                     }
@@ -57,7 +61,7 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                 options={levelOptions}
                 onChange={nextLevel => {
                   setLevel(nextLevel)
-                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel, humidityType, radiationWaveband, radiationDirection))) {
+                  if (shouldDefaultWindOverlay(apiVariableForSelection(variable, nextLevel, humidityType, radiationWaveband, radiationDirection, vorticityType))) {
                     setWindOn(true)
                     setWindType('barbs')
                   }
@@ -68,9 +72,9 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
 
             </div>
             </CardRow>
-            {(variable === 'wind_speed' || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total' || variable === 'radiation') && (
+            {(isWindUnitApiVariable(selectedApiVariable) || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'vorticity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total' || variable === 'radiation') && (
             <CardRow>
-                {variable === 'wind_speed' && (
+                {isWindUnitApiVariable(selectedApiVariable) && (
                   <VariableDisplayControl label="Wind Units">
                     <TabStrip
                       options={[
@@ -79,6 +83,19 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                       ]}
                       value={windUnit}
                       onChange={v => setWindUnit(v as WindUnit)}
+                      fullWidth
+                    />
+                  </VariableDisplayControl>
+                )}
+                {variable === 'vorticity' && (
+                  <VariableDisplayControl label="Vorticity Type">
+                    <TabStrip
+                      options={[
+                        { value: 'relative', label: 'Relative' },
+                        { value: 'absolute', label: 'Absolute' },
+                      ]}
+                      value={vorticityType}
+                      onChange={v => setVorticityType(v as VorticityType)}
                       fullWidth
                     />
                   </VariableDisplayControl>

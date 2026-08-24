@@ -182,11 +182,11 @@ def test_new_named_core_variables_are_raw_only(monkeypatch, variable, level):
 @pytest.mark.parametrize(
     ("variable", "level", "scale_kind", "unit", "domain_min", "domain_max", "group"),
     [
-        ("rel_vorticity", "500", "fixed-rel-vorticity", "10⁻⁵/s", -30, 30, None),
+        ("rel_vorticity", "500", "fixed-rel-vorticity", "10⁻⁵/s", -40, 55, None),
         ("storm_relative_helicity", "1000", "fixed-storm-relative-helicity", "m²/s²", -300, 600, None),
         ("wind_gust", "1000", "fixed-wind", "kt", 8, 60, "surface"),
         ("storm_motion", "1000", "fixed-wind", "kt", 15, 80, "low"),
-        ("lifted_index_best", "1000", "fixed-lifted-index-best", "K", -12, 20, None),
+        ("lifted_index_best", "1000", "fixed-lifted-index-best", "K", -18, 0, None),
     ],
 )
 def test_new_core_variable_scale_meta(variable, level, scale_kind, unit, domain_min, domain_max, group):
@@ -208,6 +208,40 @@ def test_new_core_variable_scale_meta(variable, level, scale_kind, unit, domain_
     assert payload["domain_max"] == domain_max
     if group is not None:
         assert payload["group"] == group
+
+
+@pytest.mark.parametrize(
+    ("level", "resolved_variable"),
+    [
+        ("surface", "lifted_index_surface"),
+        ("4-layer", "lifted_index_best"),
+        ("0-30mb", "lifted_index_parcel"),
+    ],
+)
+def test_lifted_index_public_variable_resolves_named_level(monkeypatch, level, resolved_variable):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["variable"] = req.variable
+        captured["level"] = req.level
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "lifted_index",
+            "level": level,
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {"variable": resolved_variable, "level": 1000}
 
 
 @pytest.mark.parametrize(

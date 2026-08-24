@@ -1,10 +1,10 @@
 // The Color Lab modal: scale designer UI over a ScaleDesigner from
 // useScaleDesigner. All state lives in the designer (owned by App) so edits
 // survive close/reopen and the generate path can read them.
-import { Check, CircleHelp, Copy, Eye, EyeOff, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Check, CircleHelp, Copy, Eye, EyeOff, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import type { DisplayMode, PrecipUnit, PwatUnit, WindUnit } from '../../../mapRecipe'
 import { normalizeColorStep } from '../../../sharedOptions'
-import { COLOR_LAB_VARIABLES, PRESSURE_LEVELS, RAW_ONLY_API_VARIABLES } from '../../../variableConfig'
+import { COLOR_LAB_VARIABLES, PRESSURE_LEVELS, RAW_ONLY_API_VARIABLES, isWindUnitApiVariable } from '../../../variableConfig'
 import { SelectField, TabStrip } from '../../../ui/controls'
 import {
   SCALE_PALETTE_PRESETS,
@@ -65,6 +65,9 @@ export default function ColorLabPanel({
     scaleSegments, setScaleSegments,
     scaleExportOpen, setScaleExportOpen,
     scaleExportCopied, setScaleExportCopied,
+    scaleImportOpen, setScaleImportOpen,
+    scaleImportDraft, setScaleImportDraft,
+    scaleImportError, setScaleImportError,
     editingAnchorId, setEditingAnchorId,
     editingSegmentId, setEditingSegmentId,
     anchorValueDrafts, setAnchorValueDrafts,
@@ -72,6 +75,7 @@ export default function ColorLabPanel({
     showOriginalScale, setShowOriginalScale,
     scaleInfoOpen, setScaleInfoOpen,
     scalePreviewRef,
+    importScaleSpec,
   } = designer
 
   const labFamilies = getScaleFamilies(labVariable, labMode)
@@ -82,6 +86,8 @@ export default function ColorLabPanel({
     const designerAnchors = sortedAnchors(scaleAnchors)
     const activeDesignerAnchors = activeAnchors(scaleAnchors)
     const activeColorStep = normalizeColorStep(colorStep)
+    const activeScaleStep = scaleMeta?.step ?? activeColorStep
+    const baseScaleStep = scaleMeta?.step ? scaleMeta.step / activeColorStep : 1
     const min = activeDesignerAnchors[0]?.value ?? boundaries[0]
     const max = activeDesignerAnchors[activeDesignerAnchors.length - 1]?.value ?? boundaries[boundaries.length - 1]
     const keyBreakOffsets = (min !== undefined && max !== undefined && max > min)
@@ -91,7 +97,7 @@ export default function ColorLabPanel({
       : []
     const anchorsById = new Map(activeDesignerAnchors.map(anchor => [anchor.id, anchor]))
     const designerSegments = segmentsFromAnchors(activeDesignerAnchors, scaleSegments)
-    const renderedDesignerScale = renderedScaleFromDesigner(activeDesignerAnchors, designerSegments, activeColorStep)
+    const renderedDesignerScale = renderedScaleFromDesigner(activeDesignerAnchors, designerSegments, activeScaleStep)
     const originalAnchors = activeAnchors(anchorsFromScaleMeta(scaleMeta))
     const originalGradient = previewGradient(originalAnchors, segmentsFromAnchors(originalAnchors))
     const displayGradient = showOriginalScale ? originalGradient : renderedScaleGradient(renderedDesignerScale.boundaries, renderedDesignerScale.colors)
@@ -133,6 +139,12 @@ export default function ColorLabPanel({
 
     function updateScaleSegment(id: string, patch: Partial<ScaleSegment>) {
       setScaleSegments(prev => prev.map(segment => segment.id === id ? { ...segment, ...patch } : segment))
+    }
+
+    function setIntervalFromDisplayValue(value: string) {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed) || parsed <= 0 || baseScaleStep <= 0) return
+      setColorStep(String(Math.max(1, Math.min(50, Math.round(parsed / baseScaleStep)))))
     }
 
     function segmentModeLabel(mode: ScaleSegmentMode) {
@@ -202,6 +214,19 @@ export default function ColorLabPanel({
         window.setTimeout(() => setScaleExportCopied(false), 1600)
       } catch {
         setScaleExportCopied(false)
+      }
+    }
+
+    function openScaleImport() {
+      setScaleImportDraft('')
+      setScaleImportError(null)
+      setScaleImportOpen(true)
+    }
+
+    function applyScaleImport() {
+      const result = importScaleSpec(scaleImportDraft)
+      if (result.ok && result.colorStep !== undefined) {
+        setColorStep(String(result.colorStep))
       }
     }
 
@@ -347,17 +372,15 @@ export default function ColorLabPanel({
               <label className="text-[11px] text-slate-300">Interval</label>
               <input
                 type="number"
-                min={1}
-                max={50}
-                value={colorStep}
-                onChange={e => {
-                  const next = e.target.value
-                  setColorStep(next === '' ? '' : String(normalizeColorStep(next)))
-                }}
+                min={formatScaleValue(baseScaleStep)}
+                max={formatScaleValue(baseScaleStep * 50)}
+                step={formatScaleValue(baseScaleStep)}
+                value={formatScaleValue(activeScaleStep)}
+                onChange={e => setIntervalFromDisplayValue(e.target.value)}
                 onBlur={() => setColorStep(String(normalizeColorStep(colorStep)))}
                 className="input h-8 w-16 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-	              {(labVariable === 'wind_speed' || labVariable === 'wind_10m') && (
+	              {isWindUnitApiVariable(labVariable) && (
 	                <TabStrip
 	                  options={[{ value: 'kt', label: 'kt' }, { value: 'm/s', label: 'm/s' }]}
 	                  value={windUnit}
@@ -393,6 +416,10 @@ export default function ColorLabPanel({
               />
               <button type="button" onClick={resetScaleDesigner} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700">
                 Reset
+              </button>
+              <button type="button" onClick={openScaleImport} className="inline-flex items-center gap-1.5 rounded bg-slate-800 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-700">
+                <Upload size={13} />
+                Import
               </button>
               <button type="button" onClick={() => { setScaleExportOpen(true); void copyScaleExport() }} className="rounded bg-sky-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-600">
                 Export
@@ -430,7 +457,7 @@ export default function ColorLabPanel({
                   <div>Kind: <span className="text-slate-100">{scaleMeta?.scale_kind ?? 'resolving'}</span></div>
                   {scaleMeta?.group && <div>Group: <span className="text-slate-100">{scaleMeta.group}</span></div>}
                   <div>Unit: <span className="text-slate-100">{scaleMeta?.unit ?? 'n/a'}</span></div>
-                  <div>Interval: <span className="text-slate-100">{formatScaleValue(activeColorStep)}</span></div>
+                  <div>Interval: <span className="text-slate-100">{formatScaleValue(activeScaleStep)}</span></div>
                   <div>Bins: <span className="text-slate-100">{renderedDesignerScale.colors.length || 'n/a'}</span></div>
                 </div>
               </>
@@ -535,6 +562,56 @@ export default function ColorLabPanel({
 	                      </div>
 	                    </div>
 	                    <pre className="max-h-[64vh] overflow-auto whitespace-pre-wrap p-4 text-xs leading-relaxed text-slate-200">{exportJson}</pre>
+	                  </div>
+	                </div>
+	              )}
+
+	              {scaleImportOpen && (
+	                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={() => setScaleImportOpen(false)}>
+	                  <div className="w-[min(760px,94vw)] rounded-xl border border-slate-600 bg-slate-950 shadow-2xl" onClick={e => e.stopPropagation()}>
+	                    <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+	                      <div>
+	                        <div className="text-sm font-semibold text-slate-100">Import Color Scale JSON</div>
+	                        <div className="text-xs text-slate-400">Paste a Color Lab export to load its anchors and segment modes.</div>
+	                      </div>
+	                      <button
+	                        type="button"
+	                        onClick={() => setScaleImportOpen(false)}
+	                        className="inline-flex h-8 w-8 items-center justify-center rounded text-slate-300 hover:bg-slate-800 hover:text-white"
+	                        aria-label="Close import"
+	                      >
+	                        <X size={16} />
+	                      </button>
+	                    </div>
+	                    <div className="space-y-3 p-4">
+	                      <textarea
+	                        value={scaleImportDraft}
+	                        onChange={e => {
+	                          setScaleImportDraft(e.target.value)
+	                          if (scaleImportError) setScaleImportError(null)
+	                        }}
+	                        className="h-[44vh] w-full resize-none rounded-lg border border-slate-700 bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100 outline-none focus:border-sky-400"
+	                        spellCheck={false}
+	                        aria-label="Color scale JSON import"
+	                      />
+	                      {scaleImportError && <div className="rounded border border-red-700 bg-red-950 px-3 py-2 text-xs text-red-300">{scaleImportError}</div>}
+	                      <div className="flex items-center justify-end gap-2">
+	                        <button
+	                          type="button"
+	                          onClick={() => setScaleImportOpen(false)}
+	                          className="h-8 rounded bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700"
+	                        >
+	                          Cancel
+	                        </button>
+	                        <button
+	                          type="button"
+	                          onClick={applyScaleImport}
+	                          className="h-8 rounded bg-sky-700 px-3 text-xs font-semibold text-white hover:bg-sky-600"
+	                        >
+	                          Import
+	                        </button>
+	                      </div>
+	                    </div>
 	                  </div>
 	                </div>
 	              )}

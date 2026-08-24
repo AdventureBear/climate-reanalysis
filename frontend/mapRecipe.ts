@@ -2,10 +2,12 @@ import { HOURS, normalizeColorStep } from './sharedOptions'
 import {
   RAW_ONLY_API_VARIABLES,
   apiVariableForSelection,
+  isWindUnitApiVariable,
   radiationDirectionForSelection,
   type HumidityType,
   type RadiationDirection,
   type RadiationWaveband,
+  type VorticityType,
   uiSelectionForUrlVariable,
   urlLevelForSelection,
   urlVariableForSelection,
@@ -48,6 +50,7 @@ export type MapRecipe = {
   variable?: string
   level?: string
   humidityType?: HumidityType
+  vorticityType?: VorticityType
   radiationWaveband?: RadiationWaveband
   radiationDirection?: RadiationDirection
   region?: string
@@ -357,6 +360,7 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     recipe.humidityType,
     recipe.radiationWaveband,
     recipe.radiationDirection,
+    recipe.vorticityType,
   )
   const urlVariable = urlVariableForSelection(
     recipe.variable,
@@ -364,6 +368,7 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     recipe.humidityType,
     recipe.radiationWaveband,
     recipe.radiationDirection,
+    recipe.vorticityType,
   )
   const level = urlLevelForSelection(recipe.variable, recipe.level)
   const params: Record<string, string> = { variable: urlVariable, level, region: recipe.region }
@@ -413,7 +418,7 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
 
   const safeColorStep = normalizeColorStep(recipe.colorStep ?? '1')
   if (safeColorStep !== 1) params.color_step = String(safeColorStep)
-  if (recipe.windUnit && (variable === 'wind_speed' || variable === 'wind_10m')) {
+  if (recipe.windUnit && isWindUnitApiVariable(variable)) {
     params.wind_unit = recipe.windUnit
   }
   if (recipe.pwatUnit && variable === 'precipitable_water') {
@@ -586,6 +591,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
         parsedHumidityType,
         uiSelection.radiationWaveband,
         uiSelection.radiationDirection,
+        uiSelection.vorticityType,
       )
     : apiVariable
   const parsedWindType = windType(params.get('wind_type')) ?? 'barbs'
