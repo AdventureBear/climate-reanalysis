@@ -805,8 +805,7 @@ def to_map_recipe(raw: dict, target_date: str | None = None) -> dict:
         recipe["climoSource"] = "r2-daily"
     if raw.get("wind"):
         recipe["wind"] = {"on": True, "step": "2", "type": "barbs",
-                          "anomalyOverlay": "none", "isotachs": False,
-                          "shading": True}
+                          "isotachs": False, "shading": True}
     if raw.get("fillMode"):
         recipe["fillMode"] = raw["fillMode"]
     if raw.get("contours"):

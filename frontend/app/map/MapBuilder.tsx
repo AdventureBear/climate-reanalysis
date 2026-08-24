@@ -5,13 +5,11 @@ import { Settings, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
 import { SaveAccountPrompt } from './builder/SaveAccountPrompt'
-import { LibraryModal } from './projects/LibraryModal'
-import { saveMap, type SavedMap } from '../../lib/library'
+import { saveMap } from '../../lib/library'
 import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
-import { signedUrl } from '../../lib/storage'
 import { blobFromObjectUrl } from '../../lib/images'
 import { suggestedMapName } from './mapName'
-import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl, type MapRecipe } from '../../mapRecipe'
+import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl } from '../../mapRecipe'
 import { gapRetryFromGap } from './builder/useMapGeneration'
 import { normalizeColorStep } from '../../sharedOptions'
 import { getRegionLabel } from './builder/regionCatalog'
@@ -25,7 +23,6 @@ import { TemporalPanel } from './builder/TemporalPanel'
 import { TimeScaleControls } from './builder/TimeScaleControls'
 import { VariableLevelPanel } from './builder/VariableLevelPanel'
 import { SettingsDrawer } from './SettingsDrawer'
-import { readStoredWindLayout } from '../../lib/windLayout'
 import { useMapGeneration } from './builder/useMapGeneration'
 import ColorLabPanel from './colorLab/ColorLabPanel'
 import { useScaleDesigner } from './colorLab/useScaleDesigner'
@@ -45,6 +42,8 @@ export default function MapBuilder() {
     windUnit, setWindUnit,
     pwatUnit, setPwatUnit,
     precipUnit, setPrecipUnit,
+    surfaceTemperatureUnit, setSurfaceTemperatureUnit,
+    elevatedTemperatureUnit, setElevatedTemperatureUnit,
     apiVariable, apiLevel, isClimo,
     preferCoreClimo, chooseCoreClimoPreference,
     currentMapRecipe, applyRecipeToState,
@@ -54,10 +53,11 @@ export default function MapBuilder() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [colorLabOpen, setColorLabOpen] = useState(false)
 
-  const { mapSrc, loading, error, setError, dataGap, generateFromParams, showImage } = useMapGeneration()
+  const { mapSrc, loading, error, setError, dataGap, requestNotice, setRequestNotice, generateFromParams } = useMapGeneration()
 
   const [layoutMode, setLayoutMode] = useState<'horizontal' | 'vertical'>('horizontal')
-  const isVertical  = layoutMode === 'vertical'
+  const [sideBySideAvailable, setSideBySideAvailable] = useState(false)
+  const isVertical = layoutMode === 'vertical' && sideBySideAvailable
 
   const { enabled: authEnabled, user, isAdmin } = useAuth()
   // Color Lab is admin-only tooling. With accounts enabled it needs the
@@ -71,7 +71,6 @@ export default function MapBuilder() {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
-  const [libraryOpen, setLibraryOpen] = useState(false)
   // Explains a mode the builder had to change when opening a link (#72).
   const [modeNotice, setModeNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -83,13 +82,16 @@ export default function MapBuilder() {
   })
 
   // URL → state synchronization. Runs for deep links and browser back/forward;
-  // URL updates made by handleGenerate / library-load are skipped via the ref.
+  // URL updates made by handleGenerate are skipped via the ref.
   const selfUpdatedParamsRef = useRef<string | null>(null)
 
-  // ?controls=… / stored wind-controls layout (#45 split test). Read after
-  // mount, like every other stored preference: localStorage does not exist
-  // during the static build.
-  useEffect(() => { readStoredWindLayout() }, [])
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)')
+    const sync = () => setSideBySideAvailable(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
 
   useEffect(() => {
     // Read the query string directly (no useSearchParams): the hook forces a
@@ -97,35 +99,35 @@ export default function MapBuilder() {
     // mount; popstate covers back/forward.
     const applyFromLocation = () => {
       const params = new URLSearchParams(window.location.search)
-      const paramsString = params.toString()
-      if (paramsString === selfUpdatedParamsRef.current) return
-      selfUpdatedParamsRef.current = paramsString
+      const originalParamsString = params.toString()
+      if (originalParamsString === selfUpdatedParamsRef.current) return
+      selfUpdatedParamsRef.current = originalParamsString
 
       const recipe = mapRecipeFromUrl(params)
       if (!recipe) return
       applyRecipeToState(recipe)
       // A link asking for normalized on a single-hour map loads as anomaly
       // (#72). Say so rather than quietly handing over a different map.
-      setModeNotice(normalizedUnavailableInUrl(params)
+      const normalizedNotice = normalizedUnavailableInUrl(params)
         ? 'Normalized maps are not available for a single hour, so this opened as an anomaly map. Switch to Daily for a normalized map.'
-        : null)
+        : null
+      setModeNotice(normalizedNotice)
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.
       const recipeParams = mapRecipeToParams(recipe)
-      if (recipeParams.ok) void generateFromParams(recipeParams.params)
+      if (recipeParams.ok) {
+        void generateFromParams(Object.fromEntries(params)).then(ignoredParams => {
+          if (!ignoredParams.length) return
+          const cleanedParams = new URLSearchParams(params)
+          ignoredParams.forEach(key => cleanedParams.delete(key))
+          const cleanedParamsString = cleanedParams.toString()
+          selfUpdatedParamsRef.current = cleanedParamsString
+          window.history.replaceState(null, '', cleanedParamsString ? `?${cleanedParamsString}` : window.location.pathname)
+        })
+      }
     }
     applyFromLocation()
-
-    // The header's "My Maps" menu item links to /map?library=1: open the
-    // library, then drop the flag so refresh/back doesn't reopen it.
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('library') === '1') {
-      setLibraryOpen(true)
-      params.delete('library')
-      const rest = params.toString()
-      window.history.replaceState(null, '', rest ? `?${rest}` : window.location.pathname)
-    }
 
     window.addEventListener('popstate', applyFromLocation)
     return () => window.removeEventListener('popstate', applyFromLocation)
@@ -204,25 +206,6 @@ export default function MapBuilder() {
     }
   }
 
-  async function handleLoadMap(map: SavedMap) {
-    const recipe = map.recipe as unknown as MapRecipe
-    applyRecipeToState(recipe)
-
-    // Show the stored image directly — no re-render. The bucket is private, so we
-    // fetch a short-lived signed URL for the owner's own image. Keep the browser
-    // URL in sync but suppress the URL effect so it doesn't kick off a re-render.
-    const url = await signedUrl(map.image_path)
-    showImage(url)
-    const recipeParams = mapRecipeToParams(recipe)
-    if (recipeParams.ok) {
-      selfUpdatedParamsRef.current = new URLSearchParams(recipeParams.params).toString()
-      window.history.replaceState(null, '', `?${new URLSearchParams(recipeParams.params).toString()}`)
-    }
-    setError(null)
-    setLibraryOpen(false)
-  }
-
-
   // -- Render --------------------------------------------------------------------
   return (
     <div className="flex flex-1 flex-col bg-slate-950">
@@ -250,7 +233,7 @@ export default function MapBuilder() {
 
         {/* -- Card panels --------------------------------------------------- */}
         <div className={isVertical
-          ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
+          ? 'w-[calc(((100vw-68px)/4)+24px)] shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
           : 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start'}>
 
           {/* Mobile · Time Scale */}
@@ -285,21 +268,21 @@ export default function MapBuilder() {
             </CardRow>
           </Section>
 
-          <AnalysisPanel recipe={recipe} loading={loading} />
+          <OverlaysPanel recipe={recipe} />
+          {isVertical && <AnalysisPanel recipe={recipe} loading={loading} />}
         </div>
 
         {/* -- Advanced composition panels ----------------------------------- */}
-        <div className={isVertical
-          ? 'w-72 shrink-0 overflow-y-auto border-r border-slate-700/50 p-3 flex flex-col gap-3'
-          : 'grid grid-cols-1 lg:grid-cols-2 gap-3'}>
-          <OverlaysPanel recipe={recipe} />
-          <PanelsSection />
-        </div>
+        {!isVertical && <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+          <AnalysisPanel recipe={recipe} loading={loading} />
+          <PanelsSection className="max-lg:hidden xl:col-start-3 xl:col-span-2 xl:h-full" />
+        </div>}
 
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
           retry={gapRetry ? { label: gapRetry.label, onClick: handleGapRetry } : null}
-          notice={modeNotice} onDismissNotice={() => setModeNotice(null)}
+          notice={[requestNotice, modeNotice].filter(Boolean).join(' ') || null}
+          onDismissNotice={() => { setRequestNotice(null); setModeNotice(null) }}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
 
@@ -312,6 +295,10 @@ export default function MapBuilder() {
 
       {settingsOpen && (
         <SettingsDrawer isVertical={isVertical} setLayoutMode={setLayoutMode}
+          windUnit={windUnit} onWindUnit={setWindUnit}
+          surfaceTemperatureUnit={surfaceTemperatureUnit} onSurfaceTemperatureUnit={setSurfaceTemperatureUnit}
+          elevatedTemperatureUnit={elevatedTemperatureUnit} onElevatedTemperatureUnit={setElevatedTemperatureUnit}
+          precipitationUnit={precipUnit} onPrecipitationUnit={setPrecipUnit}
           preferCoreClimo={preferCoreClimo} onPreferCoreClimo={chooseCoreClimoPreference}
           onClose={() => setSettingsOpen(false)} />
       )}
@@ -341,9 +328,6 @@ export default function MapBuilder() {
           onCreateAccount={() => { setSavePromptOpen(false); setAuthModalMode('signup'); setAuthModalOpen(true) }}
           onSignIn={() => { setSavePromptOpen(false); setAuthModalMode('login'); setAuthModalOpen(true) }}
         />
-      )}
-      {authEnabled && libraryOpen && user && (
-        <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={handleLoadMap} />
       )}
       {authEnabled && saveModalOpen && user && (
         <SaveMapModal

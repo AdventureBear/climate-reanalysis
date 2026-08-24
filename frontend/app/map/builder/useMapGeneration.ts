@@ -8,6 +8,8 @@ import type { DataGap } from './dataGap'
 export type { DataGap, GapRetry } from './dataGap'
 export { gapRetryFromGap } from './dataGap'
 
+const IGNORED_PARAMS_HEADER = 'X-PyRe-Ignored-Params'
+
 function timeScaleFromParams(params: Record<string, string>): string {
   if (params.mode === 'climatology') return 'climatology'
   if (params.months) return 'monthly'
@@ -34,11 +36,24 @@ function logMapRequest(params: Record<string, string>) {
     })
 }
 
+function ignoredParamsFromHeader(headerValue: string | null): string[] {
+  return headerValue?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+}
+
+function ignoredParamsNotice(ignored: string[]): string | null {
+  if (!ignored.length) return null
+  const names = ignored.map(key => `"${key}"`).join(', ')
+  return ignored.length === 1
+    ? `${names} is not a supported parameter and was ignored.`
+    : `${names} are not supported parameters and were ignored.`
+}
+
 export function useMapGeneration() {
   const [mapSrc,  setMapSrc]  = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [dataGap, setDataGap] = useState<DataGap | null>(null)
+  const [requestNotice, setRequestNotice] = useState<string | null>(null)
 
   // Release the last rendered blob URL when the component unmounts.
   const mapSrcRef = useRef<string | null>(null)
@@ -49,10 +64,11 @@ export function useMapGeneration() {
     if (mapSrcRef.current?.startsWith('blob:')) URL.revokeObjectURL(mapSrcRef.current)
   }, [])
 
-  async function generateFromParams(params: Record<string, string>) {
+  async function generateFromParams(params: Record<string, string>): Promise<string[]> {
     setLoading(true)
     setError(null)
     setDataGap(null)
+    setRequestNotice(null)
     setMapSrc(prev => {
       if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
       return null
@@ -61,9 +77,12 @@ export function useMapGeneration() {
     try {
       const res = await fetch(`${API_BASE}/api/map?${new URLSearchParams(params)}`)
       if (res.ok) {
+        const ignoredParams = ignoredParamsFromHeader(res.headers.get(IGNORED_PARAMS_HEADER))
         const blob = await res.blob()
         setMapSrc(URL.createObjectURL(blob))
+        setRequestNotice(ignoredParamsNotice(ignoredParams))
         logMapRequest(params)
+        return ignoredParams
       } else {
         const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
         const detail = body.detail
@@ -85,6 +104,7 @@ export function useMapGeneration() {
     } finally {
       setLoading(false)
     }
+    return []
   }
 
   // Show an externally-hosted image (e.g. a saved map's signed URL) directly,
@@ -96,5 +116,5 @@ export function useMapGeneration() {
     })
   }
 
-  return { mapSrc, loading, error, setError, dataGap, generateFromParams, showImage }
+  return { mapSrc, loading, error, setError, dataGap, requestNotice, setRequestNotice, generateFromParams, showImage }
 }

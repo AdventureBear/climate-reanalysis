@@ -2,9 +2,9 @@
 import { GalleryHorizontalEnd } from 'lucide-react'
 import { Label, Section, ToggleButton, VariableDisplayControl } from '../../../ui/controls'
 
-export function PanelsSection() {
+export function PanelsSection({ className = '' }: { className?: string }) {
   return (
-          <Section>
+          <Section className={`h-full ${className}`}>
             <div className="flex items-center gap-2">
               <GalleryHorizontalEnd size={15} className="text-sky-400" />
               <Label>Panels</Label>

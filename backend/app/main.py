@@ -1,5 +1,6 @@
 import logging
 import os
+import inspect
 from datetime import datetime
 
 import requests
@@ -56,6 +57,7 @@ logging.basicConfig(
 log = logging.getLogger("pyre.api")
 
 app = FastAPI(title="PyRe Climate Reanalysis API")
+IGNORED_PARAMS_HEADER = "X-PyRe-Ignored-Params"
 
 # Request guards: every date in a composite fans out to concurrent NOAA fetches
 # (and each distinct calendar day of an r2-daily anomaly costs 30 OPeNDAP calls),
@@ -83,6 +85,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[IGNORED_PARAMS_HEADER],
 )
 
 
@@ -172,6 +175,11 @@ def _validate_precip_total_range_metadata(
                 f"({int(window_hours)} hours from range, {precip_window} from precip_window)"
             ),
         )
+
+
+def _ignored_query_params(endpoint, request: Request) -> list[str]:
+    supported = set(inspect.signature(endpoint).parameters) - {"request"}
+    return sorted({key for key in request.query_params.keys() if key not in supported})
 
 
 @app.get("/")
@@ -357,7 +365,6 @@ def get_map(
     region: str = "CONUS",
     wind_step: int = 0,
     wind_type: str = "vectors",
-    wind_overlay_mode: str = "actual",
     color_step: int = 1,
     scale_min: float | None = None,
     scale_max: float | None = None,
@@ -379,6 +386,7 @@ def get_map(
     skip_missing: int = 0,
 ):
     enforce_rate_limit(request, PUBLIC_MAP_LIMIT)
+    ignored_params = _ignored_query_params(get_map, request)
     # Back-compat: isotachs was briefly a wind_type value.
     if wind_type == "isotachs":
         wind_type, wind_step, isotachs = "vectors", 0, 1
@@ -491,10 +499,6 @@ def get_map(
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
         raise HTTPException(status_code=422, detail=f"climo_source must be one of {list(VALID_CLIMO_SOURCES)}")
-    if wind_overlay_mode not in {"actual", "anomaly"}:
-        raise HTTPException(status_code=422, detail="wind_overlay_mode must be 'actual' or 'anomaly'")
-    if wind_overlay_mode == "anomaly" and not (variable == "wind_speed" and mode == "anomaly"):
-        raise HTTPException(status_code=422, detail="wind_overlay_mode='anomaly' is only supported for wind anomaly maps")
     # Monthly obs composites are not wired for flx/named-level streams
     # (no ("monthly", "flx") obs fetcher) — a separate gap from climatology.
     # Climatology mode is exempt: it fetches no observations, and its month
@@ -527,7 +531,6 @@ def get_map(
                 region=region,
                 wind_step=wind_step,
                 wind_type=wind_type,
-                wind_overlay_mode=wind_overlay_mode,
                 color_step=color_step,
                 scale_min=scale_min,
                 scale_max=scale_max,
@@ -547,7 +550,8 @@ def get_map(
                 skip_missing=skip_missing,
             )
         )
-        return StreamingResponse(buf, media_type="image/png")
+        headers = {IGNORED_PARAMS_HEADER: ",".join(ignored_params)} if ignored_params else None
+        return StreamingResponse(buf, media_type="image/png", headers=headers)
     except DataUnavailableError as exc:
         # Composite gaps ship a structured detail so the frontend can offer
         # an informed retry: truncate the range, or regenerate with

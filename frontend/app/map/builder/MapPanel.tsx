@@ -18,7 +18,7 @@ function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }
   }
 
   return (
-    <div className="mt-3 flex items-center justify-center gap-2">
+    <div className="mb-3 flex items-center justify-center gap-2">
       {onSave && (
         <button type="button" onClick={onSave} disabled={saving}
           className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-50 transition-colors">
@@ -85,9 +85,9 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
                 {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
                 {mapSrc && !error && (
                   <>
+                    <MapActions onSave={onSave} saving={saving} />
                     <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map"
                       className="max-w-full max-h-full rounded shadow-xl object-contain" />
-                    <MapActions onSave={onSave} saving={saving} />
                   </>
                 )}
               </div>
@@ -114,8 +114,8 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
                 {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
                 {mapSrc && !error && (
                   <>
-                    <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map" className="max-w-full xl:max-w-[75%] rounded shadow-xl" />
                     <MapActions onSave={onSave} saving={saving} />
+                    <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map" className="max-w-full xl:max-w-[75%] rounded shadow-xl" />
                   </>
                 )}
               </div>

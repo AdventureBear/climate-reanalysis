@@ -22,7 +22,7 @@ uv add <package>                       # add a dependency
 cd frontend
 npm install       # install deps
 npm run dev       # dev server at http://localhost:5173
-npm run build     # tsc + vite production build
+npm run build     # Next.js production build
 npm run lint      # eslint
 ```
 
@@ -53,7 +53,7 @@ The new underlying dataset is **CORe (Climate-Ocean Reanalysis)** from NCEP/CPC,
 
 ## Architecture
 
-Monorepo: `backend/` (Python 3.12, FastAPI, uv) and `frontend/` (React 19, TypeScript, Vite, Tailwind v4).
+Monorepo: `backend/` (Python 3.12, FastAPI, uv) and `frontend/` (Next.js, React 19, TypeScript, Tailwind v4).
 
 **The frontend is a thin UI shell. All computation and rendering happen on the backend.**
 
@@ -62,7 +62,7 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 ### Engineering Guardrails
 
 - Do not add one-off `if` / `else` chains for variable, level, unit, overlay, or scale behavior. Add behavior to a typed registry/config and derive UI/API behavior from that source of truth.
-- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params. Do not scatter URL parsing, API serialization, or variable/level mapping inside `App.tsx`.
+- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params. Do not scatter URL parsing, API serialization, or variable/level mapping inside page components.
 - If a feature will grow with variables, levels, overlays, units, regions, or modes, pause and extend the source-of-truth config first.
 - Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR`, over temporary hardcoded paths or code that will need to be deleted later.
 - Trip wire for meteorological math: if a feature introduces a new meteorological formula, repeats an existing formula, converts physical units, derives a field from multiple CORe variables/levels, or needs xarray metadata preservation, first add or reuse a shared helper/module. Do not implement the math inline in the feature path.
@@ -71,7 +71,7 @@ The frontend sends a "recipe" (variable, level, region, date list, mode) → bac
 
 ### React / Frontend Guardrails
 
-- Treat `App.tsx` as overgrown legacy surface area. Do not add large new workflows, drawers, panels, or data orchestration there unless the change is a small bridge toward extraction.
+- Treat Next.js route/page entry files as thin composition surfaces. Do not add large new workflows, drawers, panels, or data orchestration there; extend the matching hook or panel component instead.
 - Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
 - Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
 - Prefer derived values from render state (`useMemo` only when it avoids real work or stabilizes references), event handlers, reducers, or explicit state machines over effect chains that copy state into more state.
@@ -126,10 +126,12 @@ The active map-rendering API is `/api/map`; it validates a map recipe, fetches t
 - **`config.py`** — `REGIONS` dict (lat/lon bounding boxes, 0–360 longitude) and `VARIABLES` dict (GRIB key mappings). Source of truth — don't hardcode bounds or variable names elsewhere.
 - **`visualizer.py`** — `create_map_product()` renders a Matplotlib/Cartopy PNG, returns `io.BytesIO`.
 
-### Frontend (`frontend/src/`)
+### Frontend (`frontend/app/`)
 
-- **`App.tsx`** — current PoC. Will become the Composite Builder: mode selector, variable/level/region pickers, date list input, and an `<img>` tag showing the returned PNG.
-- Styled with **Tailwind CSS v4** (installed via `@tailwindcss/vite` plugin). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
+- **`app/map/page.tsx`** — Next.js route entry for the map page.
+- **`app/map/MapPageClient.tsx`** — client composition root for the Composite Builder: mode selector, variable/level/region pickers, date inputs, and rendered PNG display.
+- **`app/map/builder/`**, **`app/map/chrome/`**, and **`app/map/colorLab/`** — focused map UI panels, request lifecycle hooks, shell chrome, and Color Lab.
+- Styled with **Tailwind CSS v4**. Use Tailwind classes throughout; avoid inline styles and separate CSS files.
 
 ---
 

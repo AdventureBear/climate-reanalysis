@@ -13,7 +13,6 @@ log = logging.getLogger("pyre.api")
 
 class WindOverlayRequest(Protocol):
     wind_step: int
-    wind_overlay_mode: str
     mode: str
     level: int
     isotachs: int
@@ -40,7 +39,7 @@ def prepare_wind_overlay(
     log.info("")
     # Convention (#47): on wind anomaly/normalized maps the glyphs are ALWAYS
     # anomaly wind — the map mode picks the quantity, wind_type picks the style
-    # only. wind_overlay_mode is still accepted (old share links) but ignored here.
+    # only.
     if (
         use_vector_wind_anomaly
         and anomaly_u_subset is not None

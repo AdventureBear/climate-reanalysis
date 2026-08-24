@@ -94,7 +94,7 @@ export default function LandingPage() {
               : the 1997-98 El Ni&ntilde;o winter, three months in one map
             </li>
             <li className="list-disc ml-4">
-              <Link href="/map?variable=wind_speed&level=925&region=India&months=200207&mode=anomaly&wind_step=2&wind_type=barbs&wind_overlay_mode=anomaly" className="text-sky-300 hover:text-sky-200 underline underline-offset-2">Anomaly maps</Link>
+              <Link href="/map?variable=wind_speed&level=925&region=India&months=200207&mode=anomaly&wind_step=2&wind_type=barbs" className="text-sky-300 hover:text-sky-200 underline underline-offset-2">Anomaly maps</Link>
               {' '}against 30-year climatology: the failed Indian monsoon of July 2002
             </li>
             <li className="list-disc ml-4">

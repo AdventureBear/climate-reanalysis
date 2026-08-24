@@ -1,11 +1,10 @@
-// Variable & Level card, including per-variable display controls (units,
-// shaded/contoured fill, humidity type) driven by the variable registry.
-import type { FillMode, PrecipWindow, WindUnit } from '../../../mapRecipe'
+// Variable & Level card, including per-variable display controls
+// (shaded/contoured fill, humidity type) driven by the variable registry.
+import type { FillMode, PrecipWindow } from '../../../mapRecipe'
 import {
   SURFACE_LEVELS,
   VARIABLES,
   apiVariableForSelection,
-  isWindUnitApiVariable,
   levelForVariableChange,
   shouldDefaultWindOverlay,
   type RadiationDirection,
@@ -13,8 +12,7 @@ import {
   type VorticityType,
 } from '../../../variableConfig'
 import { CardRow, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
-import type { CompositeRecipeState, TemperatureUnit } from './useCompositeRecipe'
-import { WaterUnitToggle } from './WaterUnitToggle'
+import type { CompositeRecipeState } from './useCompositeRecipe'
 
 export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState }) {
   const {
@@ -25,15 +23,10 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
     radiationDirection, setRadiationDirection,
     level, setLevel,
     levelOptions,
-    windUnit, setWindUnit,
-    pwatUnit, setPwatUnit,
-    precipUnit, setPrecipUnit,
     precipWindowSelection, setPrecipWindow,
-    temperatureUnit, setTemperatureUnit,
     fillMode, setFillMode,
     setWindOn, setWindType,
   } = recipe
-  const selectedApiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection, vorticityType)
 
   return (
           <Section className="w-full">
@@ -72,21 +65,8 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
 
             </div>
             </CardRow>
-            {(isWindUnitApiVariable(selectedApiVariable) || variable === 'temp' || variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'vorticity' || variable === 'precipitable_water' || variable === 'precip_rate' || variable === 'precip_total' || variable === 'radiation') && (
+            {(variable === 'pressure' || variable === 'height' || variable === 'humidity' || variable === 'vorticity' || variable === 'precip_total' || variable === 'radiation') && (
             <CardRow>
-                {isWindUnitApiVariable(selectedApiVariable) && (
-                  <VariableDisplayControl label="Wind Units">
-                    <TabStrip
-                      options={[
-                        { value: 'kt', label: 'Knots' },
-                        { value: 'm/s', label: 'm/s' },
-                      ]}
-                      value={windUnit}
-                      onChange={v => setWindUnit(v as WindUnit)}
-                      fullWidth
-                    />
-                  </VariableDisplayControl>
-                )}
                 {variable === 'vorticity' && (
                   <VariableDisplayControl label="Vorticity Type">
                     <TabStrip
@@ -96,20 +76,6 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                       ]}
                       value={vorticityType}
                       onChange={v => setVorticityType(v as VorticityType)}
-                      fullWidth
-                    />
-                  </VariableDisplayControl>
-                )}
-                {variable === 'temp' && (
-                  <VariableDisplayControl label="Temperature Units">
-                    <TabStrip
-                      options={[
-                        { value: 'auto', label: 'Auto' },
-                        { value: 'F', label: '°F' },
-                        { value: 'C', label: '°C' },
-                      ]}
-                      value={temperatureUnit}
-                      onChange={v => setTemperatureUnit(v as TemperatureUnit)}
                       fullWidth
                     />
                   </VariableDisplayControl>
@@ -126,12 +92,6 @@ export function VariableLevelPanel({ recipe }: { recipe: CompositeRecipeState })
                       fullWidth
                     />
                   </VariableDisplayControl>
-                )}
-                {variable === 'precipitable_water' && (
-                  <WaterUnitToggle label="PWAT Units" value={pwatUnit} onChange={setPwatUnit} />
-                )}
-                {(variable === 'precip_rate' || variable === 'precip_total') && (
-                  <WaterUnitToggle label="Precip Units" value={precipUnit} onChange={setPrecipUnit} />
                 )}
                 {variable === 'precip_total' && (
                   <VariableDisplayControl label="Accumulation">

@@ -24,7 +24,6 @@ export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 export type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
 export type WindUnit = 'kt' | 'm/s'
 export type WindOverlayType = 'vectors' | 'barbs' | 'isotachs'
-export type WindAnomalyOverlay = 'none' | WindOverlayType
 export type PwatUnit = 'mm' | 'in'
 export type PrecipUnit = 'mm' | 'in'
 export type PrecipWindow = string
@@ -61,10 +60,6 @@ export type MapRecipe = {
     on: boolean
     step: string
     type: WindOverlayType
-    // Legacy (pre-#47): saved recipes stored the anomaly glyph choice in a
-    // separate field. New recipes never set it — the map mode decides the
-    // glyph quantity (raw → actual wind, anomaly → anomaly wind).
-    anomalyOverlay?: WindAnomalyOverlay
     isotachs?: boolean
     // Isotach spacing in knots: 5, 10 or 20. Undefined = let the backend
     // derive it from the level's wind scale range (#45).
@@ -389,21 +384,12 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   Object.assign(params, timeParams.params)
 
   if (recipe.wind) {
-    // The backend decides the glyph quantity from the map mode (#47) — no
-    // wind_overlay_mode param. Legacy recipes' anomalyOverlay folds into the
-    // single glyph on/type model.
-    const legacyAnomalyGlyph =
-      recipe.wind.anomalyOverlay && recipe.wind.anomalyOverlay !== 'none'
-        ? recipe.wind.anomalyOverlay
-        : null
-    if (legacyAnomalyGlyph) {
-      params.wind_step = recipe.wind.step
-      params.wind_type = legacyAnomalyGlyph
-    } else if (recipe.wind.on) {
+    // The backend decides the glyph quantity from the map mode (#47).
+    if (recipe.wind.on) {
       params.wind_step = recipe.wind.step
       params.wind_type = recipe.wind.type
     }
-    if (recipe.wind.isotachs && !legacyAnomalyGlyph) {
+    if (recipe.wind.isotachs) {
       params.isotachs = '1'
       // Omitted = backend default for the level; only an explicit choice
       // rides in the URL.
@@ -614,8 +600,6 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     displayMode: resolvedApiVariable && RAW_ONLY_API_VARIABLES.has(resolvedApiVariable) ? 'raw' : parsedDisplayMode,
     climoSource: climoSource(params.get('climo_source')),
     time: parsedTime,
-    // Old links may carry wind_overlay_mode; the glyph quantity now follows
-    // the map mode (#47), so glyphs-on is all the URL needs to express.
     wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : {
       on: windStepUsable,
       step: windStepUsable ? windStep! : AUTO_DENSITY,

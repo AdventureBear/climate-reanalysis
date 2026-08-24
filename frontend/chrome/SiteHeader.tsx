@@ -3,12 +3,15 @@
 // Global site header: brand, site navigation, account. Rendered by the root
 // layout on every page. App-level controls (time scale, save, settings) live
 // in the /map page's own toolbar — never here.
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BarChart3, ChevronDown, FilePlus2, Files, FolderOpen, LogIn, LogOut, Menu, Newspaper, User, X } from 'lucide-react'
 import { useAuth } from '../app/auth/authContext'
 import { AuthModal } from '../app/auth/AuthModal'
+import { LibraryModal } from '../app/map/projects/LibraryModal'
+import { recipeShareUrl, type MapRecipe } from '../mapRecipe'
+import type { SavedMap } from '../lib/library'
 import AdminStatsPanel from './AdminStatsPanel'
 
 const NAV_LINKS = [
@@ -38,6 +41,20 @@ export function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [adminStatsOpen, setAdminStatsOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+
+  function openMyMaps(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setAccountMenuOpen(false)
+    setMobileMenuOpen(false)
+    setLibraryOpen(true)
+  }
+
+  function openSavedMapInBuilder(map: SavedMap) {
+    setLibraryOpen(false)
+    const url = recipeShareUrl(map.recipe as unknown as MapRecipe, `${window.location.origin}/map`)
+    window.location.href = url ?? '/map'
+  }
 
   const navLink = (href: string, label: string, mobile = false) => (
     <Link
@@ -83,10 +100,10 @@ export function SiteHeader() {
               <>
                 <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="Close menu" onClick={() => setAccountMenuOpen(false)} />
                 <div className="absolute right-0 top-10 z-40 w-44 rounded-lg border border-slate-700 bg-slate-950 p-1 shadow-xl">
-                  <Link href="/map?library=1" onClick={() => setAccountMenuOpen(false)}
+                  <button type="button" onClick={openMyMaps}
                     className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                     <FolderOpen size={14} /> My Maps
-                  </Link>
+                  </button>
                   {isAdmin && (
                     <>
                       {ADMIN_LINKS.map(({ href, label, Icon }) => (
@@ -137,10 +154,10 @@ export function SiteHeader() {
               <div className="my-1 h-px bg-slate-800" />
               {user ? (
                 <>
-                  <Link href="/map?library=1" onClick={() => setMobileMenuOpen(false)}
+                  <button type="button" onClick={openMyMaps}
                     className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
                     <FolderOpen size={14} /> My Maps
-                  </Link>
+                  </button>
                   {isAdmin && (
                     <>
                       {ADMIN_LINKS.map(({ href, label, Icon }) => (
@@ -172,6 +189,9 @@ export function SiteHeader() {
       )}
 
       {authEnabled && authModalOpen && <AuthModal onClose={() => setAuthModalOpen(false)} />}
+      {authEnabled && libraryOpen && user && (
+        <LibraryModal onClose={() => setLibraryOpen(false)} onLoadMap={openSavedMapInBuilder} />
+      )}
       {authEnabled && adminStatsOpen && isAdmin && <AdminStatsPanel onClose={() => setAdminStatsOpen(false)} />}
     </header>
   )

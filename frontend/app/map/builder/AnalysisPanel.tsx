@@ -6,7 +6,11 @@ import { dateRange, monthRange, type DisplayMode } from '../../../mapRecipe'
 import { CardRow, Section, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState } from './useCompositeRecipe'
 
-export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeState; loading: boolean }) {
+export function AnalysisPanel({ recipe, loading, className = '' }: {
+  recipe: CompositeRecipeState
+  loading: boolean
+  className?: string
+}) {
   const {
     isClimo, isMonthly,
     monthSubMode, monthStart, monthEnd, customMonths,
@@ -41,7 +45,7 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
   }
 
   return (
-          <Section>
+          <Section className={className}>
             <CardRow>
             <VariableDisplayControl label="Analysis">
             {isClimo ? (
@@ -69,7 +73,7 @@ export function AnalysisPanel({ recipe, loading }: { recipe: CompositeRecipeStat
             <CardRow>
             <VariableDisplayControl label="Render">
             <button type="submit" disabled={loading}
-              className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50 font-bold text-xs tracking-wide cursor-pointer transition-colors w-full">
+              className="w-full rounded bg-[#e17a35] px-3 py-1.5 text-xs font-bold tracking-wide text-orange-50 transition-colors hover:bg-[#f38a40] active:bg-[#c3672e] disabled:cursor-not-allowed disabled:opacity-50">
               {generateLabel()}
             </button>
             </VariableDisplayControl>

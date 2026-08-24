@@ -29,7 +29,7 @@ of outages, and fatalities in the Pittsburgh metro. Storms crossed western PA
 roughly 21z–00z.
 
 - **MSLP + surface barbs, 21z (setup):**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Northeast&date=20250429&date_mode=single&hour=21&wind_step=8&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Northeast&date=20250429&date_mode=single&hour=21&wind_step=8&wind_type=barbs>
 - **2m temperature anomaly, 21z (the primed warm sector):**
   <http://pyreweather.org/map?variable=temp_2m&level=1000&region=Northeast&date=20250429&date_mode=single&hour=21&mode=anomaly>
 - **Precipitation rate, 00z Apr 30 (the line crossing the state):**
@@ -52,7 +52,7 @@ and cutting power to millions — all embedded in a record June heat wave.
 - **10m wind speed, 03z Jun 30 (arrival at DC/Chesapeake):**
   <http://pyreweather.org/map?variable=wind_10m&level=1000&region=Eastern%20US&date=20120630&date_mode=single&hour=03>
 - **MSLP + barbs, 00z Jun 30:**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=20120630&date_mode=single&hour=00&wind_step=8&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=20120630&date_mode=single&hour=00&wind_step=8&wind_type=barbs>
 
 ## 3. Palm Sunday tornado outbreak — April 11, 1965
 
@@ -63,7 +63,7 @@ Peak activity roughly 19z–03z.
 - **MSLP anomaly, 21z (how anomalous the parent low was):**
   <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19650411&date_mode=single&hour=21&mode=anomaly>
 - **MSLP + surface barbs, 21z (the deepening Great Lakes low):**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19650411&date_mode=single&hour=21&wind_step=8&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19650411&date_mode=single&hour=21&wind_step=8&wind_type=barbs>
 - **500mb height, 21z (the digging trough):**
   <http://pyreweather.org/map?variable=height&level=500&region=Eastern%20US&date=19650411&date_mode=single&hour=21>
 - **850mb wind speed, 21z (the low-level jet feeding the storms):**
@@ -77,7 +77,7 @@ A violent, well-documented tornado (DOW-measured winds near the surface among
 the strongest ever sampled) struck Greenfield around 2045z.
 
 - **MSLP + barbs, 21z:**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=21&wind_step=6&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Central%20Plains&date=20240521&date_mode=single&hour=21&wind_step=6&wind_type=barbs>
 - **850mb wind speed, 21z (low-level jet):**
   <http://pyreweather.org/map?variable=wind_speed&level=850&region=Central%20Plains&date=20240521&date_mode=single&hour=21>
 - **PWAT anomaly, 18z (moisture surge ahead of the dryline):**
@@ -98,7 +98,7 @@ buried the Appalachians (including PA) in snow, and set station-pressure
 records from Florida to New England.
 
 - **MSLP + barbs, 12z Mar 13 (the monster low):**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19930313&date_mode=single&hour=12&wind_step=8&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19930313&date_mode=single&hour=12&wind_step=8&wind_type=barbs>
 - **MSLP anomaly, 12z (how far off climatology it was):**
   <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Eastern%20US&date=19930313&date_mode=single&hour=12&mode=anomaly>
 - **500mb height, 12z (the deep trough):**
@@ -131,7 +131,7 @@ Great Basin high squeezing against a coastal trough, with hurricane-force
 downslope gusts overnight January 7–8.
 
 - **MSLP + barbs, 06z Jan 8 (the pressure gradient):**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Southwest%20US&date=20250108&date_mode=single&hour=06&wind_step=6&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Southwest%20US&date=20250108&date_mode=single&hour=06&wind_step=6&wind_type=barbs>
 - **10m wind speed, 06z:**
   <http://pyreweather.org/map?variable=wind_10m&level=1000&region=Southwest%20US&date=20250108&date_mode=single&hour=06>
 - **850mb relative humidity, 18z Jan 8 (bone-dry downslope air):**
@@ -144,7 +144,7 @@ upstream cutoff low captured the storm and stalled its remnants over the
 Tennessee Valley — aiming a moisture firehose at the North Carolina mountains.
 
 - **MSLP + barbs at landfall, 03z Sep 27:**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Southeast%20US&date=20240927&date_mode=single&hour=03&wind_step=6&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Southeast%20US&date=20240927&date_mode=single&hour=03&wind_step=6&wind_type=barbs>
 - **500mb height, 12z Sep 27 (the cutoff low + block that stopped it):**
   <http://pyreweather.org/map?variable=height&level=500&region=Eastern%20US&date=20240927&date_mode=single&hour=12>
 - **PWAT anomaly, 12z Sep 27 (record moisture into the Carolinas):**
@@ -161,7 +161,7 @@ as "the storm's envelope," not literal peak winds.)
 - **10m wind speed, 15z Oct 28 (approaching landfall):**
   <http://pyreweather.org/map?variable=wind_10m&level=1000&region=Western%20Atlantic&date=20251028&date_mode=single&hour=15>
 - **MSLP + barbs, 15z:**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Western%20Atlantic&date=20251028&date_mode=single&hour=15&wind_step=8&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Western%20Atlantic&date=20251028&date_mode=single&hour=15&wind_step=8&wind_type=barbs>
 - **PWAT, 15z (the tropical moisture envelope):**
   <http://pyreweather.org/map?variable=precipitable_water&level=1000&region=Western%20Atlantic&date=20251028&date_mode=single&hour=15>
 
@@ -176,7 +176,7 @@ the Southeast US coast a direct hit.
 - **Same view 24 h later, 12z Sep 30 (watch them pivot):**
   <http://pyreweather.org/map?variable=wind_10m&level=1000&region=Western%20Atlantic&date=20250930&date_mode=single&hour=12>
 - **MSLP + barbs, 12z Sep 29:**
-  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Western%20Atlantic&date=20250929&date_mode=single&hour=12&wind_step=10&wind_type=barbs&wind_overlay_mode=actual>
+  <http://pyreweather.org/map?variable=surface_pressure&level=1000&region=Western%20Atlantic&date=20250929&date_mode=single&hour=12&wind_step=10&wind_type=barbs>
 - **500mb height, 12z Sep 29 (the steering pattern):**
   <http://pyreweather.org/map?variable=height&level=500&region=Western%20Atlantic&date=20250929&date_mode=single&hour=12>
 

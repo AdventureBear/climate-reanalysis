@@ -12,6 +12,7 @@ import {
   type PrecipWindow,
   type PwatUnit,
   type SubMode,
+  type TempUnit,
   type TimeRecipe,
   type TimeScale,
   type WindOverlayType,
@@ -34,10 +35,43 @@ import {
   shouldDefaultWindOverlay,
 } from '../../../variableConfig'
 
-export type TemperatureUnit = 'auto' | 'F' | 'C'
+export type TemperatureUnit = TempUnit
 
 const CORE_CLIMO_STORAGE_KEY = 'pyre.preferCoreClimo'
 const PRECIP_WINDOW_PRESETS = new Set(['3', '6', '12', '24'])
+const FAHRENHEIT_SURFACE_TEMP_REGIONS = new Set([
+  'US',
+  'AS',
+  'BS',
+  'BZ',
+  'FM',
+  'GU',
+  'KY',
+  'LR',
+  'MH',
+  'MP',
+  'PR',
+  'PW',
+  'UM',
+  'VI',
+])
+
+function browserRegion(): string | null {
+  if (typeof navigator === 'undefined') return null
+  const locale = navigator.languages?.[0] ?? navigator.language
+  try {
+    const region = new Intl.Locale(locale).region
+    return region?.toUpperCase() ?? null
+  } catch {
+    const match = locale.match(/[-_]([A-Za-z]{2})\b/)
+    return match?.[1].toUpperCase() ?? null
+  }
+}
+
+function defaultSurfaceTemperatureUnit(): TemperatureUnit {
+  const region = browserRegion()
+  return region && FAHRENHEIT_SURFACE_TEMP_REGIONS.has(region) ? 'F' : 'C'
+}
 
 export function defaultDate(): string {
   const d = new Date()
@@ -88,10 +122,11 @@ export function useCompositeRecipe() {
   const [hlCenters, setHlCenters] = useState(false)
   const [contourOverlays, setContourOverlays] = useState<string[]>([])
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
-  const [pwatUnit, setPwatUnit] = useState<PwatUnit>('in')
-  const [precipUnit, setPrecipUnit] = useState<PrecipUnit>('in')
+  const [pwatUnit, setPwatUnitState] = useState<PwatUnit>('in')
+  const [precipUnit, setPrecipUnitState] = useState<PrecipUnit>('in')
   const [precipWindow, setPrecipWindowState] = useState<PrecipWindow>('3')
-  const [temperatureUnit, setTemperatureUnit] = useState<TemperatureUnit>('auto')
+  const [surfaceTemperatureUnit, setSurfaceTemperatureUnit] = useState<TemperatureUnit>(defaultSurfaceTemperatureUnit)
+  const [elevatedTemperatureUnit, setElevatedTemperatureUnit] = useState<TemperatureUnit>('C')
   const [fillMode, setFillMode] = useState<FillMode>('contours')
   const [colorStep, setColorStep] = useState('1')
   // Baseline preference (#127). R2 monthly is the default, matching every map
@@ -105,6 +140,16 @@ export function useCompositeRecipe() {
   // the stored preference: that map's baseline is part of the map, not a
   // standing choice.
   const setClimoSource = (source: ClimoSource) => setPreferCoreClimo(source === 'monthly-pgb')
+
+  function setPrecipUnit(next: PrecipUnit) {
+    setPrecipUnitState(next)
+    setPwatUnitState(next)
+  }
+
+  function setPwatUnit(next: PwatUnit) {
+    setPrecipUnitState(next)
+    setPwatUnitState(next)
+  }
 
   // Restored after mount rather than in the initializer: localStorage does not
   // exist during the static build, so reading it there would mismatch hydration.
@@ -270,7 +315,11 @@ export function useCompositeRecipe() {
       precipUnit,
       precipWindow: apiVariable === 'precip_total' ? precipWindow : undefined,
       fillMode,
-      tempUnit: temperatureUnit === 'auto' ? undefined : temperatureUnit,
+      tempUnit: apiVariable === 'temp_2m'
+        ? surfaceTemperatureUnit
+        : apiVariable === 'temp'
+          ? elevatedTemperatureUnit
+          : undefined,
       centers: hlCenters || undefined,
       contours: contourOverlays.length ? contourOverlays : undefined,
       colorStep,
@@ -350,7 +399,6 @@ export function useCompositeRecipe() {
     if (recipe.precipUnit) setPrecipUnit(recipe.precipUnit)
     if (recipe.precipWindow) setPrecipWindowState(recipe.precipWindow)
     if (recipe.fillMode) setFillMode(recipe.fillMode)
-    if (recipe.tempUnit) setTemperatureUnit(recipe.tempUnit)
     setHlCenters(Boolean(recipe.centers))
     setContourOverlays(recipe.contours ?? [])
     if (recipe.colorStep) setColorStep(recipe.colorStep)
@@ -372,18 +420,16 @@ export function useCompositeRecipe() {
       recipe.vorticityType ?? (recipe.variable === 'absv' ? 'absolute' : recipe.variable === 'rel_vorticity' ? 'relative' : vorticityType),
     )
     const recipeIsWindVariable = recipeApiVariable === 'wind_speed' || recipeApiVariable === 'wind_10m'
+    if (recipe.tempUnit) {
+      if (recipeApiVariable === 'temp_2m') setSurfaceTemperatureUnit(recipe.tempUnit)
+      if (recipeApiVariable === 'temp') setElevatedTemperatureUnit(recipe.tempUnit)
+    }
     if (recipe.wind) {
       // Legacy saved recipes may hold step '0'; state never holds a
       // sub-minimum density (#57).
       setWindStep(Number(recipe.wind.step) > 0 ? recipe.wind.step : '2')
-      // Pre-#47 recipes stored the anomaly glyph choice in a separate field;
-      // fold it into the single wind model (the map mode picks the quantity).
-      const legacyAnomalyGlyph =
-        recipe.wind.anomalyOverlay && recipe.wind.anomalyOverlay !== 'none'
-          ? recipe.wind.anomalyOverlay
-          : null
-      setWindType(legacyAnomalyGlyph ?? recipe.wind.type)
-      const glyphsOn = recipe.wind.on || Boolean(legacyAnomalyGlyph)
+      setWindType(recipe.wind.type)
+      const glyphsOn = recipe.wind.on
       setWindOn(glyphsOn)
       setIsotachsOn(Boolean(recipe.wind.isotachs))
       setIsotachInterval(recipe.wind.isotachInterval ?? 0)
@@ -510,7 +556,8 @@ export function useCompositeRecipe() {
     precipUnit, setPrecipUnit,
     precipWindow, setPrecipWindow,
     precipWindowSelection,
-    temperatureUnit, setTemperatureUnit,
+    surfaceTemperatureUnit, setSurfaceTemperatureUnit,
+    elevatedTemperatureUnit, setElevatedTemperatureUnit,
     fillMode, setFillMode,
     colorStep, setColorStep,
     climoSource, setClimoSource,

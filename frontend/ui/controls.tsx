@@ -179,7 +179,7 @@ export function HourStepper({ hour, setHour, compact = false }: { hour: string; 
 
 export function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`self-start bg-slate-900 border border-slate-700/60 rounded-xl px-4 pt-4 pb-5 flex flex-col gap-3 ${className}`}>
+    <div className={`w-full self-start bg-slate-900 border border-slate-700/60 rounded-xl px-4 pt-4 pb-5 flex flex-col gap-3 ${className}`}>
       {children}
     </div>
   )

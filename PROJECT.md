@@ -90,7 +90,7 @@ The app supports named regions in `backend/app/config.py`, including CONUS, US s
 Monorepo:
 
 - `backend/`: Python 3.12, FastAPI, uv, xarray, cfgrib, Cartopy, Matplotlib.
-- `frontend/`: React 19, TypeScript, Vite, Tailwind v4.
+- `frontend/`: Next.js, React 19, TypeScript, Tailwind v4.
 
 ### Backend API
 
@@ -113,11 +113,12 @@ Important backend modules:
 
 Important frontend modules:
 
-- `frontend/src/App.tsx`: composition root wiring builder hooks (`builder/useCompositeRecipe.ts`, `builder/useMapGeneration.ts`), panel components (`builder/`), header/settings chrome (`chrome/`), and the Color Lab (`colorLab/`).
-- `frontend/src/mapRecipe.ts`: typed URL/API recipe parsing and serialization.
-- `frontend/src/variableConfig.ts`: frontend variable/level selection mapped to backend API variables.
-- `frontend/src/sharedOptions.ts`: shared UI option helpers.
-- `frontend/src/regionThumbnails.ts`: region thumbnail mapping.
+- `frontend/app/map/page.tsx`: Next.js route entry for the map page.
+- `frontend/app/map/MapPageClient.tsx`: client composition root wiring builder hooks (`builder/useCompositeRecipe.ts`, `builder/useMapGeneration.ts`), panel components (`builder/`), header/settings chrome (`chrome/`), and the Color Lab (`colorLab/`).
+- `frontend/mapRecipe.ts`: typed URL/API recipe parsing and serialization.
+- `frontend/variableConfig.ts`: frontend variable/level selection mapped to backend API variables.
+- `frontend/sharedOptions.ts`: shared UI option helpers.
+- `frontend/regionThumbnails.ts`: region thumbnail mapping.
 
 ### Data Flow
 
@@ -199,9 +200,9 @@ The planning screenshot in `docs/archive/` is an older UI checkpoint from May 20
 
 ### React / Frontend Guardrails
 
-Resolved July 2026: `App.tsx` was refactored from ~2,800 lines to a ~285-line composition root. Recipe state lives in `builder/useCompositeRecipe.ts`, request lifecycle in `builder/useMapGeneration.ts`, and the UI in focused panel components under `builder/`, `chrome/`, `colorLab/`, and `ui/`. Future frontend work should keep this shape.
+Resolved July 2026: the map UI was refactored from a large single-component surface to a focused composition root in `frontend/app/map/MapPageClient.tsx`. Recipe state lives in `app/map/builder/useCompositeRecipe.ts`, request lifecycle in `app/map/builder/useMapGeneration.ts`, and the UI in focused panel components under `app/map/builder/`, `app/map/chrome/`, `app/map/colorLab/`, and `ui/`. Future frontend work should keep this shape.
 
-- Do not add workflows, drawers, panels, or data orchestration back into `App.tsx`; extend the matching hook or panel component instead.
+- Do not add workflows, drawers, panels, or data orchestration into route/page entry files; extend the matching hook or panel component instead.
 - Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
 - Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
 - Prefer derived values from render state, event handlers, reducers, or explicit state machines over effect chains that copy state into more state. Use `useMemo` only when it avoids real work or stabilizes references for child components.
@@ -275,7 +276,7 @@ Highest priority scale work:
 
 ### Color Lab
 
-Color Lab is implemented as an admin-only experimental tool in `frontend/src/colorLab/` (`scaleModel.ts`, `useScaleDesigner.ts`, `ColorLabPanel.tsx`).
+Color Lab is implemented as an admin-only experimental tool in `frontend/app/map/colorLab/` (`scaleModel.ts`, `useScaleDesigner.ts`, `ColorLabPanel.tsx`).
 
 What works now:
 
@@ -432,7 +433,7 @@ Unit tests cover parsing and some fallback behavior, but many important validati
 
 ### Frontend Size
 
-Resolved July 2026: `App.tsx` is now a ~285-line composition root over `builder/`, `chrome/`, `colorLab/`, and `ui/` modules, preserving typed recipe flow through `mapRecipe.ts`. Keep new features in focused hooks/components rather than re-growing `App.tsx`.
+Resolved July 2026: `frontend/app/map/MapPageClient.tsx` is the composition root over `builder/`, `chrome/`, `colorLab/`, and `ui/` modules, preserving typed recipe flow through `mapRecipe.ts`. Keep new features in focused hooks/components rather than growing the route/page entry files.
 
 ### Region Registry Split
 

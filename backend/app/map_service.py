@@ -360,7 +360,7 @@ def create_map_buffer(req: MapRequest):
     if u_subset is not None and v_subset is not None:
         overlay_level = "10m" if is_surface_or_named_level(req.variable) else f"{req.level}mb"
         # Wind anomaly maps always plot anomaly glyphs (#47), so the label
-        # follows the map mode — never the wind_overlay_mode request param.
+        # follows the map mode.
         overlay_kind = (
             "Climatological Wind" if req.mode == "climatology"
             else "Wind Anomaly" if use_vector_wind_anomaly
