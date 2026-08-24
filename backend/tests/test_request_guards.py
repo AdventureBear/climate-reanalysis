@@ -110,6 +110,107 @@ def test_precip_total_anomaly_is_raw_only(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    ("variable", "level"),
+    [
+        ("rel_vorticity", "500"),
+        ("storm_relative_helicity", "1000"),
+        ("wind_gust", "1000"),
+        ("storm_motion", "1000"),
+        ("lifted_index_surface", "1000"),
+        ("lifted_index_best", "1000"),
+        ("lifted_index_parcel", "1000"),
+    ],
+)
+def test_new_core_variables_enter_map_recipe(monkeypatch, variable, level):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["variable"] = req.variable
+        captured["level"] = req.level
+        captured["mode"] = req.mode
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": variable,
+            "level": level,
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {"variable": variable, "level": int(level), "mode": "raw"}
+
+
+@pytest.mark.parametrize(
+    ("variable", "level"),
+    [
+        ("storm_relative_helicity", "1000"),
+        ("wind_gust", "1000"),
+        ("storm_motion", "1000"),
+        ("lifted_index_surface", "1000"),
+        ("lifted_index_best", "1000"),
+        ("lifted_index_parcel", "1000"),
+    ],
+)
+def test_new_named_core_variables_are_raw_only(monkeypatch, variable, level):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": variable,
+            "level": level,
+            "region": "CONUS",
+            "mode": "anomaly",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "raw maps only" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("variable", "level", "scale_kind", "unit", "domain_min", "domain_max", "group"),
+    [
+        ("rel_vorticity", "500", "fixed-rel-vorticity", "10⁻⁵/s", -30, 30, None),
+        ("storm_relative_helicity", "1000", "fixed-storm-relative-helicity", "m²/s²", -300, 600, None),
+        ("wind_gust", "1000", "fixed-wind", "kt", 8, 60, "surface"),
+        ("storm_motion", "1000", "fixed-wind", "kt", 15, 80, "low"),
+        ("lifted_index_best", "1000", "fixed-lifted-index-best", "K", -12, 20, None),
+    ],
+)
+def test_new_core_variable_scale_meta(variable, level, scale_kind, unit, domain_min, domain_max, group):
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/scale-meta",
+        params={
+            "variable": variable,
+            "level": level,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scale_kind"] == scale_kind
+    assert payload["unit"] == unit
+    assert payload["domain_min"] == domain_min
+    assert payload["domain_max"] == domain_max
+    if group is not None:
+        assert payload["group"] == group
+
+
+@pytest.mark.parametrize(
     ("level", "resolved_variable"),
     [
         ("total_column", "cloud_cover_total"),

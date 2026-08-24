@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import xarray as xr
 
 from .units import kelvin_to_celsius
+
+CORE_EARTH_RADIUS_M = 6_371_229.0
 
 
 def with_derived_metadata(
@@ -47,6 +50,80 @@ def wind_speed_from_components(
         speed,
         units="m/s",
         long_name="Wind Speed",
+        template=u,
+        obs_source_default=obs_source_default,
+        preserve_grib_level=preserve_grib_level,
+    )
+
+
+def vector_speed_from_components(
+    u: Any,
+    v: Any,
+    *,
+    long_name: str,
+    obs_source_default: str | None = None,
+    preserve_grib_level: bool = False,
+) -> Any:
+    """Derived vector magnitude in m/s with caller-provided metadata."""
+    speed = vector_magnitude(u, v)
+    return with_derived_metadata(
+        speed,
+        units="m/s",
+        long_name=long_name,
+        template=u,
+        obs_source_default=obs_source_default,
+        preserve_grib_level=preserve_grib_level,
+    )
+
+
+def relative_vorticity_from_components(
+    u: xr.DataArray,
+    v: xr.DataArray,
+    *,
+    earth_radius_m: float = CORE_EARTH_RADIUS_M,
+    obs_source_default: str | None = None,
+    preserve_grib_level: bool = False,
+) -> xr.DataArray:
+    """Relative vorticity on a latitude/longitude grid from U/V winds.
+
+    Uses the spherical-coordinate vertical-vorticity form:
+    zeta = (1 / (a cos(phi))) * [dV/dlambda - d(U cos(phi))/dphi]
+    where phi and lambda are radians and a is CORe's spherical Earth radius.
+    """
+    if "latitude" not in u.coords or "longitude" not in u.coords:
+        raise ValueError("relative vorticity requires latitude and longitude coordinates")
+    if u.dims != v.dims:
+        raise ValueError("u and v must have matching dimensions")
+
+    lat_axis = u.get_axis_num("latitude")
+    lon_axis = u.get_axis_num("longitude")
+    lat_rad = np.deg2rad(np.asarray(u.latitude.values, dtype=float))
+    lon_rad = np.deg2rad(np.asarray(u.longitude.values, dtype=float))
+    cos_lat = np.cos(lat_rad)
+    safe_cos_lat = np.where(np.abs(cos_lat) < 1e-6, np.nan, cos_lat)
+    cos_shape = [1] * u.ndim
+    cos_shape[lat_axis] = len(cos_lat)
+    cos_grid = safe_cos_lat.reshape(cos_shape)
+
+    u_values = np.asarray(u.values, dtype=float)
+    v_values = np.asarray(v.values, dtype=float)
+    edge_order = 2 if min(u_values.shape[lat_axis], u_values.shape[lon_axis]) > 2 else 1
+
+    dv_dlambda = np.gradient(v_values, lon_rad, axis=lon_axis, edge_order=edge_order)
+    d_ucos_dphi = np.gradient(u_values * cos_grid, lat_rad, axis=lat_axis, edge_order=edge_order)
+    zeta_values = (dv_dlambda - d_ucos_dphi) / (earth_radius_m * cos_grid)
+
+    zeta = xr.DataArray(
+        zeta_values,
+        coords=u.coords,
+        dims=u.dims,
+        attrs=dict(u.attrs),
+        name="relative_vorticity",
+    )
+    return with_derived_metadata(
+        zeta,
+        units="1/s",
+        long_name="Relative Vorticity",
         template=u,
         obs_source_default=obs_source_default,
         preserve_grib_level=preserve_grib_level,

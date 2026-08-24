@@ -252,6 +252,7 @@ _WIND_SCALE_CONFIGS: dict[str, dict] = {
 
 
 _QUIVER_BASE_SCALE = 520  # calibrated at 925/850mb (80kt max); ~10% longer than prior value
+_WIND_LIKE_VARIABLES = {"wind_speed", "wind_10m", "wind_gust", "storm_motion"}
 
 
 def _wind_unit_factor(wind_unit: str) -> float:
@@ -496,7 +497,7 @@ def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple]
 
 
 def _render_level(variable: str, level: int) -> int:
-    if variable in {"temp_2m", "wind_10m"}:
+    if variable in {"temp_2m", "wind_10m", "wind_gust", "storm_motion"}:
         return 1000
     return level
 
@@ -549,7 +550,7 @@ def display_unit(
     Single source of truth for the unit string shown on map titles and colorbars.
     Always matches what the colorbar actually displays.
     """
-    if variable in {"wind_speed", "wind_10m"}:
+    if variable in _WIND_LIKE_VARIABLES:
         return _wind_unit_label(wind_unit)
     if variable in {"temp", "temp_2m"}:
         return f"°{_temp_display_unit(variable, level, temp_unit)}"
@@ -579,8 +580,12 @@ def display_unit(
         return "J/kg"
     if variable == "dewpoint_2m":
         return "°F"
-    if variable == "absv":
+    if variable in {"absv", "rel_vorticity"}:
         return "10⁻⁵/s"
+    if variable == "storm_relative_helicity":
+        return "m²/s²"
+    if variable in {"lifted_index_surface", "lifted_index_best", "lifted_index_parcel"}:
+        return "K"
     if variable == "snow_depth":
         return "in"
     return ""
@@ -905,6 +910,36 @@ _ABSV_SCALE_CONFIG = {
     "step": 1.0,
 }
 
+_REL_VORTICITY_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -30.0,
+    "domain_max": 30.0,
+    "anchor_values": [-30.0, -16.0, -8.0, 0.0, 8.0, 16.0, 30.0],
+    "anchor_colors": ["#08306b", "#4292c6", "#c6dbef", "#f7f7f7", "#fdae6b", "#e6550d", "#7f2704"],
+    "key_breakpoints": [-8.0, 8.0],
+    "step": 1.0,
+}
+
+_SRH_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -300.0,
+    "domain_max": 600.0,
+    "anchor_values": [-300.0, -150.0, 0.0, 100.0, 200.0, 300.0, 450.0, 600.0],
+    "anchor_colors": ["#08306b", "#4292c6", "#f7f7f7", "#fff7bc", "#fdae6b", "#e6550d", "#b30000", "#7a0177"],
+    "key_breakpoints": [100.0, 200.0, 300.0],
+    "step": 25.0,
+}
+
+_LIFTED_INDEX_SCALE_CONFIG = {
+    "mapping": "fixed_anchors",
+    "domain_min": -12.0,
+    "domain_max": 20.0,
+    "anchor_values": [-12.0, -8.0, -4.0, 0.0, 4.0, 8.0, 14.0, 20.0],
+    "anchor_colors": ["#7a0177", "#b30000", "#e6550d", "#fee391", "#f7f7f7", "#bdd7e7", "#3182bd", "#08519c"],
+    "key_breakpoints": [-6.0, -4.0, 0.0],
+    "step": 1.0,
+}
+
 # Snow depth in inches (native m). White → blues → purples.
 _SNOW_DEPTH_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
@@ -953,6 +988,12 @@ _FIXED_SCALE_CONFIGS: dict[str, dict] = {
                     "to_display": _k_to_f},
     "absv":        {**_ABSV_SCALE_CONFIG,        "tick_every": 10.0,  "label": "Absolute Vorticity", "extend": "both",
                     "to_display": lambda v: v * VORTICITY_TO_1E5},
+    "rel_vorticity": {**_REL_VORTICITY_SCALE_CONFIG, "tick_every": 10.0, "label": "Relative Vorticity", "extend": "both",
+                      "to_display": lambda v: v * VORTICITY_TO_1E5},
+    "storm_relative_helicity": {**_SRH_SCALE_CONFIG, "tick_every": 100.0, "label": "Storm-Relative Helicity", "extend": "both"},
+    "lifted_index_surface": {**_LIFTED_INDEX_SCALE_CONFIG, "tick_every": 4.0, "label": "Lifted Index", "extend": "both"},
+    "lifted_index_best": {**_LIFTED_INDEX_SCALE_CONFIG, "tick_every": 4.0, "label": "Lifted Index", "extend": "both"},
+    "lifted_index_parcel": {**_LIFTED_INDEX_SCALE_CONFIG, "tick_every": 4.0, "label": "Lifted Index", "extend": "both"},
     "snow_depth":  {**_SNOW_DEPTH_SCALE_CONFIG,  "tick_every": 6.0,   "label": "Snow Depth",         "extend": "max",
                     "to_display": lambda v: v * M_TO_IN},
 }
@@ -1151,7 +1192,7 @@ def _anomaly_scale_in_display_units(
         # Monthly/seasonal mean anomalies are ~half the daily amplitude —
         # the daily ladder washes a ±3 mb seasonal signal to near-white.
         max_val, step = max_val * 0.5, step * 0.5
-    if variable in {"wind_speed", "wind_10m"} and wind_unit == "m/s":
+    if variable in _WIND_LIKE_VARIABLES and wind_unit == "m/s":
         return max_val * KT_TO_MS, step * KT_TO_MS
     if variable == "precipitable_water" and pwat_unit == "in":
         return max_val * MM_TO_IN, step * MM_TO_IN
@@ -1362,7 +1403,7 @@ def _anomaly_to_display_with_unit(
     precip_unit: str = "mm",
 ) -> np.ndarray:
     """Convert anomaly array from native units to the requested display units."""
-    if variable in {"wind_speed", "wind_10m"}:
+    if variable in _WIND_LIKE_VARIABLES:
         return values * _wind_unit_factor(wind_unit)
     if variable in {"temp", "temp_2m"}:
         if _temp_display_unit(variable, level, temp_unit) == "F":
@@ -1419,7 +1460,7 @@ def glyph_stride(wind_step: int, grid_deg: float, region_bounds: dict) -> int:
 
 def _wind_group(level: int, variable: str = "wind_speed") -> str:
     if level == 1000:
-        return "surface" if variable == "wind_10m" else "low"
+        return "surface" if variable in {"wind_10m", "wind_gust"} else "low"
     if level in (925, 850, 700):
         return "low"
     if level == 600:
@@ -1554,7 +1595,7 @@ def _custom_scale_from_spec(
         return None
 
     def to_native(value: float) -> float:
-        if variable in {"wind_speed", "wind_10m"}:
+        if variable in _WIND_LIKE_VARIABLES:
             return knots_to_meters_per_second(value) if wind_unit == "kt" else value
         if variable in {"temp", "temp_2m"}:
             if _temp_display_unit(variable, level, temp_unit) == "F":
@@ -1684,7 +1725,7 @@ def describe_color_scale(
             **stats,
         }
 
-    if variable in {"wind_speed", "wind_10m"}:
+    if variable in _WIND_LIKE_VARIABLES:
         scale_level = _render_level(variable, level)
         group, scale_cfg = _resolved_wind_scale_config(scale_level, scale_overrides, variable=variable)
         min_kt = scale_cfg["domain_min"]
@@ -2147,13 +2188,17 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
                 'colors': colors, 'boundaries': breakpoints,
             }
 
-    elif variable in {"wind_speed", "wind_10m"}:
+    elif variable in _WIND_LIKE_VARIABLES:
         scale_level = _render_level(variable, level)
+        wind_label = {
+            "wind_gust": "Wind Gust",
+            "storm_motion": "Storm Motion",
+        }.get(variable, "Wind Speed")
         # fill_mode="none": isotachs/barbs-only wind map — skip the shaded
         # field and its colorbar; the overlay phase draws the layers.
         if fill_mode == "none":
             pass
-        elif not draw_custom_filled(data_array.values, ylabel=f'Wind Speed ({_wind_unit_label(wind_unit)})', extend='max'):
+        elif not draw_custom_filled(data_array.values, ylabel=f'{wind_label} ({_wind_unit_label(wind_unit)})', extend='max'):
             breakpoints_ms, interval_colors, min_kt, max_kt = _make_wind_scale(
                 scale_level,
                 step_kt=_wind_boundary_step(_wind_group(scale_level, variable), color_step),
@@ -2179,7 +2224,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
             cbar_cfg = {
                 'ticks':      [knots_to_meters_per_second(kt) for kt in tick_kt],
                 'ticklabels': [_format_scale_value(v) for v in tick_display],
-                'ylabel':     f'Wind Speed  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
+                'ylabel':     f'{wind_label}  ·  {_format_scale_value(min_display)}–{_format_scale_value(max_display)} {_wind_unit_label(wind_unit)}',
                 'extend':     'max',
                 'colors': interval_colors, 'boundaries': breakpoints_ms,
             }

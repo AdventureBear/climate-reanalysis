@@ -3,11 +3,14 @@ import pytest
 import xarray as xr
 
 from app.met_math import (
+    CORE_EARTH_RADIUS_M,
     relative_humidity_from_components,
     relative_humidity_from_dewpoint,
     relative_humidity_from_dewpoint_components,
     relative_humidity_from_specific_humidity,
+    relative_vorticity_from_components,
     saturation_vapor_pressure_bolton_hpa,
+    vector_speed_from_components,
     vapor_pressure_from_specific_humidity_hpa,
     vector_magnitude,
     with_derived_metadata,
@@ -51,6 +54,45 @@ def test_wind_speed_from_components_preserves_pyre_metadata_when_requested():
     assert float(speed[0]) == 10.0
     assert speed.attrs["_pyre_obs_source"] == "CORe-pgb"
     assert speed.attrs["_pyre_grib_level"] == "850 mb"
+
+
+def test_vector_speed_from_components_sets_custom_long_name():
+    valid_time = np.datetime64("2026-07-30T00:00")
+    u = xr.DataArray([8.0], dims=("x",), coords={"valid_time": valid_time})
+    v = xr.DataArray([15.0], dims=("x",), coords={"valid_time": valid_time})
+
+    speed = vector_speed_from_components(u, v, long_name="Storm Motion")
+
+    assert float(speed[0]) == 17.0
+    assert speed.attrs["units"] == "m/s"
+    assert speed.attrs["long_name"] == "Storm Motion"
+    assert speed.coords["valid_time"].item() == valid_time
+
+
+def test_relative_vorticity_from_components_uses_spherical_grid():
+    lats = np.array([50.0, 40.0, 30.0, 20.0])
+    lons = np.array([250.0, 260.0, 270.0, 280.0])
+    lat_rad = np.deg2rad(lats)
+    lon_rad = np.deg2rad(lons)
+    expected_vorticity = 2.0e-5
+
+    u_values = np.zeros((lats.size, lons.size))
+    v_values = expected_vorticity * CORE_EARTH_RADIUS_M * np.cos(lat_rad)[:, None] * lon_rad[None, :]
+    u = xr.DataArray(
+        u_values,
+        dims=("latitude", "longitude"),
+        coords={"latitude": lats, "longitude": lons},
+        attrs={"_pyre_obs_source": "CORe-pgb", "_pyre_grib_level": "500 mb"},
+    )
+    v = xr.DataArray(v_values, dims=u.dims, coords=u.coords)
+
+    vorticity = relative_vorticity_from_components(u, v, preserve_grib_level=True)
+
+    np.testing.assert_allclose(vorticity.values, expected_vorticity, rtol=1e-10, atol=1e-12)
+    assert vorticity.attrs["units"] == "1/s"
+    assert vorticity.attrs["long_name"] == "Relative Vorticity"
+    assert vorticity.attrs["_pyre_obs_source"] == "CORe-pgb"
+    assert vorticity.attrs["_pyre_grib_level"] == "500 mb"
 
 
 def test_with_derived_metadata_sets_attrs_and_preserves_template_context():

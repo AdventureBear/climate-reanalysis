@@ -19,8 +19,10 @@ from .config import CACHE_ROOT, R2_CLIMO_FIELDS
 from .disk_cache import atomic_write_netcdf, discard_corrupt, open_netcdf
 from .api_options import MAX_PRECIP_WINDOW_HOURS
 from .met_math import (
+    relative_vorticity_from_components,
     relative_humidity_from_components,
     relative_humidity_from_dewpoint_components,
+    vector_speed_from_components,
     wind_speed_from_components,
 )
 from .units import PRATE_TO_MM_3H
@@ -402,6 +404,21 @@ def fetch_wind_components(date: str, hour: str, level: int) -> tuple[xr.DataArra
     return u, v
 
 
+def fetch_named_level_components(
+    date: str,
+    hour: str,
+    u_variable: str,
+    v_variable: str,
+    level_name: str,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Fetch two vector components from the same named pgb level with one index fetch."""
+    records = fetch_index(date, hour)
+    grib_url = _grib_url(date, hour)
+    u = _fetch_record_by_level(grib_url, records, u_variable, level_name)
+    v = _fetch_record_by_level(grib_url, records, v_variable, level_name)
+    return u, v
+
+
 def fetch_relative_humidity(date: str, hour: str, level: int) -> xr.DataArray:
     """
     Compute relative humidity (%) from SPFH and TMP with one shared index fetch.
@@ -435,6 +452,36 @@ def fetch_wind_speed(date: str, hour: str, level: int) -> xr.DataArray:
     v = _fetch_record(grib_url, records, "VGRD", level)
 
     return wind_speed_from_components(u, v)
+
+
+def fetch_relative_vorticity(date: str, hour: str, level: int) -> xr.DataArray:
+    """Compute relative vorticity from pressure-level UGRD and VGRD."""
+    u, v = fetch_wind_components(date, hour, level)
+    return relative_vorticity_from_components(
+        u,
+        v,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
+
+
+def fetch_named_level_vector_speed(
+    date: str,
+    hour: str,
+    u_variable: str,
+    v_variable: str,
+    level_name: str,
+    long_name: str,
+) -> xr.DataArray:
+    """Compute vector speed from named-level pgb U/V-like component fields."""
+    u, v = fetch_named_level_components(date, hour, u_variable, v_variable, level_name)
+    return vector_speed_from_components(
+        u,
+        v,
+        long_name=long_name,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
 
 
 def precip_accumulation_pairs(date: str, hour: str, window_hours: int) -> list[tuple[str, str]]:
@@ -730,6 +777,37 @@ def fetch_wind_components_daily_composite(dates: list[str], hours: list[str], le
     return _mean_wind_components_of_pairs([(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
 
+def fetch_relative_vorticity_daily_composite(dates: list[str], hours: list[str], level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    u, v = fetch_wind_components_daily_composite(dates, hours, level, skip_missing=skip_missing)
+    return relative_vorticity_from_components(
+        u,
+        v,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
+
+
+def fetch_named_level_vector_speed_daily_composite(
+    dates: list[str],
+    hours: list[str],
+    u_variable: str,
+    v_variable: str,
+    level_name: str,
+    long_name: str,
+    *,
+    skip_missing: bool = False,
+) -> xr.DataArray:
+    return _mean_of_pairs(
+        fetch_named_level_vector_speed,
+        [(d, h) for d in dates for h in hours],
+        u_variable,
+        v_variable,
+        level_name,
+        long_name,
+        skip_missing=skip_missing,
+    )
+
+
 def fetch_relative_humidity_daily_composite(dates: list[str], hours: list[str], level: int, *, skip_missing: bool = False) -> xr.DataArray:
     return _mean_of_pairs(fetch_relative_humidity, [(d, h) for d in dates for h in hours], level, skip_missing=skip_missing)
 
@@ -763,6 +841,38 @@ def fetch_wind_speed_composite(dates: list[str], hour: str, level: int, *, skip_
 def fetch_wind_components_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> tuple[xr.DataArray, xr.DataArray]:
     """Return mean U and mean V (vector mean wind — correct for compositing)."""
     return _mean_wind_components_of_pairs([(d, hour) for d in dates], level, skip_missing=skip_missing)
+
+
+def fetch_relative_vorticity_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
+    u, v = fetch_wind_components_composite(dates, hour, level, skip_missing=skip_missing)
+    return relative_vorticity_from_components(
+        u,
+        v,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
+
+
+def fetch_named_level_vector_speed_composite(
+    dates: list[str],
+    hour: str,
+    u_variable: str,
+    v_variable: str,
+    level_name: str,
+    long_name: str,
+    *,
+    skip_missing: bool = False,
+) -> xr.DataArray:
+    return _mean_of(
+        fetch_named_level_vector_speed,
+        dates,
+        hour,
+        u_variable,
+        v_variable,
+        level_name,
+        long_name,
+        skip_missing=skip_missing,
+    )
 
 
 def fetch_relative_humidity_composite(dates: list[str], hour: str, level: int, *, skip_missing: bool = False) -> xr.DataArray:
@@ -1079,6 +1189,19 @@ def fetch_monthly_wind_speed(year: int, month: int, level: int) -> xr.DataArray:
     return speed
 
 
+def fetch_monthly_relative_vorticity(year: int, month: int, level: int) -> xr.DataArray:
+    """Derived relative vorticity from monthly mean U and V components."""
+    u, v = fetch_monthly_wind_components(year, month, level)
+    vort = relative_vorticity_from_components(
+        u,
+        v,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
+    vort.attrs["_pyre_obs_source"] = u.attrs.get("_pyre_obs_source", "CORe-pgb")
+    return vort
+
+
 def fetch_monthly_relative_humidity(year: int, month: int, level: int) -> xr.DataArray:
     """
     Monthly RH with the same three-tier hierarchy.
@@ -1158,6 +1281,30 @@ def fetch_monthly_wind_speed_composite(
     year_months: list[tuple[int, int]], level: int
 ) -> xr.DataArray:
     return _mean_of_monthly(fetch_monthly_wind_speed, year_months, level)
+
+
+def fetch_monthly_relative_vorticity_composite(
+    year_months: list[tuple[int, int]], level: int
+) -> xr.DataArray:
+    return _mean_of_monthly(fetch_monthly_relative_vorticity, year_months, level)
+
+
+def fetch_monthly_named_level_vector_speed_composite(
+    year_months: list[tuple[int, int]],
+    u_variable: str,
+    v_variable: str,
+    level_name: str,
+    long_name: str,
+) -> xr.DataArray:
+    u_mean = _mean_of_monthly(fetch_monthly_named_level_field, year_months, u_variable, level_name)
+    v_mean = _mean_of_monthly(fetch_monthly_named_level_field, year_months, v_variable, level_name)
+    return vector_speed_from_components(
+        u_mean,
+        v_mean,
+        long_name=long_name,
+        obs_source_default="CORe-pgb",
+        preserve_grib_level=True,
+    )
 
 
 def fetch_monthly_relative_humidity_composite(

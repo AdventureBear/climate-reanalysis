@@ -345,6 +345,15 @@ VARIABLES = {
         "climo_sources": _PRESSURE_LEVEL_CLIMO_SOURCES,
         "normalized_mask_threshold": None,
     },
+    "rel_vorticity": {
+        "name": "Relative Vorticity",
+        "units": "1/s",
+        # CORe docs explicitly note RELV must be computed from U/V by the user.
+        "grib_names": ["UGRD", "VGRD"],
+        "derive": "relative_vorticity",
+        "climo_sources": (),   # vorticity climatology can be derived later from U/V baselines
+        "normalized_mask_threshold": None,
+    },
     "temp_2m": {
         "name": "2m Temperature",
         "units": "K",
@@ -581,6 +590,79 @@ VARIABLES = {
         "climo_sources": (),   # no R2 vorticity files; derivable later from uwnd/vwnd
         "normalized_mask_threshold": None,
     },
+    "storm_relative_helicity": {
+        "name": "Storm-Relative Helicity",
+        "units": "m²/s²",
+        "stream": "pgb_named_level",
+        "grib_name": "HLCY",
+        "level_name": "3000-0 m above ground",
+        "display_level": "0–3 km AGL",
+        "monthly_grib_name": "HLCY",
+        "monthly_level_name": "3000-0 m above ground",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "wind_gust": {
+        "name": "Wind Gust",
+        "units": "m/s",
+        "stream": "pgb_named_level",
+        "grib_name": "GUST",
+        "level_name": "surface",
+        "display_level": "surface",
+        "monthly_grib_name": "GUST",
+        "monthly_level_name": "surface",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "storm_motion": {
+        "name": "Storm Motion",
+        "units": "m/s",
+        "stream": "derived_named_level",
+        "grib_names": ["USTM", "VSTM"],
+        "derive": "vector_speed",
+        "level_name": "6000-0 m above ground",
+        "display_level": "0–6 km AGL",
+        "monthly_grib_names": ["USTM", "VSTM"],
+        "monthly_level_name": "6000-0 m above ground",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "lifted_index_surface": {
+        "name": "Lifted Index (Surface)",
+        "units": "K",
+        "stream": "pgb_named_level",
+        "grib_name": "LFTX",
+        "level_name": "surface",
+        "display_level": "surface parcel",
+        "monthly_grib_name": "LFTX",
+        "monthly_level_name": "surface",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "lifted_index_best": {
+        "name": "Lifted Index (Best 4-layer)",
+        "units": "K",
+        "stream": "pgb_named_level",
+        "grib_name": "4LFTX",
+        "level_name": "surface",
+        "display_level": "best 4-layer parcel",
+        "monthly_grib_name": "4LFTX",
+        "monthly_level_name": "surface",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
+    "lifted_index_parcel": {
+        "name": "Lifted Index (30-0 mb Parcel)",
+        "units": "K",
+        "stream": "pgb_named_level",
+        "grib_name": "PLI",
+        "level_name": "30-0 mb above ground",
+        "display_level": "30–0 mb AGL parcel",
+        "monthly_grib_name": "PLI",
+        "monthly_level_name": "30-0 mb above ground",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
     "snow_depth": {
         "name": "Snow Depth",
         "units": "m",
@@ -598,7 +680,7 @@ PRESSURE_LEVELS = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 
 
 def is_surface_or_named_level(variable: str) -> bool:
     """Return True for fields that are not selected by pressure level."""
-    return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level", "derived_surface"}
+    return VARIABLES[variable].get("stream") in {"flx", "pgb_named_level", "derived_named_level", "derived_surface"}
 
 
 def valid_levels(variable: str) -> list[int]:

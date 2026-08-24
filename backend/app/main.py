@@ -500,7 +500,10 @@ def get_map(
         is_surface_or_named_level(variable)
         and months
         and mode != "climatology"
-        and not VARIABLES.get(variable, {}).get("monthly_grib_name")
+        and not (
+            VARIABLES.get(variable, {}).get("monthly_grib_name")
+            or VARIABLES.get(variable, {}).get("monthly_grib_names")
+        )
     ):
         raise HTTPException(
             status_code=422,

@@ -27,6 +27,7 @@ VAR_NAMES = {
     "surface_pressure": "Mean Sea Level Pressure",
     "precipitable_water": "Precipitable Water",
     "omega": "Omega (Vertical Velocity)",
+    "rel_vorticity": "Relative Vorticity  (derived: UGRD + VGRD)",
     "precip_rate": "Precipitation Rate",
     "precip_total": "Precipitation Total",
     "cloud_cover_total": "Total Cloud Cover",
@@ -50,6 +51,12 @@ VAR_NAMES = {
     "cin_mu": "CIN (255-0 mb Most-Unstable)",
     "dewpoint_2m": "2m Dewpoint",
     "absv": "Absolute Vorticity",
+    "storm_relative_helicity": "Storm-Relative Helicity (0-3 km AGL)",
+    "wind_gust": "Wind Gust",
+    "storm_motion": "Storm Motion (0-6 km AGL)",
+    "lifted_index_surface": "Lifted Index (Surface)",
+    "lifted_index_best": "Lifted Index (Best 4-layer)",
+    "lifted_index_parcel": "Lifted Index (30-0 mb Parcel)",
     "snow_depth": "Snow Depth",
 }
 
@@ -103,7 +110,7 @@ def scale_overrides_from_query(
     scale_max: float | None,
     wind_unit: str = "kt",
 ) -> dict[str, float] | None:
-    if variable not in {"wind_speed", "wind_10m"}:
+    if variable not in {"wind_speed", "wind_10m", "wind_gust", "storm_motion"}:
         return None
     if scale_min is None and scale_max is None:
         return None

@@ -31,10 +31,15 @@ from ..retrieval import (
     fetch_flx_wind_components,
     fetch_monthly_field_composite,
     fetch_monthly_relative_humidity_composite,
+    fetch_monthly_relative_vorticity_composite,
     fetch_monthly_wind_components_composite,
+    fetch_monthly_named_level_vector_speed_composite,
     fetch_monthly_wind_speed_composite,
     fetch_named_level_field_composite,
     fetch_named_level_field_daily_composite,
+    fetch_named_level_vector_speed,
+    fetch_named_level_vector_speed_composite,
+    fetch_named_level_vector_speed_daily_composite,
     fetch_precip_rate,
     fetch_precip_rate_composite,
     fetch_precip_rate_daily_composite,
@@ -47,6 +52,9 @@ from ..retrieval import (
     fetch_relative_humidity_2m_daily_composite,
     fetch_relative_humidity_composite,
     fetch_relative_humidity_daily_composite,
+    fetch_relative_vorticity,
+    fetch_relative_vorticity_composite,
+    fetch_relative_vorticity_daily_composite,
     fetch_wind_components,
     fetch_wind_components_composite,
     fetch_wind_components_daily_composite,
@@ -82,10 +90,14 @@ def _variable_fetch_key(variable: str) -> str:
         return "precip_rate"
     if variable == "precip_total":
         return "precip_total"
+    if VARIABLES[variable].get("derive") == "relative_vorticity":
+        return "relative_vorticity"
     if VARIABLES[variable].get("stream") == "flx":
         return "flx"
     if VARIABLES[variable].get("stream") == "derived_surface":
         return variable
+    if VARIABLES[variable].get("stream") == "derived_named_level":
+        return "derived_named_level"
     if VARIABLES[variable].get("stream") == "pgb_named_level":
         return "pgb_named_level"
     return variable if variable in {"wind_speed", "rel_humidity"} else "field"
@@ -117,6 +129,14 @@ def _flx_field(req: FetchRequest, date: str, hour: str):
 def _pgb_named_level_field(req: FetchRequest, date: str, hour: str):
     cfg = VARIABLES[req.variable]
     return fetch_field_by_level_name(date, hour, cfg["grib_name"], cfg["level_name"])
+
+
+def _derived_named_level_field(req: FetchRequest, date: str, hour: str):
+    cfg = VARIABLES[req.variable]
+    if cfg.get("derive") == "vector_speed":
+        u_grib, v_grib = cfg["grib_names"]
+        return fetch_named_level_vector_speed(date, hour, u_grib, v_grib, cfg["level_name"], cfg["name"])
+    raise ValueError(f"unsupported named-level derivation for {req.variable!r}")
 
 
 def _mean_flx_pairs(req: FetchRequest, date_hour_pairs: list[tuple[str, str]]) -> xr.DataArray:
@@ -191,6 +211,7 @@ ObsFetcher = Callable[[FetchRequest, TimeSelection, str], object]
 
 OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("monthly", "wind_speed"): lambda req, sel, _grib: fetch_monthly_wind_speed_composite(sel.year_months, req.level),
+    ("monthly", "relative_vorticity"): lambda req, sel, _grib: fetch_monthly_relative_vorticity_composite(sel.year_months, req.level),
     ("monthly", "rel_humidity"): lambda req, sel, _grib: fetch_monthly_relative_humidity_composite(sel.year_months, req.level),
     ("monthly", "field"): lambda req, sel, grib: fetch_monthly_field_composite(sel.year_months, grib, req.level),
     ("monthly", "pgb_named_level"): lambda req, sel, _grib: fetch_monthly_named_level_composite(
@@ -198,7 +219,15 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
         VARIABLES[req.variable]["monthly_grib_name"],
         VARIABLES[req.variable]["monthly_level_name"],
     ),
+    ("monthly", "derived_named_level"): lambda req, sel, _grib: fetch_monthly_named_level_vector_speed_composite(
+        sel.year_months,
+        VARIABLES[req.variable]["monthly_grib_names"][0],
+        VARIABLES[req.variable]["monthly_grib_names"][1],
+        VARIABLES[req.variable]["monthly_level_name"],
+        VARIABLES[req.variable]["name"],
+    ),
     ("daily", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
+    ("daily", "relative_vorticity"): lambda req, sel, _grib: fetch_relative_vorticity_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_daily_composite(sel.date_list, sel.daily_hours, req.level, skip_missing=bool(req.skip_missing)),
     ("daily", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_daily_composite(sel.date_list, sel.daily_hours, skip_missing=bool(req.skip_missing)),
     ("daily", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate_daily_composite(sel.date_list, sel.daily_hours, skip_missing=bool(req.skip_missing)),
@@ -211,8 +240,18 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
         VARIABLES[req.variable]["level_name"],
         skip_missing=bool(req.skip_missing),
     ),
+    ("daily", "derived_named_level"): lambda req, sel, _grib: fetch_named_level_vector_speed_daily_composite(
+        sel.date_list,
+        sel.daily_hours,
+        VARIABLES[req.variable]["grib_names"][0],
+        VARIABLES[req.variable]["grib_names"][1],
+        VARIABLES[req.variable]["level_name"],
+        VARIABLES[req.variable]["name"],
+        skip_missing=bool(req.skip_missing),
+    ),
     ("daily", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, h) for d in sel.date_list for h in sel.daily_hours]),
     ("composite", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
+    ("composite", "relative_vorticity"): lambda req, sel, _grib: fetch_relative_vorticity_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity_composite(sel.date_list, req.hour, req.level, skip_missing=bool(req.skip_missing)),
     ("composite", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m_composite(sel.date_list, req.hour, skip_missing=bool(req.skip_missing)),
     ("composite", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate_composite(sel.date_list, req.hour, skip_missing=bool(req.skip_missing)),
@@ -225,14 +264,25 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
         VARIABLES[req.variable]["level_name"],
         skip_missing=bool(req.skip_missing),
     ),
+    ("composite", "derived_named_level"): lambda req, sel, _grib: fetch_named_level_vector_speed_composite(
+        sel.date_list,
+        req.hour,
+        VARIABLES[req.variable]["grib_names"][0],
+        VARIABLES[req.variable]["grib_names"][1],
+        VARIABLES[req.variable]["level_name"],
+        VARIABLES[req.variable]["name"],
+        skip_missing=bool(req.skip_missing),
+    ),
     ("composite", "flx"): lambda req, sel, _grib: _mean_flx_pairs(req, [(d, req.hour) for d in sel.date_list]),
     ("single", "wind_speed"): lambda req, sel, _grib: fetch_wind_speed(sel.date_list[0], req.hour, req.level),
+    ("single", "relative_vorticity"): lambda req, sel, _grib: fetch_relative_vorticity(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity"): lambda req, sel, _grib: fetch_relative_humidity(sel.date_list[0], req.hour, req.level),
     ("single", "rel_humidity_2m"): lambda req, sel, _grib: fetch_relative_humidity_2m(sel.date_list[0], req.hour),
     ("single", "precip_rate"): lambda req, sel, _grib: fetch_precip_rate(sel.date_list[0], req.hour),
     ("single", "precip_total"): lambda req, sel, _grib: fetch_precip_total(sel.date_list[0], req.hour, req.precip_window),
     ("single", "field"): lambda req, sel, grib: fetch_field(sel.date_list[0], req.hour, grib, req.level),
     ("single", "pgb_named_level"): lambda req, sel, _grib: _pgb_named_level_field(req, sel.date_list[0], req.hour),
+    ("single", "derived_named_level"): lambda req, sel, _grib: _derived_named_level_field(req, sel.date_list[0], req.hour),
     ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),
 }
 
