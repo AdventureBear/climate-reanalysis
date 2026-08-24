@@ -5,6 +5,12 @@ export type ChangelogDay = {
 
 export const changelogEntries: ChangelogDay[] = [
   {
+    date: '2026-08-24',
+    changes: [
+      'Added user options panel for units and layout, and removed those from each individual variable option. This is going to set us up for an improved more compact UI with room to grow',
+    ],
+  },
+  {
     date: '2026-08-23',
     changes: [
       'Added lifted index, relative vorticity, storm helicity index, storm motion and wind gust variables'

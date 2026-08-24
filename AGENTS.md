@@ -28,6 +28,7 @@ npm run lint      # eslint
 
 ### Local Workflow Preferences
 
+- Never make code changes on `main` or `render`. If the current branch is `main` or `render`, create a new branch first, then make edits there.
 - Do not build or lint for minor/small updates. If it is unclear whether a change is small, ask first.
 - Build and/or lint after implementing a major feature, broad refactor, or cross-cutting behavior change.
 - Do not start, restart, or kill local frontend/backend servers unless the user explicitly asks. The user normally already has servers running.
