@@ -736,12 +736,13 @@ _PWAT_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
     "domain_min": 0,
     "domain_max": 80,
-    "anchor_values": [0, 10, 20, 30, 40, 50, 60, 70, 80],
+    "anchor_values": [0, 6, 12, 19, 21, 30, 40, 50, 60, 70, 80],
     "anchor_colors": [
-        "#f7fbff", "#deebf7", "#9ecae1", "#41ab5d", "#fdd049",
-        "#fd8d3c", "#e31a1c", "#800026", "#4d004b",
+        "#8c510a", "#bf812d", "#dfc27d", "#f6e8c3", "#ffffff",
+        "#d9f0d3", "#a1d99b", "#41ab5d", "#006d2c", "#005a32",
+        "#003c1f",
     ],
-    "key_breakpoints": [25, 50],
+    "key_breakpoints": [19, 40, 60],
 }
 
 _SPECIFIC_HUMIDITY_SCALE_CONFIG = {

@@ -52,5 +52,17 @@ backend/scripts/render_surface_temp_anomaly_scale_test.py
 backend/scripts/render_temp_anomaly_scale_sibling_tests.py
 backend/scripts/render_dewpoint_scale_test.py
 backend/scripts/wind_scale_level_test_common.py
+
+# Local weekly/front-page map experiments
+backend/scripts/heat_representative_map.py
+backend/scripts/low_level_wind_representative_map.py
+backend/scripts/moisture_anomaly_representative_map.py
+backend/scripts/omega_animation.py
+backend/scripts/precip_punchline_representative_map.py
+backend/scripts/precip_rate_animation.py
+backend/scripts/propose_frontpage_stories.py
+backend/scripts/pwat_wind_animation.py
+backend/scripts/storm_representative_maps.py
+backend/scripts/vorticity_height_animation.py
 docs/monthly-flx-observation-composites-issue.md
 docs/public-backend-api-hardening-plan.md

@@ -1,10 +1,11 @@
-import Link from 'next/link'
 import { RecipeRedirect } from './RecipeRedirect'
 import { CreateAccountSection } from './CreateAccountSection'
 import { DonateSection } from './DonateSection'
 import { UsageSection } from './UsageSection'
+import Link from 'next/link'
 import { JsonLd } from '../ui/JsonLd'
 import { graph, learningResourceSchema } from '../lib/structuredData'
+import { WeeklyFeaturedMapsSection } from './WeeklyFeaturedMapsSection'
 
 // Landing page. Hero blends real map renders into the dusk background with
 // the text on top; the builder CTA sits low so the maps do the talking.
@@ -41,36 +42,7 @@ export default function LandingPage() {
       </section>
 
       <main className="w-full">
-        <div className="mx-auto w-full max-w-6xl px-5 pt-16 pb-20">
-          <h2 className="text-2xl font-bold text-slate-100 md:text-3xl">Last week in the Atmosphere</h2>
-          <p className="mt-2 text-base text-slate-300">
-            Click any map to open it in the builder and make it yours: change the variable, region,
-            level, or overlays.
-          </p>
-          <div className="mt-5 grid gap-5 sm:grid-cols-3">
-            <Link href="/map?variable=height&level=500&region=CONUS&hour=00&date=20260708&date_mode=single&fill_mode=shaded&wind_step=0"
-              className="group rounded-2xl border border-slate-600/40 bg-[#1b2a55]/70 p-4 transition-all hover:-translate-y-0.5 hover:border-sky-500/50">
-              <img src="/examples/height-500.png" alt="500mb geopotential height, shaded, over the continental United States"
-                className="rounded-lg" />
-              <span className="mt-3 block text-base font-semibold text-slate-100">500mb heights</span>
-              <span className="block text-sm text-slate-400">The steering pattern aloft</span>
-            </Link>
-            <Link href="/map?variable=temp_2m&level=1000&region=CONUS&hour=21&date=20260708&date_mode=single&wind_step=0"
-              className="group rounded-2xl border border-slate-600/40 bg-[#1b2a55]/70 p-4 transition-all hover:-translate-y-0.5 hover:border-sky-500/50">
-              <img src="/examples/temp-2m.png" alt="2 meter temperature over the continental United States"
-                className="rounded-lg" />
-              <span className="mt-3 block text-base font-semibold text-slate-100">Surface temperature</span>
-              <span className="block text-sm text-slate-400">Afternoon heat, county by county</span>
-            </Link>
-            <Link href="/map?variable=wind_speed&level=300&region=CONUS&hour=00&date=20260708&date_mode=single&wind_step=0"
-              className="group rounded-2xl border border-slate-600/40 bg-[#1b2a55]/70 p-4 transition-all hover:-translate-y-0.5 hover:border-sky-500/50">
-              <img src="/examples/wind-300.png" alt="300mb wind speed over the continental United States"
-                className="rounded-lg" />
-              <span className="mt-3 block text-base font-semibold text-slate-100">300mb winds</span>
-              <span className="block text-sm text-slate-400">Where the jet stream lives</span>
-            </Link>
-          </div>
-        </div>
+        <WeeklyFeaturedMapsSection />
 
       </main>
 
