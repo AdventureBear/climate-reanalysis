@@ -5,6 +5,13 @@ export type ChangelogDay = {
 
 export const changelogEntries: ChangelogDay[] = [
   {
+    date: '2026-08-25',
+    changes: [
+      'Documented NWS/PSL methodology for calculating climatology & SD based on variable type in project documents',
+        'Added PWAT anomaly & Normalization maps using R2 15 day moving average of 1990-2020 climatology, the most scientifically sound option currently based on NWS/PSL documents'
+    ],
+  },
+  {
     date: '2026-08-24',
     changes: [
       'Added user options panel for units and layout, and removed those from each individual variable option. This is going to set us up for an improved more compact UI with room to grow',
