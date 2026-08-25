@@ -166,15 +166,43 @@ The planning screenshot in `docs/archive/` is an older UI checkpoint from May 20
   - CORe synoptic computation fallback when monthly archive is missing.
 - Climatology, anomaly, and normalized anomaly modes for supported pressure-level variables.
 - MSLP plots CORe's `MSLET:mean sea level` (Eta/membrane reduction), not `PRES:mean sea level` — the PRES field nearly erases summer thermal lows over elevated terrain and is inconsistent with the 10m wind field (Jul 7 2026 18z CO heat low: PRES 1011 mb, MSLET 1007.5 mb, GFS PRMSL ~1002 mb; see FAQ Q22). Residual weakness vs PRMSL-based maps is expected: CORe is a T170 ensemble mean and publishes no PRMSL.
-- Climatology, anomaly, and normalized anomaly modes for the starter surface/named-level variables (2m temperature, 10m wind speed, MSLP, precipitable water), using R2 single-level baselines (`surface` 2.5° and `gaussian_grid` T62 files) declared per-variable via `r2_climo` specs in `config.VARIABLES`. Specific humidity remains raw-only: R2 publishes no daily shum file to build a baseline from. Caveat for domain review: 3-hourly obs are compared against R2 daily-mean baselines, so sub-monthly surface anomalies include a diurnal-cycle component.
-- Three expanded variables with full mode support from day one (July 2026): omega/VVEL (100–1000 mb; CORe does not publish stratospheric VVEL, and per-variable level lists in `config.VARIABLES["omega"]["levels"]` gate the API and UI), precipitation rate (PRATE, displayed mm/day), and OLR (ULWRF at top of atmosphere). PRATE and ULWRF are 0–3 hour average forecast fields, not instantaneous analyses — map titles show the data's own valid time (e.g. 03:00 for the 00z cycle). Scale-design notes pending domain review: precip anomalies currently use the shared blue↔red diverging palette, which is inverted relative to the hydrological wet-green/dry-brown convention.
+- Climatology, anomaly, and normalized anomaly modes for the wired single-level / FLX-side variables (2m temperature, 10m wind speed, MSLP, precipitable water, and OLR), using R2 single-level baselines (`surface` 2.5° and `gaussian_grid` T62 files) declared per-variable via `r2_climo` specs in `config.VARIABLES`. Specific humidity remains raw-only: R2 publishes no daily shum file to build a baseline from. Single-hour normalized maps remain blocked for most variables because the single-hour baseline has no standard deviation; PWAT is the current exception and uses the R2 daily centered 15-day mean/std path.
+- Omega/VVEL (100–1000 mb; CORe does not publish stratospheric VVEL) and OLR (ULWRF at top of atmosphere) have climatology, anomaly, and normalized anomaly modes. Precipitation rate remains raw-only until a precipitation anomaly product is designed. PRATE and ULWRF are 0–3 hour average forecast fields, not instantaneous analyses — map titles show the data's own valid time (e.g. 03:00 for the 00z cycle).
 - Per-variable display fine-tuning (July 2026): wind maps style themselves via a Wind Style control (shaded / +barbs / +vectors / +isotachs — the separate wind overlay is hidden for wind maps as redundant); temperature °F/°C/Auto override (`temp_unit` param; ticks relabel at round values of the chosen unit while the physically-anchored color boundaries are unchanged); MSLP and geopotential height gained a shaded fill option (`fill_mode=shaded`, filled between the map's own contour levels; heights use fixed per-level color windows in `_HEIGHT_FILL_WINDOWS`, same per-level-anchor pattern as `_TEMP_SCALES` — pending scale review); PWAT defaults to inches. Anomaly and normalized maps now always draw the raw field as labeled black contours (registry `_base_contour_plan` in visualizer.py) with a "Contours: raw field" title line — departures shown against the pattern they depart from.
 - Five raw-only case-study variables (July 2026): surface-based CAPE and CIN, 2m dewpoint (displayed °F), absolute vorticity (all 16 levels, displayed 10⁻⁵ s⁻¹, diverging so SH values render sensibly), and snow depth (displayed inches). All declared with empty `climo_sources`, so the API and UI offer raw maps only; possible future baselines are noted per-variable in `config.VARIABLES` comments (e.g. vorticity derivable from R2 u/v, dewpoint from R2 2m humidity). Rendering runs through the generic `_FIXED_SCALE_CONFIGS` registry in `visualizer.py`, which now supports per-variable native→display conversion callables (K→°F, 1/s→10⁻⁵/s, m→in).
 - Climatology source policy:
   - Sub-monthly anomaly modes are forced to `r2-daily`.
+  - Single-hour PWAT climatology/anomaly/normalized maps use `r2-daily-15day`: a centered 15-day R2 daily mean/std baseline, pooled from the cached 1991-2020 daily climatology shards.
   - Monthly anomaly modes support `monthly-pgb` and `r2-monthly`.
   - Variables whose registry does not support the resolved source are clamped to an equivalent-cadence supported source (surface fields have no `monthly-pgb` baseline and use `r2-monthly`).
   - `cfsr-daily` is a future source option but is not implemented.
+- Climatology source/path reference:
+
+  Legend: ✅ PyRe does this already · ☐ in progress · ⚠️ possible, not wired yet · ❌ not available from that source/path.
+
+  Actual upstream source data:
+
+  | Source data | What the upstream source actually provides | Used as observation data? | Climo mean from source? | Climo std from source? | Anomaly path | Normalized anomaly path |
+  |---|---|---:|---:|---:|---|---|
+  | CORe 3-hourly `pgb` / `flx` files | Real analysis/forecast-background fields every 3 hours | ✅ | ❌ | ❌ | ✅ Fetch selected synoptic hour(s), then subtract a separate climatology | ⚠️ Observation side only; normalized maps require a separate climatology std at matching cadence |
+  | CORe monthly archive (`monthly-pgb`) | Yearly monthly mean pressure-level fields | ✅ | ⚠️ Samples only | ❌ | ✅ Use as monthly observations; for climatology, compute/cache a 30-year monthly mean where wired | ✅ Compute/cache sample std from the monthly archive samples where wired |
+  | R1 4×-daily LTM (`r1-4xdaily`) | Long-term mean for each calendar day at 00/06/12/18z | ❌ | ✅ | ❌ | ✅ Per-hour anomaly baseline for wired variables; 03/09/15/21z interpolate neighboring means | ❌ No std in these files |
+  | R2 daily files (`r2-daily`) | Annual daily fields | ❌ | ⚠️ Samples only | ❌ | ✅ Compute/cache 1991-2020 calendar-day mean | ✅ Compute/cache 1991-2020 calendar-day sample std |
+  | R2 monthly files (`r2-monthly`) | Monthly time series | ❌ | ⚠️ Samples only | ❌ | ✅ Compute/cache 1991-2020 calendar-month mean | ✅ Compute/cache 1991-2020 calendar-month sample std |
+  | CFSR daily files (`cfsr-daily`) | Candidate daily baseline source | ❌ | ⚠️ Candidate only | ⚠️ Candidate only | ⚠️ Decide, wire, validate, cache means | ⚠️ Decide, wire, validate, cache std |
+
+  PyRe-derived products and caches:
+
+  | Derived product/cache | Built from | What it is | Status | Anomaly path | Normalized anomaly path |
+  |---|---|---|---:|---|---|
+  | Daily observation composite | CORe 3-hourly files | Mean of selected synoptic hours, currently 00/06/12/18z for daily mode | ✅ | ✅ Subtract daily climatology, usually `r2-daily` | ✅ Divide by daily climatology std, usually `r2-daily` |
+  | Monthly observation fallback | CORe 3-hourly files | Monthly mean computed from synoptic fields when the CORe monthly archive is missing | ✅ | ✅ Observation side only; still needs a monthly climatology source | ✅ Observation side only; still needs monthly climatology std |
+  | R2 daily climo cache | R2 daily files | Calendar-day mean and sample std, computed from 1991-2020 | ✅ | ✅ Mean field used as daily/sub-monthly baseline | ✅ Std field used for normalized maps |
+  | R2 daily centered 15-day PWAT climo cache | R2 daily climo cache | Pooled mean/std across the target calendar day ±7 days, 1991-2020 | ✅ | ✅ Current single-hour PWAT anomaly/climatology baseline (`r2-daily-15day`) | ✅ Current single-hour PWAT normalized baseline (`r2-daily-15day`) |
+  | R2 monthly climo cache | R2 monthly files | Calendar-month mean and sample std, computed from 1991-2020 | ✅ | ✅ Mean field used as monthly baseline | ✅ Std field used for normalized maps |
+  | CORe monthly climo cache | CORe monthly archive | Calendar-month mean and sample std from monthly archive samples | ✅ where wired | ✅ Mean field used as monthly pressure-level baseline | ✅ Std field used for normalized monthly maps |
+  | CORe-native daily climo cache | CORe 3-hourly files | Calendar-day means/stds from 30 years of CORe daily composites | ⚠️ | ⚠️ Would provide same-dataset daily anomaly baselines | ⚠️ Would provide same-dataset daily normalized baselines |
+  | CORe-native 3-hourly climo cache | CORe 3-hourly files | Calendar-day + synoptic-hour means/stds from 30 years of CORe | ⚠️ | ⚠️ Would provide true per-hour anomaly baselines | ⚠️ Would be required for true per-hour normalized baselines |
 - R2 daily and monthly climatology support.
 - Wind-speed derivation from U/V components.
 - Vector-mean wind component handling for overlays.
@@ -245,7 +273,7 @@ Implemented scale categories:
 - Mean sea-level pressure:
   - Fixed contour scale in mb.
 - Precipitable water:
-  - Fixed 0-80 mm scale.
+  - Fixed 0-90 mm scale.
   - Supports mm and inches display units.
 - Specific humidity:
   - Fixed 0-0.024 kg/kg scale.
@@ -271,7 +299,7 @@ Highest priority scale work:
 - Confirm whether 600 mb should stay in the low-level wind group or move toward the mid-level group.
 - Confirm whether 400 mb should stay in the mid-level wind group or move toward the high-level group.
 - Decide whether height should remain contour-first, become shaded, or be user-selectable.
-- Confirm MSLP, PWAT, specific humidity, and RH palettes with domain experts.
+- Confirm MSLP, PWAT, specific humidity, and RH palettes against project-owner scale decisions and reference examples.
 - Move scale definitions toward a structured registry if scale work continues to grow; `visualizer.py` is currently carrying a lot of scale configuration and rendering logic together.
 
 ### Color Lab
@@ -299,14 +327,14 @@ Current limitations:
 
 - Color Lab is an experiment/design tool, not a persisted scale-management system.
 - Custom scales are not saved to a backend database or durable registry.
-- There is no formal approval workflow for promoting a Color Lab scale into production defaults.
+- There is no persisted workflow for promoting a Color Lab scale into production defaults.
 - Custom scale application is request-scoped: it affects the generated map request when the Color Lab design matches that map's variable/level/mode.
 - Extracted July 2026 into `colorLab/`: pure scale math in `scaleModel.ts`, designer state in `useScaleDesigner.ts` (instantiated by App because generate reads it), modal UI in `ColorLabPanel.tsx`.
 - Scientific validation still has to happen outside the UI. Color Lab can help design and inspect scales, but it does not answer whether a scale is meteorologically correct.
 
 Recommended next step for Color Lab:
 
-- Use it to prototype scale candidates, export JSON, review with a meteorology/domain expert, then migrate approved scales into the backend scale registry/configuration rather than relying on ad hoc request-scoped specs.
+- Use it to prototype scale candidates, export JSON, compare against reference examples, then migrate selected scales into the backend scale registry/configuration rather than relying on ad hoc request-scoped specs.
 
 ## 7. Roadmap
 
@@ -332,22 +360,44 @@ Recommended next step for Color Lab:
 - Add visual regression/smoke images for known map recipes.
 - Add source/provenance disclaimers where cross-dataset climatology is used.
 
-### Phase 3: Climatology and Anomaly Decisions
+### Phase 3: Climatology, Anomaly, and Normalized Decisions
 
-- Confirm the preferred climatology source with professor/domain experts:
-  - CORe-derived daily/3-hourly climatology is best long term.
-  - R2 daily is implemented and useful but mixes CORe observations with R2 climatology.
-  - CFSR daily is a known reference-site convention but is not implemented.
-- Decide whether normalized anomalies should remain enabled for all supported modes or be gated by source/mode confidence.
-- If CORe daily climatology is approved:
-  - Build a server-side batch process for 1991-2020 CORe.
-  - Group by calendar day and possibly synoptic hour.
-  - Store mean and standard deviation as NetCDF shards.
-  - Read shards through a production-shaped config path such as `PYRE_CLIMO_DIR`.
+Current decisions:
+
+- CORe 3-hourly `pgb`/`flx` files are the observation source for 3-hourly and daily maps.
+- CORe monthly archive files are the preferred observation source for monthly maps when the requested variable/month exists there.
+- Single-hour anomaly maps use R1 4×-daily long-term means when that variable has an R1 hourly baseline. This removes the normal diurnal cycle from single-hour anomaly maps.
+- Single-hour PWAT climatology, anomaly, and normalized anomaly maps use `r2-daily-15day`: R2 daily PWAT climatology pooled across the target calendar day ±7 days for 1991-2020. The observation is still the selected CORe 3-hourly PWAT field.
+- Daily anomaly and normalized anomaly maps use R2 daily climatology unless a variable-specific policy chooses a different source.
+- Monthly anomaly and normalized anomaly maps use `monthly-pgb` where wired; single-level/named-level fields use `r2-monthly`.
+- R2 daily/monthly climatology is useful and implemented, but it mixes CORe observations with R2 baselines.
+- CFSR daily is a known reference-site convention and is accepted as a placeholder option, but no backend fetchers are implemented.
+- Normalized anomaly availability is gated by source/mode confidence. If the selected baseline path has no standard deviation, normalized mode stays disabled.
+- Single-hour normalized maps remain blocked for variables without a defensible standard-deviation path. PWAT is enabled because tests showed minimal 00z/12z domain-mean variation for the Aug 22 East Pacific cases, and the WPC/NWS standardized-anomaly convention for PWAT uses daily climatology with a centered moving window.
+
+NWS/PSL reference notes:
+
+- WPC training methodology: <https://www.wpc.ncep.noaa.gov/training/prod_gen.html>. WPC describes a daily NCEP/NCAR climatology, a centered 15-day average for each day, mean and standard deviation fields for 500 hPa height, 850 hPa temperature, winds, PWAT, and moisture flux, and standardized anomaly as `(forecast field - average field) / s`.
+- PSL NCEP Reanalysis Atlas procedures: <https://psl.noaa.gov/data/ncep_reanalysis/procedures.html>. PSL documents several distinct standard-deviation products: interannual monthly standard deviation, total monthly standard deviation based on daily departures from that year's monthly mean, 3-10 day filtered standard deviation, and diurnal-cycle monthly means. The project should not treat "standard deviation" as one universal object; the map title/source label must identify which sigma definition is being used.
+
+Long-term target:
+
+- CORe-derived daily and 3-hourly climatology is the best long-term baseline because it keeps observations and climatology in the same dataset.
+- CORe-native daily climatology would replace R2 daily for daily and sub-monthly normalized/anomaly baselines.
+- R1 hourly standard deviation is not available from the published 4×-daily LTM files. A true single-hour normalized product would require a separately built 3-hourly climatology with standard deviation, not the current R1 source.
+
+CORe-native climatology implementation requirements:
+
+- Build a server-side batch process for 1991-2020 CORe.
+- Group by calendar day for daily climatology.
+- Group by calendar day and synoptic hour for true 3-hourly climatology.
+- Store mean and standard deviation as NetCDF shards.
+- Read shards through a production-shaped config path such as `PYRE_CLIMO_DIR`.
+- Keep the existing `PYRE_CACHE_DIR` for computed/on-demand caches; use `PYRE_CLIMO_DIR` for authoritative precomputed climatology shards if/when that product exists.
 
 ### Phase 4: Surface and Expanded Variable Support
 
-- Done (July 2026): climatology/anomaly support for the starter surface/named-level variables via R2 single-level baselines.
+- Done (July 2026): climatology/anomaly/normalized support for the starter surface/named-level variables via R2 single-level baselines.
 - Wire monthly support for flx/named-level fields where appropriate.
 - Expand variables only through the backend/frontend registries.
 - Keep derived variables explicit in metadata so users know what is raw vs computed.
@@ -379,41 +429,43 @@ Recommended next step for Color Lab:
 
 ## 8. Known Issues and Open Questions
 
-### Climatology Baselines Come From a Different Dataset
+### Current Climatology Decisions
 
-Observations come from CORe. The baselines they are compared against do not, and which one is used depends on the time scale (#72):
+The table in "Current Status" is the source-of-truth reference for actual upstream source data and PyRe-derived climatology caches. The practical decisions are:
 
-- Single-hour maps (3-hourly, and composites of several dates at the same hour) use R1 4x-daily long-term means, which carry one normal per synoptic hour.
-- Daily and monthly maps use R2 daily and monthly means.
+- **Observation source:** CORe is the observation source for maps of actual dates/times.
+- **Single-hour anomaly baseline:** R1 4×-daily LTM is used where wired because it provides per-hour means. R2 has no sub-daily data. This removes the normal day-night cycle from single-hour anomalies.
+- **Single-hour PWAT baseline:** PWAT uses `r2-daily-15day` for climatology, anomaly, and normalized anomaly maps: a centered 15-day R2 daily PWAT baseline pooled from cached 1991-2020 calendar-day means/stds. This follows the WPC-style daily moving-window standardized-anomaly convention, while the observation remains the selected CORe 3-hourly PWAT field.
+- **Other single-hour normalized baselines:** R1 4×-daily LTM cannot support normalized maps because it has no standard deviation. Single-hour normalized maps remain blocked unless a variable-specific sigma path is explicitly chosen and labeled.
+- **Daily baseline:** R2 daily is implemented for daily anomaly and normalized anomaly maps. It is cross-dataset, but it gives a calendar-day mean/std now.
+- **Monthly baseline:** `monthly-pgb` is implemented where wired for pressure-level monthly climatology from CORe monthly archive samples. Single-level/named-level fields use `r2-monthly`.
+- **CFSR baseline:** `cfsr-daily` is a placeholder. It is not implemented.
+- **CORe-native climatology:** not built yet. This is the preferred long-term solution for daily and true 3-hourly mean/std baselines.
 
-The per-hour split is deliberate. A daily-mean baseline subtracted from a single-hour observation leaves the normal day-night cycle inside the anomaly: measured on a quiet day, the hour-to-hour swing in domain-mean anomaly was 5.5F with a daily baseline and 2.0F with per-hour baselines. The difference between R1 and R2 as datasets is far smaller than that artifact, which is why the swap is worth making even though it mixes a third dataset in.
+The baseline line in each map title names the dataset/source used. Cross-dataset baselines are intentional current behavior, not accidental mixing.
 
-Two consequences are documented on the maps and in the FAQ: the baseline line in each title names the dataset and hour, and 3-hourly normalized maps are not offered, because the per-hour files publish means without a spread.
+### CORe-Native Climatology Not Built
 
-Reviewed and approved by the project owner, 2026-07-28.
+CORe does not publish ready-made daily or 3-hourly climatological means/stds. PyRe would have to build them from CORe source files.
 
-### CORe Sub-Monthly Climatology Not Built
+Required work:
 
-CORe already supplies the **monthly** climatology: the `monthly-pgb` source computes 30-year monthly means from CORe monthly files, so monthly anomalies are single-dataset today.
+- Fetch the 1991-2020 CORe source fields needed for each variable/level.
+- For daily climatology, aggregate the selected daily synoptic hours first, then group by calendar day.
+- For true 3-hourly climatology, group by calendar day and synoptic hour.
+- Compute mean and sample standard deviation (`ddof=1`) at each grid point.
+- Store the resulting fields as NetCDF shards.
+- Read shards through a production-shaped config path such as `PYRE_CLIMO_DIR`.
 
-The gap is **daily and 3-hourly**. Nobody publishes CORe daily or hourly normals, and building them means fetching 30 years x 366 days of 0.25 degree fields. That is why sub-monthly baselines come from other datasets (R2 for daily, R1 4x-daily for single-hour maps).
-
-Two separate issues cover this, and they are not the same thing:
-
-- **#66** decides *which dataset* sub-monthly normals should come from: ARCO-ERA5, R2, or a CORe-native build. A science decision, not yet made.
-- **#70** precomputes the *existing R2* normals offline so no visitor request triggers a 30-year fetch. Same dataset and same math as today, just done ahead of time. It does not close the CORe gap.
-
-A CORe-native build would resolve three things at once: observations and baselines would come from the same dataset; the 03/09/15/21z interpolation between R1 hours would go away; and computing the spread alongside the mean would restore 3-hourly normalized maps, which the R1 per-hour files cannot support. Whether that is the right spend is exactly what #66 decides.
-
-**R1 as a climatology source: permitted.** #70 recorded an earlier decision (2026-07-14) excluding R1. That is superseded. R1 4x-daily means are approved as the single-hour baseline, because no other dataset publishes a per-hour normal and R2 has no sub-daily data at all, and because the diurnal error removed is far larger than any R1-versus-R2 difference. Every affected map names the source in its title. Reasoning recorded on #72; decision confirmed by the project owner, July 2026.
+This would replace R2 daily baselines for daily/sub-monthly maps and R1 4×-daily means for single-hour maps where CORe-native 3-hourly shards exist.
 
 ### `cfsr-daily` Placeholder
 
 `cfsr-daily` is accepted as a valid API source option and appears in the UI as unavailable, but backend fetchers are not implemented. Do not enable it without adding fetchers and source policy handling.
 
-### Surface/Named-Level Fields Are Raw-Only
+### Single-Level / FLX-Side Baselines
 
-The backend intentionally rejects anomaly/climatology modes for `temp_2m`, `wind_10m`, `surface_pressure`, and `precipitable_water`. Monthly mode is also rejected for these starter fields. This is product debt, not an accidental regression.
+Currently wired single-level / FLX-side fields with R2 daily/monthly baselines are `temp_2m`, `wind_10m`, `surface_pressure`, `precipitable_water`, and `olr`. Other FLX-side fields such as precipitation, cloud cover, CAPE/CIN, dewpoint, gusts, storm motion, lifted index, and snow depth remain raw-only or derivation-deferred.
 
 ### Color Scales Need Final Scientific Review
 
@@ -476,7 +528,7 @@ Local development URLs:
 These principles explain the project-level tradeoffs behind the shorter guardrails in `AGENTS.md` and `CLAUDE.md`.
 
 - Scientific comparability matters more than visual novelty. Fixed color anchors, discrete boundaries, explicit units, and provenance-aware labels are core product requirements.
-- Climatology source choice is a scientific/product decision, not just an implementation detail. Cross-dataset baselines, normalized anomalies, and future CORe-native climatology should be reviewed with domain experts.
+- Climatology source choice is a scientific/product decision, not just an implementation detail. Cross-dataset baselines, normalized anomalies, and future CORe-native climatology decisions should be explicit, documented, and owned by the project owner.
 - The frontend should stay a recipe-building interface. Backend services own data retrieval, compositing, anomaly math, projection choice, and scientific rendering.
 - Frontend cleanup should preserve the typed recipe flow through `mapRecipe.ts` and variable/level mapping through `variableConfig.ts`.
 - Configuration and registries are preferred over scattered conditionals because variables, levels, regions, overlays, units, and scales will keep growing.

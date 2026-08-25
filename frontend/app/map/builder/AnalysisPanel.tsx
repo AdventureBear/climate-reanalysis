@@ -16,6 +16,7 @@ export function AnalysisPanel({ recipe, loading, className = '' }: {
     monthSubMode, monthStart, monthEnd, customMonths,
     dateSubMode, startDate, endDate, customDates,
     displayMode, setDisplayMode,
+    apiVariable,
     rawOnlyVariable,
     isThreeHourly,
     precipTotalVariable,
@@ -59,9 +60,9 @@ export function AnalysisPanel({ recipe, loading, className = '' }: {
                 options={[
                   { value: 'raw',        label: 'Raw Data'   },
                   { value: 'anomaly',    label: 'Anomaly', disabled: rawOnlyVariable },
-                  // A 3-hourly map has no standard deviation to divide by:
-                  // its baseline is the normal for that one hour (#72).
-                  { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable || isThreeHourly },
+                  // PWAT uses the R2 daily 15-day mean/std path; other
+                  // 3-hourly normalized maps still lack a usable sigma path.
+                  { value: 'normalized', label: 'Normalized', disabled: rawOnlyVariable || (isThreeHourly && apiVariable !== 'precipitable_water') },
                 ]}
                 value={displayMode}
                 onChange={v => setDisplayMode(v as DisplayMode)}

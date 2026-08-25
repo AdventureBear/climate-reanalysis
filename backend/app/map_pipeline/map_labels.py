@@ -34,6 +34,7 @@ def map_date_label(
     climo_period = f"{CLIMO_START_YEAR}–{CLIMO_END_YEAR}"
     climo_source_labels = {
         "r2-daily": "R2-daily",
+        "r2-daily-15day": "R2-daily 15-day",
         "r2-monthly": "R2-monthly",
         # Names the dataset, not the file layout: this baseline is built from
         # CORe's own monthly means, the same dataset as the observations.
@@ -41,6 +42,7 @@ def map_date_label(
         # Per-synoptic-hour baseline (#72). A different reanalysis than the
         # daily/monthly baselines, so the title says so outright.
         "r1-4xdaily": "R1 4×-daily",
+        "core-3hourly": "CORe 3-hourly ±5d",
     }
     obs_source_tag = f"  [{obs_source}]" if selection.monthly_mode and obs_source != "CORe-pgb" else ""
     mode_labels = {
@@ -77,7 +79,7 @@ def map_date_label(
         source = climo_source_labels.get(climo_source, climo_source)
         # The hourly baseline is specific to the analysis hour, so the label
         # names it — "May 4 18z", not just "May 4" (#72).
-        hour_tag = f" {req.hour}z" if climo_source == "r1-4xdaily" else ""
+        hour_tag = f" {req.hour}z" if climo_source in {"r1-4xdaily", "core-3hourly"} else ""
         if selection.monthly_mode:
             return f"Baseline: {selection_months_label()} · {source} {climo_period}"
         if len(selection.date_list) > 1:
@@ -91,6 +93,8 @@ def map_date_label(
 
     if req.mode == "climatology":
         source = climo_source_labels.get(climo_source, climo_source)
+        if climo_source == "r2-daily-15day":
+            return f"Climatology mean · {month_abbr} {selection.obs_day}\nBaseline: {source} {climo_period}"
         return f"Climatology mean · {month_abbr}\nBaseline: {source} {climo_period}"
 
     if selection.monthly_mode:

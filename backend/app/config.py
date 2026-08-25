@@ -8,6 +8,7 @@ import os
 # without it, Render's ephemeral filesystem drops the cache on every deploy.
 _BACKEND_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 CACHE_ROOT = os.environ.get("PYRE_CACHE_DIR") or _BACKEND_ROOT
+CLIMO_ROOT = os.environ.get("PYRE_CLIMO_DIR") or os.path.join(CACHE_ROOT, "climo_cache")
 
 REGIONS = {
     "CONUS": {
@@ -217,6 +218,7 @@ _PRESSURE_LEVEL_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily")
 # files are pressure-level only); their baselines come from R2 single-level
 # files declared per-variable via "r2_climo" specs below.
 _SINGLE_LEVEL_CLIMO_SOURCES = ("r2-monthly", "r2-daily")
+_PWAT_CLIMO_SOURCES = ("r2-monthly", "r2-daily", "r2-daily-15day")
 
 # Keyed by UI name. wind_speed is derived from UGRD+VGRD; all others are direct GRIB fields.
 #
@@ -417,7 +419,7 @@ VARIABLES = {
         "grib_name": "PWAT",
         "flx_level": "atmos col",
         "display_level": "total column",
-        "climo_sources": _SINGLE_LEVEL_CLIMO_SOURCES,
+        "climo_sources": _PWAT_CLIMO_SOURCES,
         "r2_climo": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
         "r1_4xday": {"file": "pr_wtr.eatm", "var": "pr_wtr", "dataset": "surface"},
         "normalized_mask_threshold": None,

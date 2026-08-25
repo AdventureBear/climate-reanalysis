@@ -109,6 +109,65 @@ def test_precip_total_anomaly_is_raw_only(monkeypatch):
     assert "raw maps only" in response.json()["detail"]
 
 
+def test_pwat_advertises_normalized_mode():
+    client = TestClient(main_module.app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "normalized" in response.json()["variable_modes"]["precipitable_water"]
+
+
+def test_pwat_normalized_available_for_single_hour_and_daily(monkeypatch):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured.setdefault("requests", []).append((req.mode, req.variable, req.hour, req.hours))
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+    base_params = {
+        "date": "20260101",
+        "variable": "precipitable_water",
+        "level": "1000",
+        "region": "CONUS",
+        "mode": "normalized",
+    }
+
+    single_hour = client.get("/api/map", params={**base_params, "hour": "12"})
+    assert single_hour.status_code == 200
+
+    daily = client.get("/api/map", params={**base_params, "hours": "00,06,12,18"})
+    assert daily.status_code == 200
+    assert captured == {
+        "requests": [
+            ("normalized", "precipitable_water", "12", ""),
+            ("normalized", "precipitable_water", "00", "00,06,12,18"),
+        ],
+    }
+
+
+def test_non_pwat_normalized_single_hour_stays_blocked(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "temp",
+            "level": "850",
+            "region": "CONUS",
+            "mode": "normalized",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "single-hour maps" in response.json()["detail"]
+
+
 @pytest.mark.parametrize(
     ("variable", "level"),
     [
@@ -208,6 +267,34 @@ def test_new_core_variable_scale_meta(variable, level, scale_kind, unit, domain_
     assert payload["domain_max"] == domain_max
     if group is not None:
         assert payload["group"] == group
+
+
+@pytest.mark.parametrize(
+    ("pwat_unit", "domain_max"),
+    [
+        ("mm", 90),
+        ("in", pytest.approx(3.543, abs=0.001)),
+    ],
+)
+def test_pwat_scale_meta_extends_to_90mm_with_blue_purple_top_end(pwat_unit, domain_max):
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/scale-meta",
+        params={
+            "variable": "precipitable_water",
+            "level": "1000",
+            "pwat_unit": pwat_unit,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scale_kind"] == "fixed-pwat"
+    assert payload["domain_max"] == domain_max
+    assert payload["boundaries"][-1] == domain_max
+    assert payload["anchor_values"][-1] == domain_max
+    assert payload["anchor_hex"][-4:] == ["#225ea8", "#253494", "#6a51a3", "#cbc9e2"]
 
 
 @pytest.mark.parametrize(

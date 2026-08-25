@@ -16,6 +16,8 @@ export const CLIMO_SOURCE_LABELS: Record<string, string> = {
   'monthly-pgb': 'CORe monthly',
   'r2-monthly': 'R2 monthly',
   'r2-daily': 'R2 daily',
+  'r2-daily-15day': 'R2 daily 15-day',
+  'core-3hourly': 'CORe 3-hourly ±5d',
   'r1-4xdaily': 'R1 hourly',
   'cfsr-daily': 'CFSR daily',
 }

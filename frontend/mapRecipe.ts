@@ -21,7 +21,7 @@ export const MAX_COMPOSITE_MONTHS = 60
 export type TimeScale = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 export type SubMode = 'single' | 'range' | 'list'
 export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
-export type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-monthly' | 'cfsr-daily'
+export type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-daily-15day' | 'r2-monthly' | 'core-3hourly' | 'cfsr-daily'
 export type WindUnit = 'kt' | 'm/s'
 export type WindOverlayType = 'vectors' | 'barbs' | 'isotachs'
 export type PwatUnit = 'mm' | 'in'
@@ -164,12 +164,16 @@ function isConsecutiveDates(dates: string[]) {
 
 /** True when a URL asks for normalized on a single-hour map.
  *
- * Normalized needs a standard deviation. A 3-hourly map is compared against
- * the normal for that one hour, which is published as a mean only (#72), so
- * there is nothing to divide by. Links saved before that change load as
- * anomaly instead of failing, and the builder tells the reader it swapped. */
+ * Most normalized maps need a standard deviation path appropriate to their
+ * source and cadence. PWAT uses the R2 daily 15-day mean/std path; other
+ * 3-hourly normalized maps still lack a usable sigma path. */
 export function normalizedUnavailableInUrl(params: URLSearchParams): boolean {
-  return params.get('mode') === 'normalized' && !params.get('hours') && !params.get('months')
+  return (
+    params.get('mode') === 'normalized'
+    && params.get('variable') !== 'precipitable_water'
+    && !params.get('hours')
+    && !params.get('months')
+  )
 }
 
 function displayMode(value: string | null, params?: URLSearchParams): DisplayMode | undefined {
@@ -181,7 +185,7 @@ function displayMode(value: string | null, params?: URLSearchParams): DisplayMod
 }
 
 function climoSource(value: string | null): ClimoSource | undefined {
-  return value === 'monthly-pgb' || value === 'r2-daily' || value === 'r2-monthly' || value === 'cfsr-daily' ? value : undefined
+  return value === 'monthly-pgb' || value === 'r2-daily' || value === 'r2-daily-15day' || value === 'r2-monthly' || value === 'core-3hourly' || value === 'cfsr-daily' ? value : undefined
 }
 
 function windType(value: string | null): WindOverlayType | undefined {

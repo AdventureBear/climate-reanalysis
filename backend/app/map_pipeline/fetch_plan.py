@@ -7,10 +7,12 @@ from typing import Callable, Protocol
 
 import xarray as xr
 
+from ..climo_core import get_core_3hourly_pwat_climo
 from ..climo_r2 import (
     get_r2_daily_climo_field,
     get_r2_daily_climo_relative_humidity,
     get_r2_daily_climo_single_level,
+    get_r2_daily_window_climo_single_level,
     get_r2_daily_climo_wind_components,
     get_r2_daily_climo_wind_speed,
     get_r2_monthly_climo_field,
@@ -304,6 +306,17 @@ WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
 
 
 def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib_name: str):
+    if climo_source == "core-3hourly":
+        if req.variable != "precipitable_water":
+            raise ValueError(f"core-3hourly climatology is only wired for PWAT, not {req.variable!r}")
+        return get_core_3hourly_pwat_climo(month, day, req.hour)
+
+    if climo_source == "r2-daily-15day":
+        if req.variable != "precipitable_water":
+            raise ValueError(f"r2-daily-15day climatology is only wired for PWAT, not {req.variable!r}")
+        spec = VARIABLES[req.variable]["r2_climo"]
+        return get_r2_daily_window_climo_single_level(spec, month, day)
+
     # Per-synoptic-hour baseline for single-hour products (#72). Mean only —
     # the LTM files carry no sigma, which is why 3-hourly normalized mode is
     # not offered; std is returned as None and never read on this path.

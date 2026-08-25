@@ -102,7 +102,7 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 | Time Scale | Observation Field | Climatology Baseline | Result |
 |---|---|---|---|
-| 3-hourly / single synoptic time | CORe field for the selected date and hour | R1 4×-daily normal for that calendar day **and that hour** | `obs - climo_mean` |
+| 3-hourly / single synoptic time | CORe field for the selected date and hour | Usually R1 4×-daily normal for that calendar day **and that hour**; PWAT uses R2 daily centered 15-day climatology | `obs - climo_mean` |
 | 3-hourly composite | CORe fields for multiple dates at the same selected hour | Mean of the matching R1 per-hour normals | `composite - climo_mean` |
 | Daily | CORe average across selected daily hours, currently 00z/06z/12z/18z | R2 daily climatology for that calendar day | `daily_mean - climo_mean` |
 | Daily composite | CORe average across dates and daily hours | Weighted/averaged matching R2 daily climatologies | `composite - climo_mean` |
@@ -114,11 +114,11 @@ Anomaly and normalized anomaly maps require a climatology source.
 
 Before subtraction, PyRe interpolates the coarser climatology grid onto the CORe observation grid.
 
-Specific humidity, relative humidity, precipitation, and surface/named-level starter fields currently support raw maps only. Their anomaly and climatology modes are intentionally disabled until suitable baselines are wired.
+Some variables are intentionally raw-only until suitable baselines or derivations are wired. Currently wired single-level / FLX-side fields with R2 daily/monthly baselines are 2m temperature, 10m wind, MSLP, PWAT, and OLR.
 
 Precipitation, total cloud cover, and radiation fluxes come from CORe forecast-background FLX fields. They are useful for broad case-study context, but they are not gauge/radar-observed precipitation totals, direct station-observed sky-condition reports, or point pyranometer measurements.
 
-Normalized anomaly is not offered on 3-hourly maps. See the next question.
+Normalized anomaly is not offered on most 3-hourly maps because the per-hour R1 baseline has no sigma. PWAT is the current exception. See the next question.
 
 ---
 
@@ -136,7 +136,9 @@ Measured on a quiet day (May 4, 1986, CONUS 2m temperature), the average anomaly
 
 **Why mix in a third dataset.** Observations are CORe, daily and monthly baselines are R2, and per-hour baselines are R1. That is not ideal. But the difference between R1 and R2 as datasets is much smaller than the ±10°F artifact the daily baseline was introducing, so the swap is a clear improvement. A CORe-native climatology covering all eight 3-hourly analyses would remove the mixing entirely, and is planned.
 
-**Why normalized is unavailable for a single hour.** A normalized map divides by the standard deviation. The published per-hour files contain averages only, with no standard deviation, so there is nothing to divide by. Daily and monthly normalized maps are unaffected. A link that asks for a normalized single-hour map opens as an anomaly map and says so.
+**Why normalized is usually unavailable for a single hour.** A normalized map divides by the standard deviation. The published per-hour R1 files contain averages only, with no standard deviation, so most single-hour normalized maps have nothing defensible to divide by. PWAT is handled separately: PyRe uses an R2 daily centered 15-day PWAT mean/std baseline, following the WPC-style standardized-anomaly convention, while still shading the selected CORe 3-hourly PWAT observation.
+
+WPC describes this kind of standardized anomaly as a daily NCEP/NCAR climatology with a centered 15-day average, then `(field - mean) / sigma`: <https://www.wpc.ncep.noaa.gov/training/prod_gen.html>. PSL's NCEP atlas notes that standard deviation can be defined differently depending on the product, so PyRe labels the baseline source on the map: <https://psl.noaa.gov/data/ncep_reanalysis/procedures.html>.
 
 ---
 
@@ -165,7 +167,35 @@ For R2 climatology, PyRe computes sigma **itself** from the raw R2 time series �
 
 **Do the R2 files contain pre-computed sigma?** No. The PSL THREDDS long-term mean (LTM) files contain only the mean field and a `valid_yr_count` variable — no sigma. PyRe computes R2 sigma from scratch and caches the result after the first request.
 
-The same is true of the R1 4×-daily per-hour files used for 3-hourly baselines: mean only, no sigma. Computing a per-hour sigma would mean assembling 30 years of data separately for each of the eight analysis hours, which is why 3-hourly normalized maps are not offered. See Q8.
+The same is true of the R1 4×-daily per-hour files used for 3-hourly baselines: mean only, no sigma. Computing a per-hour sigma would mean assembling 30 years of data separately for each analysis hour, which is why 3-hourly normalized maps are not offered.
+
+Legend: ✅ PyRe does this already · ☐ in progress · ⚠️ possible, not wired yet · ❌ not available from that source/path.
+
+Actual upstream source data:
+
+| Source data | What the upstream source actually provides | Used as observation data? | Climo mean from source? | Climo sigma from source? | Anomaly path | Normalized anomaly path |
+|---|---|---:|---:|---:|---|---|
+| CORe 3-hourly `pgb` / `flx` files | Real analysis/forecast-background fields every 3 hours | ✅ | ❌ | ❌ | ✅ Fetch selected synoptic hour(s), then subtract a separate climatology | ⚠️ Observation side only; normalized maps require a separate climatology sigma at matching cadence |
+| CORe monthly archive | Yearly monthly mean pressure-level fields | ✅ | ⚠️ Samples only | ❌ | ✅ Use as monthly observations; for climatology, compute/cache a 30-year monthly mean where wired | ✅ Compute/cache sample sigma from the monthly archive samples where wired |
+| R1 4×-daily LTM | Long-term mean for each calendar day at 00/06/12/18z | ❌ | ✅ | ❌ | ✅ Per-hour anomaly baseline for wired variables; 03/09/15/21z interpolate neighboring means | ❌ No sigma in these files |
+| R2 daily files | Annual daily fields | ❌ | ⚠️ Samples only | ❌ | ✅ Compute/cache 1991–2020 calendar-day mean | ✅ Compute/cache 1991–2020 calendar-day sample sigma |
+| R2 monthly files | Monthly time series | ❌ | ⚠️ Samples only | ❌ | ✅ Compute/cache 1991–2020 calendar-month mean | ✅ Compute/cache 1991–2020 calendar-month sample sigma |
+| CFSR daily files | Candidate daily baseline source | ❌ | ⚠️ Candidate only | ⚠️ Candidate only | ⚠️ Decide, wire, validate, cache means | ⚠️ Decide, wire, validate, cache sigma |
+
+PyRe-derived products and caches:
+
+| Derived product/cache | Built from | What it is | Status | Anomaly path | Normalized anomaly path |
+|---|---|---|---:|---|---|
+| Daily observation composite | CORe 3-hourly files | Mean of selected synoptic hours, currently 00/06/12/18z for daily mode | ✅ | ✅ Subtract daily climatology, usually `r2-daily` | ✅ Divide by daily climatology sigma, usually `r2-daily` |
+| Monthly observation fallback | CORe 3-hourly files | Monthly mean computed from synoptic fields when the CORe monthly archive is missing | ✅ | ✅ Observation side only; still needs a monthly climatology source | ✅ Observation side only; still needs monthly climatology sigma |
+| R2 daily climo cache | R2 daily files | Calendar-day mean and sample sigma, computed from 1991–2020 | ✅ | ✅ Mean field used as daily/sub-monthly baseline | ✅ Sigma field used for normalized maps |
+| R2 daily centered 15-day PWAT climo cache | R2 daily climo cache | Pooled mean/sigma across the target calendar day ±7 days, 1991–2020 | ✅ | ✅ Current single-hour PWAT anomaly/climatology baseline | ✅ Current single-hour PWAT normalized baseline |
+| R2 monthly climo cache | R2 monthly files | Calendar-month mean and sample sigma, computed from 1991–2020 | ✅ | ✅ Mean field used as monthly baseline | ✅ Sigma field used for normalized maps |
+| CORe monthly climo cache | CORe monthly archive | Calendar-month mean and sample sigma from monthly archive samples | ✅ where wired | ✅ Mean field used as monthly pressure-level baseline | ✅ Sigma field used for normalized monthly maps |
+| CORe-native daily climo cache | CORe 3-hourly files | Calendar-day means/sigmas from 30 years of CORe daily composites | ⚠️ | ⚠️ Would provide same-dataset daily anomaly baselines | ⚠️ Would provide same-dataset daily normalized baselines |
+| CORe-native 3-hourly climo cache | CORe 3-hourly files | Calendar-day + synoptic-hour means/sigmas from 30 years of CORe | ⚠️ | ⚠️ Would provide true per-hour anomaly baselines | ⚠️ Would provide true per-hour normalized baselines |
+
+Currently wired single-level / FLX-side fields with R2 daily/monthly baselines are 2m temperature, 10m wind, MSLP, PWAT, and OLR. Those baselines support daily and monthly normalized maps. PWAT also supports single-hour normalized maps through the R2 daily centered 15-day baseline.
 
 ---
 
@@ -238,12 +268,12 @@ For the 2011 Super Outbreak, researchers most commonly use ERA5 or NARR. CORe at
 
 For a given calendar day (e.g., April 27), the R2 daily climatology is computed as follows:
 
-1. The 5-day window centered on April 27 (April 25–29) is used for each of the 30 climo years — this adds samples and smooths day-to-day noise.
-2. All 30 × 5 = 150 individual daily fields are fetched concurrently from PSL's THREDDS OPeNDAP server.
-3. The mean and sample standard deviation (ddof=1) are computed at each grid point across those 150 samples.
+1. The matching calendar day is fetched from each of the 30 climo years.
+2. All 30 individual daily fields are fetched concurrently from PSL's THREDDS OPeNDAP server.
+3. The mean and sample standard deviation (ddof=1) are computed at each grid point across those 30 samples.
 4. Results are cached to disk after the first computation.
 
-The R2 daily climatology is the correct baseline for 3-hourly and daily mode anomaly/normalized maps. Daily composites currently average the four primary synoptic times, 00z/06z/12z/18z, to preserve the traditional daily-mean workflow without doubling request volume. Using a monthly mean as the baseline for a daily map inflates sigma artificially because it doesn't account for intra-month variability.
+The R2 daily climatology is the current baseline for daily anomaly and normalized anomaly maps. Daily composites currently average the four primary synoptic times, 00z/06z/12z/18z, to preserve the traditional daily-mean workflow without doubling request volume. Single-hour anomaly maps usually use R1 4×-daily means instead, because a per-hour baseline avoids day-night artifacts. Single-hour normalized maps are blocked because the per-hour baseline has no sigma. Using a monthly mean as the baseline for a daily map inflates sigma artificially because it doesn't account for intra-month variability.
 
 ---
 

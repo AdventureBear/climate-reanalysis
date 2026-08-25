@@ -11,8 +11,10 @@ log = logging.getLogger("pyre.api")
 MONTHLY_IMPLEMENTED_CLIMO_SOURCES = {"monthly-pgb", "r2-monthly"}
 MONTHLY_FALLBACK_CLIMO_SOURCE = "r2-monthly"
 SUBMONTHLY_CLIMO_SOURCE = "r2-daily"
-# Single-hour products (3-hourly single maps and same-hour composites) compare
-# against the normal for THAT hour, not a daily mean (#72).
+PWAT_MOVING_DAILY_CLIMO_SOURCE = "r2-daily-15day"
+# Single-hour products usually compare against the normal for THAT hour, not a
+# daily mean (#72). PWAT is a variable-specific exception using the WPC-style
+# R2 daily centered 15-day standardized-anomaly baseline.
 HOURLY_CLIMO_SOURCE = "r1-4xdaily"
 
 
@@ -84,6 +86,17 @@ def resolve_climo_source(req: ClimoRequest, selection: TimeSelection) -> str:
 
 
 def _resolve_for_cadence(req: ClimoRequest, selection: TimeSelection) -> str:
+    if (
+        req.variable == "precipitable_water"
+        and is_single_hour_product(selection)
+        and req.mode in {"climatology", "anomaly", "normalized"}
+    ):
+        log.info(
+            "CLIMO    single-hour PWAT → r2-daily-15day"
+            " (R2 daily centered 15-day mean/std; WPC-style standardized anomaly baseline)",
+        )
+        return PWAT_MOVING_DAILY_CLIMO_SOURCE
+
     if req.mode == "climatology":
         # Climatology maps always show a monthly-mean baseline, regardless of how
         # the request selected its month (legacy URLs pass a single date).
@@ -101,7 +114,7 @@ def _resolve_for_cadence(req: ClimoRequest, selection: TimeSelection) -> str:
         )
         return MONTHLY_FALLBACK_CLIMO_SOURCE
 
-    # A single-hour map compares against that hour's normal; a daily mean would
+    # Single-hour maps compare against that hour's normal; a daily mean would
     # leave the diurnal cycle inside the anomaly (#72).
     if is_single_hour_product(selection) and has_hourly_baseline(req.variable):
         log.info(

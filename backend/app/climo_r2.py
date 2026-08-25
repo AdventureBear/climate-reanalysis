@@ -48,6 +48,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
 
 import numpy as np
 import xarray as xr
@@ -67,6 +68,7 @@ log = logging.getLogger("pyre.climo_r2")
 
 _THREDDS_ROOT = "https://psl.noaa.gov/thredds/dodsC/Datasets/ncep.reanalysis2"
 _CLIMO_YEARS = list(range(1991, 2021))   # 1991–2020 inclusive, 30 years
+R2_DAILY_CENTERED_WINDOW_DAYS = 15
 
 # Daily file naming per THREDDS dataset subdirectory. Monthly files are
 # uniformly "{var}.mon.mean.nc" in every subdirectory.
@@ -134,6 +136,8 @@ _cache_lock = threading.Lock()
 # Key: (r2_var, level, month) — calendar-month granular.
 _mcache: dict[tuple, dict | _PendingFetch] = {}
 _mcache_lock = threading.Lock()
+_wcache: dict[tuple, dict | _PendingFetch] = {}
+_wcache_lock = threading.Lock()
 
 
 # ── Disk cache ───────────────────────────────────────────────────────────────
@@ -615,6 +619,10 @@ def _disk_path_single_level(stem: str, month: int, day: int | None) -> str:
     return os.path.join(_CACHE_DIR, f"r2_daily_{stem}_sfc_{month:02d}{day:02d}.nc")
 
 
+def _disk_path_single_level_window(stem: str, month: int, day: int, window_days: int) -> str:
+    return os.path.join(_CACHE_DIR, f"r2_daily_{window_days}day_{stem}_sfc_{month:02d}{day:02d}.nc")
+
+
 def _load_disk_single_level(stem: str, month: int, day: int | None) -> dict[str, xr.DataArray] | None:
     path = _disk_path_single_level(stem, month, day)
     if not os.path.exists(path):
@@ -630,6 +638,21 @@ def _load_disk_single_level(stem: str, month: int, day: int | None) -> dict[str,
         return None
 
 
+def _load_disk_single_level_window(stem: str, month: int, day: int, window_days: int) -> dict[str, xr.DataArray] | None:
+    path = _disk_path_single_level_window(stem, month, day, window_days)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open_netcdf(path) as ds:
+            result = {"mean": ds["mean"].load(), "std": ds["std"].load()}
+        log.debug("CLIMO_R2W  disk cache hit  %s", os.path.basename(path))
+        return result
+    except Exception as exc:
+        log.warning("CLIMO_R2W  disk cache corrupt (%s), deleting + re-fetching", exc)
+        discard_corrupt(path)
+        return None
+
+
 def _save_disk_single_level(stem: str, month: int, day: int | None, result: dict[str, xr.DataArray]) -> None:
     path = _disk_path_single_level(stem, month, day)
     try:
@@ -637,6 +660,15 @@ def _save_disk_single_level(stem: str, month: int, day: int | None, result: dict
         log.debug("CLIMO_R2  saved to disk   %s", os.path.basename(path))
     except Exception as exc:
         log.warning("CLIMO_R2  cache save failed (%s) — serving uncached", exc)
+
+
+def _save_disk_single_level_window(stem: str, month: int, day: int, window_days: int, result: dict[str, xr.DataArray]) -> None:
+    path = _disk_path_single_level_window(stem, month, day, window_days)
+    try:
+        atomic_write_netcdf(xr.Dataset({"mean": result["mean"], "std": result["std"]}), path)
+        log.debug("CLIMO_R2W  saved to disk   %s", os.path.basename(path))
+    except Exception as exc:
+        log.warning("CLIMO_R2W  cache save failed (%s) — serving uncached", exc)
 
 
 # ── Cache-aware loader ────────────────────────────────────────────────────────
@@ -733,6 +765,40 @@ def _load(
         fetch_fn=fetch_fn,
         log_tag="CLIMO_R2",
     )
+
+
+def _centered_calendar_days(month: int, day: int, window_days: int) -> list[tuple[int, int]]:
+    if window_days % 2 != 1:
+        raise ValueError("window_days must be odd for a centered climatology window")
+    # Non-leap anchor year keeps Feb 29 out of the climatological calendar.
+    center = date(2001, month, day)
+    half_window = window_days // 2
+    return [
+        ((center + timedelta(days=delta)).month, (center + timedelta(days=delta)).day)
+        for delta in range(-half_window, half_window + 1)
+    ]
+
+
+def _pooled_daily_climo(
+    daily_climos: list[tuple[xr.DataArray, xr.DataArray]],
+    *,
+    samples_per_day: int,
+    attrs: dict[str, object],
+) -> dict[str, xr.DataArray]:
+    means = [mean.astype(np.float64) for mean, _ in daily_climos]
+    stds = [std.astype(np.float64) for _, std in daily_climos]
+    total_n = samples_per_day * len(daily_climos)
+
+    pooled_mean = sum(mean * samples_per_day for mean in means) / total_n
+    sum_squares_about_zero = sum(
+        (samples_per_day - 1) * (std ** 2) + samples_per_day * (mean ** 2)
+        for mean, std in zip(means, stds)
+    )
+    pooled_var = (sum_squares_about_zero - total_n * (pooled_mean ** 2)) / (total_n - 1)
+    pooled_std = np.sqrt(pooled_var.where(pooled_var > 0))
+    pooled_mean.attrs.update(attrs | {"long_name": "R2 daily moving-window climatological mean"})
+    pooled_std.attrs.update(attrs | {"long_name": "R2 daily moving-window sample standard deviation"})
+    return {"mean": pooled_mean, "std": pooled_std}
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -896,6 +962,48 @@ def get_r2_daily_climo_single_level(
         disk_save=lambda result: _save_disk_single_level(stem, month, day, result),
         fetch_fn=lambda: _fetch_single_level_daily(spec, month, day),
         log_tag="CLIMO_R2",
+    )
+    return result["mean"], result["std"]
+
+
+def get_r2_daily_window_climo_single_level(
+    spec: dict,
+    month: int,
+    day: int,
+    window_days: int = R2_DAILY_CENTERED_WINDOW_DAYS,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """
+    (mean, std) for a centered moving-window daily climatology.
+
+    Each member day is first reduced to its 1991-2020 daily mean/std through
+    get_r2_daily_climo_single_level. The window std is then recomputed from
+    pooled moments, preserving the between-day spread instead of averaging
+    daily sigmas.
+    """
+    if (month, day) == (2, 29):
+        month, day = 2, 28
+    stem = _spec_stem(spec)
+    result = _load_cached(
+        _wcache,
+        _wcache_lock,
+        (stem, "sfc", month, day, window_days),
+        disk_load=lambda: _load_disk_single_level_window(stem, month, day, window_days),
+        disk_save=lambda result: _save_disk_single_level_window(stem, month, day, window_days, result),
+        fetch_fn=lambda: _pooled_daily_climo(
+            [
+                get_r2_daily_climo_single_level(spec, member_month, member_day)
+                for member_month, member_day in _centered_calendar_days(month, day, window_days)
+            ],
+            samples_per_day=len(_CLIMO_YEARS),
+            attrs={
+                "units": "kg/m²",
+                "climo_source": f"r2-daily-{window_days}day",
+                "climo_years": f"{_CLIMO_YEARS[0]}-{_CLIMO_YEARS[-1]}",
+                "window_days": window_days,
+                "sample_count": len(_CLIMO_YEARS) * window_days,
+            },
+        ),
+        log_tag="CLIMO_R2W",
     )
     return result["mean"], result["std"]
 

@@ -4,7 +4,7 @@ from .units import MS_TO_KT
 VALID_MODES = ("raw", "climatology", "anomaly", "normalized")
 # r1-4xdaily is resolved internally for 3-hourly anomalies (#72), never
 # requested directly, so it is not offered as a user-selectable source.
-VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "cfsr-daily")
+VALID_CLIMO_SOURCES = ("monthly-pgb", "r2-monthly", "r2-daily", "r2-daily-15day", "core-3hourly", "cfsr-daily")
 VALID_WIND_UNITS = ("kt", "m/s")
 VALID_PWAT_UNITS = ("mm", "in")
 VALID_PRECIP_UNITS = ("mm", "in")
@@ -72,6 +72,10 @@ CLIMO_DESC = {
         "NCEP/DOE Reanalysis 2  |  PSL THREDDS OPeNDAP  |  "
         "30 concurrent year-file fetches  |  1991–2020  |  2.5° grid"
     ),
+    "r2-daily-15day": (
+        "NCEP/DOE Reanalysis 2 daily PWAT  |  PSL THREDDS OPeNDAP  |  "
+        "centered 15-day pooled mean/std  |  1991–2020  |  2.5° grid"
+    ),
     "r2-monthly": (
         "NCEP/DOE Reanalysis 2  |  PSL THREDDS OPeNDAP  |  "
         "single strided request (30 monthly slices)  |  1991–2020  |  2.5° grid"
@@ -80,6 +84,10 @@ CLIMO_DESC = {
         "CORe monthly means  |  FTP surgical byte-range  |  "
         "single strided request (30 monthly slices)  |  1991–2020  |  2.5° grid  |  "
         "same dataset as the observations"
+    ),
+    "core-3hourly": (
+        "CORe 3-hourly PWAT climatology  |  GCS/NOMADS surgical byte-range  |  "
+        "±5-day same-hour window  |  1991–2020  |  native CORe grid"
     ),
 }
 

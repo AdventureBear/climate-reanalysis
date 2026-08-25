@@ -735,14 +735,14 @@ _MSLP_CONTOUR_SCALE_CONFIG = {
 _PWAT_SCALE_CONFIG = {
     "mapping": "fixed_anchors",
     "domain_min": 0,
-    "domain_max": 80,
-    "anchor_values": [0, 6, 12, 19, 21, 30, 40, 50, 60, 70, 80],
+    "domain_max": 90,
+    "anchor_values": [0, 6, 12, 19, 21, 30, 40, 50, 58, 64, 68, 72, 78, 84, 90],
     "anchor_colors": [
         "#8c510a", "#bf812d", "#dfc27d", "#f6e8c3", "#ffffff",
-        "#d9f0d3", "#a1d99b", "#41ab5d", "#006d2c", "#005a32",
-        "#003c1f",
+        "#d9f0d3", "#a1d99b", "#41ab5d", "#7bccc4", "#41b6c4",
+        "#2b8cbe", "#225ea8", "#253494", "#6a51a3", "#cbc9e2",
     ],
-    "key_breakpoints": [19, 40, 60],
+    "key_breakpoints": [19, 40, 60, 65, 90],
 }
 
 _SPECIFIC_HUMIDITY_SCALE_CONFIG = {

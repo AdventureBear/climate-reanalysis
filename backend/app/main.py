@@ -436,11 +436,9 @@ def get_map(
         start_hour=start_hour,
         precip_window=precip_window,
     )
-    # Single-hour products (no `hours`, no `months`) compare against that
-    # hour's normal, which is a mean-only baseline — there is no per-hour
-    # sigma to normalize by (#72). The daily map answers the same question
-    # in standard deviations.
-    if mode == "normalized" and not hours and not months:
+    # Single-hour products usually compare against a mean-only hourly baseline.
+    # PWAT is allowed because it has an R2 daily centered 15-day mean/std path.
+    if mode == "normalized" and not hours and not months and variable != "precipitable_water":
         raise HTTPException(
             status_code=422,
             detail=(
