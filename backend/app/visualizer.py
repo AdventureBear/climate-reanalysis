@@ -70,7 +70,7 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "Western US": ccrs.AlbersEqualArea(central_longitude=-115, central_latitude=39, standard_parallels=(32, 45)),
     "Alaska": ccrs.NorthPolarStereo(central_longitude=-150),
     "Hawaii": ccrs.PlateCarree(),
-    "North America": ccrs.AlbersEqualArea(central_longitude=-100, central_latitude=45, standard_parallels=(20, 60)),
+    "North America": ccrs.LambertConformal(central_longitude=-100, central_latitude=45, standard_parallels=(30, 60), cutoff=-30),
     "Northern Hemisphere": ccrs.NorthPolarStereo(central_longitude=-100),
     "Southern Hemisphere": ccrs.SouthPolarStereo(central_longitude=135),
     "North Pacific": ccrs.PlateCarree(central_longitude=180),
@@ -81,7 +81,7 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "East Asia": ccrs.PlateCarree(),
     "Australia": ccrs.PlateCarree(),
     "New Zealand": ccrs.PlateCarree(central_longitude=180),
-    "Southeast Canada": ccrs.AlbersEqualArea(central_longitude=-70, central_latitude=55, standard_parallels=(42, 65)),
+    "Southeast Canada": ccrs.LambertConformal(central_longitude=-70, central_latitude=55, standard_parallels=(42, 65), cutoff=-30),
     "Western Canada": ccrs.AlbersEqualArea(central_longitude=-115, central_latitude=58, standard_parallels=(45, 70)),
     "Canada": ccrs.AlbersEqualArea(central_longitude=-100, central_latitude=58, standard_parallels=(45, 70)),
     "South America": ccrs.PlateCarree(),
@@ -99,6 +99,9 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "Southern Africa": ccrs.PlateCarree(),
 }
 
+# _REGION_CLIP_PATHS: dict[str,  tuple[float, float, float, float]] = {
+#     "North America": ()
+# }
 _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "CONUS": (-127.5, -63.5, 21.5, 52.5),   # (lon_min, lon_max, lat_min, lat_max)
     "Northwest US": (-128.5, -105.5, 37.5, 52.5),
@@ -112,7 +115,7 @@ _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "Western US": (-127.5, -100.5, 28.5, 51.5),
     "Alaska": (-174.5, -126.5, 47.5, 74.5),
     "Hawaii": (-163.5, -151.5, 15.5, 25.5),
-    "North America": (-172.5, -27.5, 7.5, 82.5),
+    "North America": (-135, -68, 12, 78),
     "Northern Hemisphere": (-180, 180, -2.5, 90),
     "Southern Hemisphere": (-180, 180, -90, -17.5),
     "North Pacific": (117.5, -97.5, -2.5, 67.5),
@@ -148,6 +151,7 @@ _POLAR_HEMISPHERE_REGIONS = {"Northern Hemisphere", "Southern Hemisphere"}
 # wraps values past ±180 into a broken globe-wide strip. For these regions the
 # extent is converted to offsets from 180° and applied in a dateline-centred CRS.
 _DATELINE_EXTENT_REGIONS = {"North Pacific", "Western Pacific", "Southwest Pacific", "New Zealand"}
+
 
 
 def _apply_polar_boundary(ax) -> None:
