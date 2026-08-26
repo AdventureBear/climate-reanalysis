@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import inspect
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+
+from app.visualizer import _REGION_EXTENTS
 
 # Load .env before importing app modules: config.CACHE_ROOT (and anything else
 # read at module import time) must see .env values, not just process env.
@@ -597,3 +600,7 @@ def get_map(
             status_code=500,
             detail="Something went wrong while building this map. Please try again.",
         ) from exc
+
+@app.get("/api/get-regions")
+def return_regions():
+    return(list(_REGION_EXTENTS.keys()))
