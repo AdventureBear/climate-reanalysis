@@ -12,7 +12,7 @@ log = logging.getLogger("pyre.api")
 
 class RequestLogContext(Protocol):
     variable: str
-    level: int
+    level: int | str | None
     region: str
     mode: str
     hour: str
@@ -24,7 +24,9 @@ def log_request_banner(req: RequestLogContext, selection: TimeSelection, climo_s
     log.info("══════════════════════════════════════════════════════════════")
     log.info("REQUEST")
     log.info("  variable    : %s", VAR_NAMES.get(req.variable, req.variable))
-    if is_surface_or_named_level(req.variable):
+    if VARIABLES[req.variable].get("stream") == "blank":
+        log.info("  level       : %s", variable_level_label(req.variable, req.level))
+    elif is_surface_or_named_level(req.variable):
         log.info("  stream      : %s", "CORe flx" if VARIABLES[req.variable].get("stream") == "flx" else "CORe pgb")
         log.info("  level       : %s", variable_level_label(req.variable, req.level))
     else:

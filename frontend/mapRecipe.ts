@@ -349,7 +349,8 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   if (!recipe.variable || !recipe.level || !recipe.region) {
     return { ok: false, error: 'Choose a variable, level, and region.' }
   }
-  if (!recipe.time) {
+  const isBlankMap = recipe.variable === 'blank_map'
+  if (!isBlankMap && !recipe.time) {
     return { ok: false, error: 'Choose a time period.' }
   }
 
@@ -370,7 +371,10 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     recipe.vorticityType,
   )
   const level = urlLevelForSelection(recipe.variable, recipe.level)
-  const params: Record<string, string> = { variable: urlVariable, level, region: recipe.region }
+  const params: Record<string, string> = { variable: urlVariable, region: recipe.region }
+  if (isBlankMap) return { ok: true, params }
+
+  params.level = level
   if (recipe.variable === 'radiation') {
     const waveband = recipe.radiationWaveband ?? 'shortwave'
     params.waveband = waveband
@@ -381,11 +385,13 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
   const renderMode = rawOnlyVariable ? 'raw' : recipe.displayMode
   if (renderMode && renderMode !== 'raw') params.mode = renderMode
 
-  const timeParams = variable === 'precip_total'
-    ? precipTotalTimeRecipeToParams(recipe.time)
-    : timeRecipeToParams(recipe.time)
-  if (!timeParams.ok) return timeParams
-  Object.assign(params, timeParams.params)
+  if (!isBlankMap) {
+    const timeParams = variable === 'precip_total'
+      ? precipTotalTimeRecipeToParams(recipe.time!)
+      : timeRecipeToParams(recipe.time!)
+    if (!timeParams.ok) return timeParams
+    Object.assign(params, timeParams.params)
+  }
 
   if (recipe.wind) {
     // The backend decides the glyph quantity from the map mode (#47).
@@ -567,7 +573,7 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
   if (!params.toString()) return null
 
   const apiVariable = params.get('variable')
-  const apiLevel = params.get('level') ?? '850'
+  const apiLevel = params.get('level') ?? (apiVariable === 'blank_map' ? '' : '850')
   const uiSelection = apiVariable ? uiSelectionForUrlVariable(apiVariable, apiLevel, params.get('waveband'), params.get('direction')) : undefined
   const parsedHumidityType: HumidityType | undefined = apiVariable === 'humidity'
     ? 'specific'

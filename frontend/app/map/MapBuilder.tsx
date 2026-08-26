@@ -47,6 +47,7 @@ export default function MapBuilder() {
     apiVariable, apiLevel, isClimo,
     preferCoreClimo, chooseCoreClimoPreference,
     currentMapRecipe, applyRecipeToState,
+    isBlankMap,
   } = recipe
 
   const [regionsOpen, setRegionsOpen] = useState(false)
@@ -117,11 +118,12 @@ export default function MapBuilder() {
       // panel until the user clicks Generate.
       const recipeParams = mapRecipeToParams(recipe)
       if (recipeParams.ok) {
-        void generateFromParams(Object.fromEntries(params)).then(ignoredParams => {
-          if (!ignoredParams.length) return
-          const cleanedParams = new URLSearchParams(params)
+        const paramsForRender = recipeParams.params
+        void generateFromParams(paramsForRender).then(ignoredParams => {
+          const cleanedParams = new URLSearchParams(paramsForRender)
           ignoredParams.forEach(key => cleanedParams.delete(key))
           const cleanedParamsString = cleanedParams.toString()
+          if (cleanedParamsString === originalParamsString) return
           selfUpdatedParamsRef.current = cleanedParamsString
           window.history.replaceState(null, '', cleanedParamsString ? `?${cleanedParamsString}` : window.location.pathname)
         })
@@ -137,6 +139,7 @@ export default function MapBuilder() {
   }, [])
 
   function openColorLab() {
+    if (isBlankMap) return
     scaleDesigner.seedFrom(apiVariable, apiLevel, isClimo ? 'raw' : displayMode)
     setColorLabOpen(true)
   }
@@ -215,8 +218,12 @@ export default function MapBuilder() {
         <TimeScaleControls recipe={recipe} header />
         <div className="ml-auto flex items-center gap-2">
           {colorLabAccess && (
-            <button type="button" onClick={openColorLab}
-              className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border border-slate-600 bg-slate-800 px-2.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors">
+            <button type="button" onClick={openColorLab} disabled={isBlankMap}
+              className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border px-2.5 text-xs transition-colors ${
+                isBlankMap
+                  ? 'cursor-not-allowed border-slate-800 bg-slate-900 text-slate-600'
+                  : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}>
               <SlidersHorizontal size={14} /> Color Lab
             </button>
           )}

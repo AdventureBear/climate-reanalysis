@@ -22,7 +22,7 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
     hlCenters, setHlCenters,
     contourOverlays, setContourOverlays,
     apiVariable,
-    isWindVariable, isWindControlActive,
+    isWindVariable, isWindControlActive, isBlankMap,
   } = recipe
   const { notice, showNotice } = useWindLayerGuardNotice()
   const [windSettingsOpen, setWindSettingsOpen] = useState(false)
@@ -35,9 +35,10 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
     {
       key: 'wind',
       label: 'Wind',
-      checked: isWindControlActive,
-      disabled: false,
+      checked: isBlankMap ? false : isWindControlActive,
+      disabled: isBlankMap,
       onChange: () => {
+        if (isBlankMap) return
         if (isWindVariable) {
           showNotice(WIND_MASTER_NOTICE)
           return
@@ -48,7 +49,12 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
         <button
           type="button"
           onClick={() => setWindSettingsOpen(true)}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+          disabled={isBlankMap}
+          className={`flex h-7 w-7 items-center justify-center rounded transition-colors ${
+            isBlankMap
+              ? 'cursor-not-allowed text-slate-700'
+              : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          }`}
           aria-label="Wind overlay settings"
           title="Wind overlay settings"
         >
@@ -59,31 +65,33 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
     {
       key: 'centers',
       label: 'H/L Centers',
-      checked: hlCenters,
-      disabled: false,
-      onChange: () => setHlCenters(o => !o),
+      checked: isBlankMap ? false : hlCenters,
+      disabled: isBlankMap,
+      onChange: () => {
+        if (!isBlankMap) setHlCenters(o => !o)
+      },
     },
     {
       key: 'pressure',
       label: 'Pressure',
-      checked: contourOverlays.includes('pressure'),
-      disabled: apiVariable === 'surface_pressure',
+      checked: !isBlankMap && contourOverlays.includes('pressure'),
+      disabled: isBlankMap || apiVariable === 'surface_pressure',
       onChange: () => setContourOverlays(prev =>
         prev.includes('pressure') ? prev.filter(c => c !== 'pressure') : [...prev, 'pressure']),
     },
     {
       key: 'height',
       label: 'Height',
-      checked: contourOverlays.includes('height'),
-      disabled: apiVariable === 'height',
+      checked: !isBlankMap && contourOverlays.includes('height'),
+      disabled: isBlankMap || apiVariable === 'height',
       onChange: () => setContourOverlays(prev =>
         prev.includes('height') ? prev.filter(c => c !== 'height') : [...prev, 'height']),
     },
     {
       key: 'temp',
       label: 'Temp',
-      checked: contourOverlays.includes('temp'),
-      disabled: apiVariable === 'temp' || apiVariable === 'temp_2m',
+      checked: !isBlankMap && contourOverlays.includes('temp'),
+      disabled: isBlankMap || apiVariable === 'temp' || apiVariable === 'temp_2m',
       onChange: () => setContourOverlays(prev =>
         prev.includes('temp') ? prev.filter(c => c !== 'temp') : [...prev, 'temp']),
     },

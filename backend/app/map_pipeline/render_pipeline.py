@@ -11,7 +11,7 @@ log = logging.getLogger("pyre.api")
 
 class RenderRequest(Protocol):
     variable: str
-    level: int
+    level: int | str | None
     region: str
     color_step: int
     scale_spec: str
@@ -48,6 +48,20 @@ def render_map_product(
     monthly_anomaly: bool = False,
     missing_note: str = "",
 ):
+    if req.variable == "blank_map":
+        log.info("  colormap : none (blank base map)")
+        return create_map_product(
+            data_array=data_array,
+            region_bounds=bounds,
+            var_name=var_label,
+            date_str=date_label,
+            variable=req.variable,
+            level=req.level,
+            region=req.region,
+            wind_step=0,
+            mode="raw",
+        )
+
     if use_vector_wind_anomaly:
         if req.mode == "normalized":
             log.info("  colormap : positive sequential (normalized vector anomaly magnitude)")

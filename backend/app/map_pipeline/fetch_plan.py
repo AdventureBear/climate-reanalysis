@@ -81,7 +81,7 @@ from .time_selection import TimeSelection
 
 class FetchRequest(Protocol):
     variable: str
-    level: int
+    level: int | str | None
     hour: str
     precip_window: int
     skip_missing: int

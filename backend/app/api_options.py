@@ -16,6 +16,7 @@ def valid_precip_window(value: int) -> bool:
     return value > 0 and value % 3 == 0 and value <= MAX_PRECIP_WINDOW_HOURS
 
 VAR_NAMES = {
+    "blank_map": "Blank Map",
     "wind_speed": "Wind Speed",
     "temp": "Temperature",
     "height": "Geopotential Height",

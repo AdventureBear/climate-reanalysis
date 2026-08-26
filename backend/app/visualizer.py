@@ -17,7 +17,7 @@ from matplotlib.path import Path
 import matplotlib.ticker as mticker
 import numpy as np
 
-from .config import CACHE_ROOT
+from .config import CACHE_ROOT, is_surface_or_named_level
 from .met_math import vector_magnitude
 from .units import (
     KT_TO_MS,
@@ -115,7 +115,7 @@ _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "Western US": (-127.5, -100.5, 28.5, 51.5),
     "Alaska": (-174.5, -126.5, 47.5, 74.5),
     "Hawaii": (-163.5, -151.5, 15.5, 25.5),
-    "North America": (-135, -68, 12, 78),
+    "North America": (-135, -67, 13, 78),
     "Northern Hemisphere": (-180, 180, -2.5, 90),
     "Southern Hemisphere": (-180, 180, -90, -17.5),
     "North Pacific": (117.5, -97.5, -2.5, 67.5),
@@ -151,6 +151,38 @@ _POLAR_HEMISPHERE_REGIONS = {"Northern Hemisphere", "Southern Hemisphere"}
 # wraps values past ±180 into a broken globe-wide strip. For these regions the
 # extent is converted to offsets from 180° and applied in a dateline-centred CRS.
 _DATELINE_EXTENT_REGIONS = {"North Pacific", "Western Pacific", "Southwest Pacific", "New Zealand"}
+
+
+def _projection_label(proj: ccrs.Projection) -> str:
+    if isinstance(proj, ccrs.AlbersEqualArea):
+        return "Albers Equal Area"
+    if isinstance(proj, ccrs.LambertConformal):
+        return "Lambert Conformal"
+    if isinstance(proj, ccrs.NorthPolarStereo):
+        return "North Polar Stereographic"
+    if isinstance(proj, ccrs.SouthPolarStereo):
+        return "South Polar Stereographic"
+    if isinstance(proj, ccrs.PlateCarree):
+        return "Plate Carree"
+    return proj.__class__.__name__
+
+
+def _format_extent_value(value: float, axis: str) -> str:
+    rounded = round(float(value), 1)
+    magnitude = abs(rounded)
+    number = f"{magnitude:g}"
+    if axis == "lon":
+        suffix = "W" if rounded < 0 else "E"
+    else:
+        suffix = "S" if rounded < 0 else "N"
+    return f"{number}°{suffix}" if magnitude else "0°"
+
+
+def _extent_label(lon0: float, lon1: float, lat0: float, lat1: float) -> str:
+    return (
+        f"Lon: {_format_extent_value(lon0, 'lon')} to {_format_extent_value(lon1, 'lon')}; "
+        f"Lat: {_format_extent_value(lat0, 'lat')} to {_format_extent_value(lat1, 'lat')}"
+    )
 
 
 
@@ -500,13 +532,13 @@ def _make_temp_scale(cfg: dict, step: int = 1) -> tuple[list[float], list[tuple]
     return breakpoints_k, colors, to_k
 
 
-def _render_level(variable: str, level: int) -> int:
+def _render_level(variable: str, level: int | str | None) -> int:
     if variable in {"temp_2m", "wind_10m", "wind_gust", "storm_motion"}:
         return 1000
-    return level
+    return int(level)
 
 
-def _temp_display_unit(variable: str, level: int, temp_unit: str = "") -> str:
+def _temp_display_unit(variable: str, level: int | str | None, temp_unit: str = "") -> str:
     """'F' or 'C': the explicit override, else the level's native scale unit."""
     if temp_unit in ("F", "C"):
         return temp_unit
@@ -544,7 +576,7 @@ _RADIATION_LABELS = {
 
 def display_unit(
     variable: str,
-    level: int,
+    level: int | str | None,
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
     temp_unit: str = "",
@@ -1415,7 +1447,7 @@ def _wind_vector_normalized_config(color_step: int) -> dict[str, object]:
 def _anomaly_to_display_with_unit(
     values: np.ndarray,
     variable: str,
-    level: int,
+    level: int | str | None,
     wind_unit: str = "kt",
     pwat_unit: str = "mm",
     temp_unit: str = "",
@@ -1608,7 +1640,7 @@ def _custom_scale_from_spec(
     scale_spec: str | None,
     *,
     variable: str,
-    level: int,
+    level: int | str | None,
     mode: str,
     wind_unit: str,
     pwat_unit: str,
@@ -1623,8 +1655,12 @@ def _custom_scale_from_spec(
         return None
     if spec.get("variable") != variable or spec.get("mode") != mode:
         return None
-    if int(spec.get("level", level)) != int(level):
-        return None
+    if not is_surface_or_named_level(variable):
+        try:
+            if int(spec.get("level", level)) != int(level):
+                return None
+        except (TypeError, ValueError):
+            return None
 
     try:
         boundaries = [float(v) for v in spec.get("boundaries", [])]
@@ -1678,7 +1714,7 @@ def _format_scale_value(value: float) -> str:
 
 def describe_color_scale(
     variable: str,
-    level: int,
+    level: int | str | None,
     color_step: int,
     mode: str,
     data_array=None,
@@ -2112,7 +2148,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
     # Cartopy-adjusted axes position and place cax to exactly match it.
     plot_obj   = None
     cbar_cfg   = None   # {ticks, ticklabels, ylabel} — None means no colorbar
-    custom_scale = _custom_scale_from_spec(
+    custom_scale = None if variable == "blank_map" else _custom_scale_from_spec(
         scale_spec,
         variable=variable,
         level=level,
@@ -2149,7 +2185,10 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         }
         return True
 
-    if mode in ("anomaly", "normalized"):
+    if variable == "blank_map":
+        pass
+
+    elif mode in ("anomaly", "normalized"):
         if mode == "normalized":
             max_val    = _NORMALIZED_MAX
             step       = max(color_step * 0.5, 0.5)
@@ -2556,6 +2595,11 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         ax.set_extent([lon0, lon1, lat0, lat1], crs=ccrs.PlateCarree())
     if region in _POLAR_HEMISPHERE_REGIONS:
         _apply_polar_boundary(ax)
+
+    if variable == "blank_map":
+        var_name = region
+        date_str = f"Projection: {_projection_label(proj)}\nExtent: {_extent_label(lon0, lon1, lat0, lat1)}"
+
     ax.coastlines(resolution='50m', color='black', linewidth=1.2)
     ax.add_feature(cfeature.STATES, linestyle=':', edgecolor='black', alpha=0.4)
     ax.add_feature(cfeature.BORDERS, linewidth=1.2, edgecolor='black')
@@ -2679,7 +2723,7 @@ def _create_map_product(data_array, region_bounds, var_name, date_str, variable=
         cbar.ax.tick_params(which='minor', left=False, right=False)
 
     # Data source credit below the map
-    credit = 'Data: CORe Reanalysis  ·  NCEP/CPC'
+    credit = 'Map: Cartopy  ·  Natural Earth' if variable == "blank_map" else 'Data: CORe Reanalysis  ·  NCEP/CPC'
     if missing_note:
         # User-confirmed skip: the map itself discloses what the composite
         # is missing, so the title never has to lie (#95).

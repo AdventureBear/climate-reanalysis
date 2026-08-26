@@ -14,7 +14,7 @@ type VariableLevelConfig = {
 type VariableConfig = {
   label: string
   levels: readonly VariableLevelConfig[]
-  group?: 'multi' | 'single'
+  group?: 'multi' | 'single' | 'other'
 }
 
 export type HumidityType = 'relative' | 'specific'
@@ -176,6 +176,13 @@ const VARIABLE_CONFIG = {
       { value: 'surface_snod', label: 'Surface', apiVariable: 'snow_depth', apiLevel: '1000', levelKind: 'surface' },
     ],
   },
+  blank_map: {
+    label: 'Blank Map',
+    group: 'other',
+    levels: [
+      { value: 'blank_map', label: 'Base map', apiVariable: 'blank_map', apiLevel: '', levelKind: 'surface' },
+    ],
+  },
 } as const satisfies Record<string, VariableConfig>
 
 export type UiVariableKey = keyof typeof VARIABLE_CONFIG
@@ -183,6 +190,7 @@ export type UiVariableKey = keyof typeof VARIABLE_CONFIG
 const BUILDER_VARIABLE_GROUPS = {
   multi: 'Multi-level variables',
   single: 'Surface / single-level variables',
+  other: 'Other',
 } as const
 
 const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG).map(([value, config]) => {
@@ -202,6 +210,7 @@ const BUILDER_VARIABLE_OPTIONS: SelectOption[] = Object.entries(VARIABLE_CONFIG)
 export const VARIABLES: SelectOption[] = [
   ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.multi),
   ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.single),
+  ...BUILDER_VARIABLE_OPTIONS.filter(option => option.group === BUILDER_VARIABLE_GROUPS.other),
 ]
 
 export const COLOR_LAB_VARIABLES: SelectOption[] = [
@@ -258,6 +267,7 @@ export const SURFACE_LEVELS = new Set([
   'srh_0_3km', 'surface_gust', 'storm_motion_0_6km',
   'surface', '4-layer', '0-30mb',
   'surface_snod',
+  'blank_map',
 ])
 // Surface/named-level API variables whose monthly obs composites are NOT
 // wired (MSLP has a monthly archive record and is exempt). Mirrors the
@@ -303,7 +313,8 @@ export const WIND_UNIT_API_VARIABLES = new Set(['wind_speed', 'wind_10m', 'wind_
 // cloud_cover_*: TCDC baseline/product design deferred;
 // radiation_*: radiation flux baseline/product design deferred; olr remains
 // climatology-capable because it was wired before the grouped Radiation UI.
-// cape/cin/dewpoint/absv/snow_depth: no R2 source, or derivation deferred —
+// cape/cin/dewpoint/absv/snow_depth/blank_map: no R2 source, no data field,
+// or derivation deferred —
 // see config.py comments.)
 export const RAW_ONLY_API_VARIABLES = new Set([
   'humidity', 'rel_humidity', 'precip_rate', 'precip_total',
@@ -314,7 +325,7 @@ export const RAW_ONLY_API_VARIABLES = new Set([
   'dewpoint_2m', 'rel_humidity_2m', 'absv', 'rel_vorticity',
   'storm_relative_helicity', 'wind_gust', 'storm_motion',
   'lifted_index_surface', 'lifted_index_best', 'lifted_index_parcel',
-  'snow_depth',
+  'snow_depth', 'blank_map',
 ])
 
 const RADIATION_API_VARIABLES: Record<string, string> = {
@@ -451,7 +462,7 @@ export function urlLevelForSelection(variable: string, level: string): string {
   if (variable === 'cloud_cover') return CLOUD_COVER_URL_LEVELS[level] ?? 'total_column'
   if (variable === 'radiation') return RADIATION_URL_LEVELS[level] ?? 'surface'
   if (variable === 'lifted_index') return LIFTED_INDEX_URL_LEVELS[level] ?? 'surface'
-  return apiLevelForSelection(variable, level)
+  return level
 }
 
 export function uiSelectionForUrlVariable(

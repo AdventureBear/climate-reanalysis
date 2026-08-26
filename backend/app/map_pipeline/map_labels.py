@@ -14,7 +14,7 @@ class LabelRequest(Protocol):
     hour: str
     mode: str
     variable: str
-    level: int
+    level: int | str | None
     wind_unit: str
     pwat_unit: str
     precip_unit: str
@@ -155,6 +155,8 @@ def map_date_label(
 
 
 def variable_label(req: LabelRequest, use_vector_wind_anomaly: bool) -> str:
+    if req.variable == "blank_map":
+        return VARIABLES[req.variable]["name"]
     units = display_unit(
         req.variable, req.level, wind_unit=req.wind_unit, pwat_unit=req.pwat_unit,
         temp_unit=req.temp_unit, precip_unit=req.precip_unit,

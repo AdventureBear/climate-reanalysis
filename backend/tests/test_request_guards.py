@@ -118,6 +118,111 @@ def test_pwat_advertises_normalized_mode():
     assert "normalized" in response.json()["variable_modes"]["precipitable_water"]
 
 
+def test_blank_map_request_is_accepted(monkeypatch):
+    captured = []
+
+    def fake_create_map_buffer(req):
+        captured.append(req)
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "variable": "blank_map",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured[-1].variable == "blank_map"
+    assert captured[-1].level is None
+    assert captured[-1].mode == "raw"
+
+    climo_response = client.get(
+        "/api/map",
+        params={
+            "months": "200001",
+            "variable": "blank_map",
+            "region": "CONUS",
+            "mode": "climatology",
+        },
+    )
+
+    assert climo_response.status_code == 200
+    assert captured[-1].variable == "blank_map"
+    assert captured[-1].level is None
+    assert captured[-1].mode == "raw"
+
+    missing_level_response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "height",
+            "region": "CONUS",
+        },
+    )
+
+    assert missing_level_response.status_code == 422
+    assert missing_level_response.json()["detail"] == "level is required for this variable"
+
+
+def test_pwat_accepts_frontend_selector_level(monkeypatch):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["request"] = req
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": "precipitable_water",
+            "level": "total_column",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["request"].variable == "precipitable_water"
+    assert captured["request"].level == "total_column"
+
+
+@pytest.mark.parametrize(
+    ("variable", "extra_params", "detail"),
+    [
+        ("cloud_cover", {}, "cloud_cover level must be one of"),
+        ("radiation", {"waveband": "shortwave", "direction": "down"}, "radiation level must be 'surface' or 'toa'"),
+        ("lifted_index", {}, "lifted_index level must be one of"),
+    ],
+)
+def test_grouped_variables_require_explicit_level(monkeypatch, variable, extra_params, detail):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260101",
+            "hour": "12",
+            "variable": variable,
+            "region": "CONUS",
+            **extra_params,
+        },
+    )
+
+    assert response.status_code == 422
+    assert detail in response.json()["detail"]
+
+
 def test_pwat_normalized_available_for_single_hour_and_daily(monkeypatch):
     captured = {}
 
@@ -204,7 +309,8 @@ def test_new_core_variables_enter_map_recipe(monkeypatch, variable, level):
     )
 
     assert response.status_code == 200
-    assert captured == {"variable": variable, "level": int(level), "mode": "raw"}
+    expected_level = int(level) if variable == "rel_vorticity" else level
+    assert captured == {"variable": variable, "level": expected_level, "mode": "raw"}
 
 
 @pytest.mark.parametrize(
@@ -328,7 +434,7 @@ def test_lifted_index_public_variable_resolves_named_level(monkeypatch, level, r
     )
 
     assert response.status_code == 200
-    assert captured == {"variable": resolved_variable, "level": 1000}
+    assert captured == {"variable": resolved_variable, "level": level}
 
 
 @pytest.mark.parametrize(
@@ -365,7 +471,7 @@ def test_cloud_cover_public_variable_resolves_named_level(monkeypatch, level, re
     )
 
     assert response.status_code == 200
-    assert captured == {"variable": resolved_variable, "level": 1000}
+    assert captured == {"variable": resolved_variable, "level": level}
 
 
 def test_cloud_cover_rejects_numeric_alias_level(monkeypatch):
@@ -492,7 +598,7 @@ def test_radiation_public_variable_resolves_options(monkeypatch, level, waveband
     )
 
     assert response.status_code == 200
-    assert captured == {"variable": resolved_variable, "level": 1000}
+    assert captured == {"variable": resolved_variable, "level": level}
 
 
 def test_radiation_rejects_numeric_alias_level(monkeypatch):

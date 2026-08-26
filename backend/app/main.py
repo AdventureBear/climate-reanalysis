@@ -96,7 +96,7 @@ def robots_txt():
 
 def _validate_common(
     variable: str,
-    level: int,
+    level: int | str | None,
     mode: str,
     wind_unit: str,
     pwat_unit: str,
@@ -109,7 +109,12 @@ def _validate_common(
     variable_levels = valid_levels(variable) if variable in VARIABLES else PRESSURE_LEVELS
     checks = (
         (variable in VARIABLES, f"variable must be one of {list(VARIABLES.keys())}"),
-        (level in variable_levels, f"level must be one of {variable_levels} for {variable}"),
+        (
+            variable == "blank_map"
+            or (is_surface_or_named_level(variable) and str(level or "").strip() != "")
+            or level in variable_levels,
+            f"level must be one of {variable_levels} for {variable}",
+        ),
         (mode in VALID_MODES, f"mode must be one of {list(VALID_MODES)}"),
         (wind_unit in VALID_WIND_UNITS, f"wind_unit must be one of {list(VALID_WIND_UNITS)}"),
         (pwat_unit in VALID_PWAT_UNITS, f"pwat_unit must be one of {list(VALID_PWAT_UNITS)}"),
@@ -400,6 +405,8 @@ def get_map(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     variable, level = resolved.variable, resolved.level
+    if variable == "blank_map":
+        mode = "raw"
     _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded", "none"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")

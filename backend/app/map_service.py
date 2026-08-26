@@ -45,9 +45,33 @@ log = logging.getLogger("pyre.api")
 
 
 def create_map_buffer(req: MapRequest):
+    bounds = REGIONS[req.region]
+
+    if req.variable == "blank_map":
+        log.info("══════════════════════════════════════════════════════════════")
+        log.info("REQUEST")
+        log.info("  variable    : %s", VAR_NAMES["blank_map"])
+        log.info("  level       : base map")
+        log.info("  date/period : none")
+        log.info("  region      : %s", req.region)
+        log.info("  map type    : Raw")
+        log.info("══════════════════════════════════════════════════════════════")
+        log.info("STEP 1  Render blank Cartopy base map")
+        buf = render_map_product(
+            req,
+            data_array=None,
+            bounds=bounds,
+            var_label=VAR_NAMES["blank_map"],
+            date_label="",
+            scale_overrides=None,
+            use_vector_wind_anomaly=False,
+        )
+        log.info("STEP 1 ✓  render complete → streaming PNG")
+        log.info("══════════════════════════════════════════════════════════════")
+        return buf
+
     selection = parse_time_selection(req)
     climo_source = resolve_climo_source(req, selection)
-    bounds = REGIONS[req.region]
     grib_name = VARIABLES[req.variable].get("grib_name", "")
     use_vector_wind_anomaly = is_vector_wind_anomaly(req)
 

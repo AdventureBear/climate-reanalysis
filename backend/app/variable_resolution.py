@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .config import VARIABLES
+from .config import VARIABLES, is_surface_or_named_level
 
 
 @dataclass(frozen=True)
 class ResolvedVariable:
     variable: str
-    level: int
+    level: int | str | None
 
 
 CLOUD_COVER_LEVELS = {
-    "": "cloud_cover_total",
     "total": "cloud_cover_total",
     "total_column": "cloud_cover_total",
     "column": "cloud_cover_total",
@@ -34,7 +33,6 @@ CLOUD_COVER_LEVELS = {
 }
 
 RADIATION_LEVELS = {
-    "": "surface",
     "surface": "surface",
     "sfc": "surface",
     "toa": "toa",
@@ -73,7 +71,6 @@ RADIATION_VARIABLES = {
 }
 
 LIFTED_INDEX_LEVELS = {
-    "": "lifted_index_surface",
     "surface": "lifted_index_surface",
     "sfc": "lifted_index_surface",
     "surface_parcel": "lifted_index_surface",
@@ -96,7 +93,7 @@ def _normal_key(value: object) -> str:
 
 def _parse_int_level(level: object) -> int:
     if str(level or "").strip() == "":
-        return 850
+        raise ValueError("level is required for this variable")
     try:
         return int(str(level).strip())
     except (TypeError, ValueError):
@@ -117,7 +114,7 @@ def resolve_variable_selection(
         if concrete is None:
             allowed = ["total_column", "low", "middle", "high", "boundary", "convective"]
             raise ValueError(f"cloud_cover level must be one of {allowed}")
-        return ResolvedVariable(concrete, 1000)
+        return ResolvedVariable(concrete, str(level).strip())
 
     if variable == "radiation":
         level_key = RADIATION_LEVELS.get(_normal_key(level))
@@ -137,15 +134,22 @@ def resolve_variable_selection(
                 f"radiation combination is not available: level={level_key}, "
                 f"waveband={waveband_key}, direction={direction_key}"
             )
-        return ResolvedVariable(concrete, 1000)
+        return ResolvedVariable(concrete, str(level).strip())
 
     if variable == "lifted_index":
         concrete = LIFTED_INDEX_LEVELS.get(_normal_key(level))
         if concrete is None:
             allowed = ["surface", "4-layer", "0-30mb"]
             raise ValueError(f"lifted_index level must be one of {allowed}")
-        return ResolvedVariable(concrete, 1000)
+        return ResolvedVariable(concrete, str(level).strip())
+
+    if variable == "blank_map":
+        return ResolvedVariable(variable, None)
 
     if variable not in VARIABLES:
         raise ValueError(f"variable must be one of {list(VARIABLES.keys()) + ['cloud_cover', 'radiation', 'lifted_index']}")
+    if is_surface_or_named_level(variable):
+        if str(level or "").strip() == "":
+            raise ValueError("level is required for this variable")
+        return ResolvedVariable(variable, str(level).strip())
     return ResolvedVariable(variable, _parse_int_level(level))

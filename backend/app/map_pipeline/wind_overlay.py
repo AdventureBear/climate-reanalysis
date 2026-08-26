@@ -14,7 +14,7 @@ log = logging.getLogger("pyre.api")
 class WindOverlayRequest(Protocol):
     wind_step: int
     mode: str
-    level: int
+    level: int | str | None
     isotachs: int
 
 

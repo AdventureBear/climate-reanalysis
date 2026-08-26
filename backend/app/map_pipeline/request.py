@@ -12,7 +12,7 @@ class MapRequest:
     hour: str = "00"
     hours: str = ""
     variable: str = "wind_speed"
-    level: int = 850
+    level: int | str | None = None
     region: str = "CONUS"
     wind_step: int = 0
     wind_type: str = "vectors"

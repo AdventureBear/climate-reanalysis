@@ -291,6 +291,14 @@ def _radiation_variable(name: str, grib_name: str, flx_level: str, display_level
 
 
 VARIABLES = {
+    "blank_map": {
+        "name": "Blank Map",
+        "units": "",
+        "stream": "blank",
+        "display_level": "base map",
+        "climo_sources": (),
+        "normalized_mask_threshold": None,
+    },
     "wind_speed": {
         "name": "Wind Speed",
         "units": "m/s",
@@ -700,6 +708,6 @@ def supports_climatology(variable: str) -> bool:
     return bool(supported_climo_sources(variable))
 
 
-def variable_level_label(variable: str, level: int) -> str:
+def variable_level_label(variable: str, level: int | str | None) -> str:
     """Human-readable vertical coordinate for logs and map titles."""
     return VARIABLES[variable].get("display_level", f"{level} mb")

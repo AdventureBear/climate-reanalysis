@@ -177,11 +177,12 @@ export function useCompositeRecipe() {
   const rawOnlyVariable = RAW_ONLY_API_VARIABLES.has(apiVariable)
   const precipTotalVariable = apiVariable === 'precip_total'
   const precipTotalDailyWindow = precipTotalVariable && precipWindow === '24'
+  const isBlankMap = apiVariable === 'blank_map'
   // Wind maps style themselves (shaded/barbs/vectors/isotachs) — a separate
   // "wind overlay" on a wind map would draw the same data twice. The map mode
   // decides the glyph quantity (raw → actual wind, anomaly → anomaly wind, #47).
   const isWindVariable = apiVariable === 'wind_speed' || apiVariable === 'wind_10m'
-  const isWindControlActive = isWindVariable || windMaster
+  const isWindControlActive = !isBlankMap && (isWindVariable || windMaster)
 
   // A wind map has to draw at least one wind layer, or the backend returns 422
   // and the user gets an error instead of a map. Which layers a mode actually
@@ -297,7 +298,7 @@ export function useCompositeRecipe() {
       displayMode,
       climoSource,
       time: currentTimeRecipe(),
-      wind: windStep
+      wind: !isBlankMap && windStep
         ? {
             on: isWindControlActive && windOn,
             step: windStep,
@@ -320,8 +321,8 @@ export function useCompositeRecipe() {
         : apiVariable === 'temp'
           ? elevatedTemperatureUnit
           : undefined,
-      centers: hlCenters || undefined,
-      contours: contourOverlays.length ? contourOverlays : undefined,
+      centers: !isBlankMap && hlCenters || undefined,
+      contours: !isBlankMap && contourOverlays.length ? contourOverlays : undefined,
       colorStep,
     }
   }
@@ -565,6 +566,7 @@ export function useCompositeRecipe() {
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, precipTotalVariable, precipTotalDailyWindow, isWindVariable,
+    isBlankMap,
     isWindUnitVariable: isWindUnitApiVariable(apiVariable),
     isWindControlActive,
     isLastWindLayer,
