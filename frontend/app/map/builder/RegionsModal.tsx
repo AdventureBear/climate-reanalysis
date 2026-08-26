@@ -2,7 +2,7 @@
 // section state persists across open/close, as it did pre-extraction.
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Minus, Plus, X } from 'lucide-react'
-import { REGION_THUMBNAILS } from './regionThumbnails'
+import { REGION_THUMBNAILS } from '../../../lib/regionThumbnails'
 import { REGION_SECTIONS } from './regionCatalog'
 import { RegionThumbnail } from './RegionThumbnail'
 

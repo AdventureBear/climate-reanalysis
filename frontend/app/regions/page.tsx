@@ -14,10 +14,6 @@ export const metadata: Metadata = {
 
 let regions = await listRegions();
 
-
-
-
-
 export default async function Regions() {
 
     return (

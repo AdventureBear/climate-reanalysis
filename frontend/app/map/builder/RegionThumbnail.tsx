@@ -1,4 +1,4 @@
-import { REGION_THUMBNAILS } from './regionThumbnails'
+import { REGION_THUMBNAILS } from '../../../lib/regionThumbnails'
 
 export function RegionThumbnail({ regionKey, selected }: { regionKey: string; selected: boolean }) {
   const src = REGION_THUMBNAILS[regionKey]

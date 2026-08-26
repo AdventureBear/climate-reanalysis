@@ -1,4 +1,5 @@
 'use client'
+import {RegionThumbnail} from "../map/builder/RegionThumbnail";
 
 import Link from 'next/link'
 function slugify(region: string) {
@@ -20,9 +21,19 @@ export function RegionList({regions}: { regions: string[]}) {
             >
               <div className="min-w-0 flex-1">
                 <h2 className="mt-1 text-xl font-semibold text-slate-100">
+                  <div className="absolute inset-0 flex flex-row items-center justify-center" />
+                  <div>
                   <Link href={`/regions/${slugify(region)}/`} className="after:absolute after:inset-0">
-                    {region}
+                    <RegionThumbnail regionKey={region} selected={false} />
+                    {/*<div>{region}</div>*/}
                   </Link>
+                  </div>
+                  <div>
+                  <Link href={`/regions/${slugify(region)}/`} className="after:absolute after:inset-0">
+                    {/*<RegionThumbnail regionKey={region} selected={false} />*/}
+                    <div>{region}</div>
+                  </Link>
+                  </div>
                 </h2>
 
               </div>
