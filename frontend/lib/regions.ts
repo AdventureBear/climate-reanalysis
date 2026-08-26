@@ -8,8 +8,8 @@ export async function listRegions(): Promise<Region[]> {
     if (!res.ok) {
         throw new Error(`regions fetch failed: HTTP ${res.status}`)
     }
-    const regions = await res.json()
-    return regions
+
+    return await res.json()  //return regions list
 }
 
 
