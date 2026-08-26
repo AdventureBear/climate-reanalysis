@@ -20,7 +20,7 @@ export function RegionList({regions}: { regions: string[]}) {
             >
               <div className="min-w-0 flex-1">
                 <h2 className="mt-1 text-xl font-semibold text-slate-100">
-                  <Link href={`/regions/${region}/`} className="after:absolute after:inset-0">
+                  <Link href={`/regions/${slugify(region)}/`} className="after:absolute after:inset-0">
                     {region}
                   </Link>
                 </h2>

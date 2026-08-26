@@ -16,7 +16,7 @@ function slugify(region: string) {
 
 export async function generateStaticParams() {
     const regions = await listRegions()
-
+    console.log("STATIC REGIONS:", regions)
     return regions.map((region) => ({
         region: slugify(region),
     }))
@@ -43,7 +43,7 @@ export default async function RegionPage({
                 </h1>
 
                 <p className="mt-3 text-slate-300">
-                    No stories yet.
+                    No region info yet.
                 </p>
 
                 <Link

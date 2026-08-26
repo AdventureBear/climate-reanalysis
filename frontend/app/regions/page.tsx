@@ -14,11 +14,7 @@ export const metadata: Metadata = {
 
 let regions = await listRegions();
 
-function slugify(region: string) {
-    return region
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-}
+
 
 
 
