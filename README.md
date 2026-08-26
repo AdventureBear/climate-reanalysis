@@ -13,7 +13,7 @@ Monorepo:
 ```txt
 climate-reanalysis/
   backend/    FastAPI, Python 3.12, uv, xarray/cfgrib, Matplotlib/Cartopy
-  frontend/   React 19, TypeScript, Vite, Tailwind v4
+  frontend/   Next >= 16.2, TypeScript, Vite, Tailwind v4
 ```
 
 The frontend is intentionally thin. It manages UI state and renders the returned image. All data retrieval, compositing, climatology, anomaly math, projection choice, and map rendering happen on the backend.
