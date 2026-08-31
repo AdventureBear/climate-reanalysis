@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 
 
 let regions = await listRegions();
+console.log("REGIONS:", regions)
 
 export default async function Regions() {
 
@@ -27,11 +28,11 @@ export default async function Regions() {
                     World Regions available for the PyRe Weather map builder.
                 </p>
 
-                {regions.length === 0 && (
+                {Object.keys(regions).length === 0 && (
                     <p className="mt-10 text-slate-400">No regions yet. Check back soon.</p>
                 )}
 
-                {regions.length > 0 && (
+                {Object.keys(regions).length > 0 && (
                     <Suspense fallback={<p className="mt-8 text-slate-400">Loading stories…</p>}>
                         <RegionList  regions={regions} />
                     </Suspense>

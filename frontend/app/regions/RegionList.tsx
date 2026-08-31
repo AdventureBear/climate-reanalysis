@@ -1,5 +1,6 @@
 'use client'
 import {RegionThumbnail} from "../map/builder/RegionThumbnail";
+import type { Region } from "../../lib/regions"
 
 import Link from 'next/link'
 function slugify(region: string) {
@@ -7,12 +8,12 @@ function slugify(region: string) {
       .toLowerCase()
       .replace(/\s+/g, "-")
 }
-export function RegionList({regions}: { regions: string[]}) {
+export function RegionList({regions}:{regions:Region}) {
 
 
   return (
       <div className="mt-8 flex flex-col gap-4">
-          {regions.map((region: string) => {
+          {Object.keys(regions).map((region: string) => {
 
           return (
             <div

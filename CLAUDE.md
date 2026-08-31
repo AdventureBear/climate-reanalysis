@@ -1,263 +1,102 @@
-# CLAUDE.md
+# Repository Agent Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is identical in `AGENTS.md` and `CLAUDE.md`. It is for coding agents working in this repository.
 
-See `PROJECT.md` for the current project context, user stories, scientific design principles, roadmap, and reference notes.
-
----
+For project background, roadmap, and current product notes, read `PROJECT.md`. For CORe/GRIB/index details, read `docs/ReanalysisFileFormats.md`.
 
 ## Commands
 
-All backend commands run from the `backend/` directory using `uv`.
-
-**Backend**
 ```bash
 cd backend
-uv run uvicorn app.main:app --reload   # dev server at http://127.0.0.1:8000
-uv add <package>                       # add a dependency
+uv run uvicorn app.main:app --reload
+uv add <package>
 ```
 
-**Frontend**
 ```bash
 cd frontend
-npm install       # install deps
-npm run dev       # next dev at http://localhost:5173
-npm run build     # next build → static export in out/
-npm run lint      # eslint
+npm install
+npm run dev
+npm run build
+npm run lint
 ```
 
-**Supabase** (dev project only — production gets its own project; keep this one localhost-oriented)
-```bash
-supabase migration list    # compare local files vs applied history
-```
-Schema changes are file-first: write the migration in `supabase/migrations/`, then apply that exact content (see Working Agreement).
+Supabase schema history lives in `supabase/migrations/`. Schema changes are file-first: write the migration file, then apply that exact content only after explicit approval.
 
----
+## Local Workflow
 
-## What This Project Is
+- Never edit on `main` or `render`; create or switch to a feature branch first.
+- Check `git branch --show-current` and `git status --short` before edits and before commit-adjacent work.
+- The user owns `git commit`, `git merge`, `git push`, production deploys, and routine server restarts unless they ask otherwise.
+- Do not start, restart, or kill local frontend/backend servers unless the user explicitly asks.
+- Do not build or lint for minor updates. Build/lint after major features, broad refactors, or cross-cutting behavior changes.
+- When frontend behavior changes, tell the user what browser smoke tests to run. The user tests in their own browser.
+- Use complete, runnable shell commands when sharing commands with the user.
+- Do not prompt the user to commit. Implement, verify, summarize, and stop unless they ask for git actions.
 
-The PSL/NCEP reanalysis interactive pages (used in meteorology education and research) stopped updating in March 2026 when the underlying NCEP Reanalysis dataset was discontinued. PSL has no plans to rebuild the interface for the successor dataset. PyRe is the community replacement.
+## Planning And Issues
 
-**The three PSL interfaces being replicated:**
-- Monthly/Seasonal Composites — `https://psl.noaa.gov/cgi-bin/data/composites/printpage.pl`
-- Daily Mean Composites — `https://psl.noaa.gov/data/composites/day/`
-- Hourly Composites — `https://psl.noaa.gov/data/composites/hour/` (PyRe supports CORe's 3-hourly 00/03/06/09/12/15/18/21z analyses)
+- GitHub issues are the tracker of record. Keep one issue in flight at a time.
+- For issue work, use spec, then plan, then explicit "go" before coding.
+- "Add issue" means file issue text and stop. Do not diagnose, run commands, or edit code until the user picks it up.
+- Done means the acceptance criteria work in the dev app. Production deploy is separate and user-initiated.
+- If a request mirrors an existing feature, read that implementation first and reuse its tables, fields, code paths, and UI patterns.
 
-The new underlying dataset is **CORe (Climate-Ocean Reanalysis)** from NCEP/CPC, available back to the 1950s.
-- CORe info: `https://www.cpc.ncep.noaa.gov/products/CORe/index.html`
-- PSL data info: `https://psl.noaa.gov/data/coreinfo.html`
-- `get_core.py` reference: `https://ftp.cpc.ncep.noaa.gov/CORe/get_core/get_core.txt`
+## Database Rules
 
----
+- No migrations, DDL, grants, RLS changes, bucket changes, or data changes without explicit approval for that exact SQL, immediately before it runs. No exceptions.
+- Approval of a spec or plan is not approval to run a migration.
+- Keep migration filenames aligned with applied history.
+- MCP-applied migrations can skip default grants; include explicit grants with RLS policies.
 
-## Architecture
+## Project Shape
 
-Monorepo, three legs:
+PyRe replaces the discontinued PSL/NCEP reanalysis plotting workflows using NOAA/CPC CORe data.
 
-- `backend/` — Python 3.12, FastAPI, uv. All scientific computation and map rendering.
-- `frontend/` — Next.js 16 **static export** (React 19, TypeScript, Tailwind v4, React Compiler). No Node server in production: `next build` emits `out/`, served by Render's static site. Dev server runs on port 5173.
-- `supabase/` — accounts, saved-map library, visitor analytics, blog posts, object storage, and the `rebuild-site` Edge Function. The React app talks to Supabase directly with the anon key; RLS enforces ownership and admin gates.
+- `backend/`: Python 3.12, FastAPI, uv. Owns data retrieval, computation, climatology, compositing, projection choice, and Matplotlib/Cartopy rendering.
+- `frontend/`: Next.js App Router static export, React 19, TypeScript, Tailwind v4. It is a thin UI shell around backend-rendered PNGs.
+- `supabase/`: auth, saved-map library, analytics, Synopsis posts, object storage, and the `rebuild-site` Edge Function.
+- Frontend production is a static export: `next build` emits `frontend/out/`. Do not add Next API routes or server components that require a runtime.
+- `GET /api/map`: validates a typed recipe, fetches observation/climatology fields, computes map products, renders PNG, and streams it.
+- `GET /api/scale-meta`: exposes backend color-scale metadata for Color Lab.
+- Frontend flow: `MapRecipe` URL/API state -> backend request -> streamed PNG -> `<img>` display. Keep URL/API serialization in `frontend/mapRecipe.ts`; keep variable/level mapping in `frontend/variableConfig.ts`.
 
-**The frontend is a thin UI shell. All computation and rendering happen on the backend.**
+## Source Of Truth
 
-The frontend sends a "recipe" (variable, level, region, date list, mode) → backend fetches, computes, renders → streams a PNG → frontend displays in an `<img>` tag.
+- Backend variables, levels, streams, units, climatology support, and regions belong in `backend/app/config.py` and helpers derived from it.
+- Backend mode/unit/climo-source validation belongs in `backend/app/api_options.py`.
+- Map orchestration belongs in `backend/app/map_service.py` and `backend/app/map_pipeline/`.
+- Data retrieval belongs in `backend/app/retrieval.py`.
+- Meteorological formulas and unit conversions belong in shared helpers such as `backend/app/met_math.py` and `backend/app/units.py`.
+- Rendering and color scales belong in `backend/app/visualizer.py`.
+- Frontend map composition lives in `frontend/app/map/MapBuilder.tsx`; recipe state and request lifecycle live in focused hooks under `frontend/app/map/builder/`.
 
-**Deployment:** frontend `out/` on a Render static site (rebuilt via a deploy hook that only the `rebuild-site` Edge Function calls); backend on a Render service with `CORS_ORIGINS`, `PYRE_CACHE_DIR`, etc. set in the environment. The current Supabase project is DEV only. Deploying to production is always a user-initiated act.
+## Engineering Guardrails
 
-### Working Agreement
-
-GitHub issues are the tracker of record; one issue in flight at a time. New ideas become issues, not code.
-
-**Planning**
-
-- **Spec, then plan, then explicit "go".** Every issue (including small fixes) gets a spec — approach, files touched, any migration — and 2–4 observable acceptance criteria before code. Discussion happens in chat; the issue gets exactly one comment per phase, posted only after she confirms agreement. Spec approval is not a green light: present the ordered build plan (migration SQL, modules touched, verification steps) and start only when she says go. This applies to experiments too.
-- **"Add issue" means file it and stop.** Filing produces issue text only. Diagnosing, running commands, probing prod, and editing code wait until she picks the issue up.
-- **Done means verified in dev.** An issue closes when its acceptance criteria work in the running dev app. Deploying to production is her act, never a closing condition.
-
-**Git**
-
-- **She owns `git commit`, `git merge`, and `git push`.** Claude never runs them unless she says so in that turn. Claude may create, switch, and recreate feature branches and stage changes. Work lands on feature branches (`feat/…`, `fix/…`) off current main; only she merges and pushes. The deploy branch is named `render` — don't rename it. During iterations: implement, show the result, stop; don't prompt her to commit; approved tweaks batch into one commit.
-- **Check state before acting, never from memory.** She changes branches, merges, and runs SQL between turns. Run `git branch --show-current` and `git status --short` before starting work and before anything commit-adjacent. If the expected feature branch is gone she merged it — recreate off current main. If the tree is on `main` or `render`, branch first. For the database, check `supabase migration list` or query the schema.
-
-**Database**
-
-**NO MIGRATIONS, PERIOD, UNLESS SHE EXPLICITLY APPROVES THAT SPECIFIC MIGRATION.** Claude never applies any change to any database — schema, grants, RLS, buckets, data — without her saying yes to that exact migration first, shown to her as SQL in chat. This has no exceptions: not for one-liners, not for grants, not to unblock a failing run, not because a migration was named in an approved spec. Approval of a plan is not approval of a migration; each `apply_migration` or DDL `execute_sql` call requires its own explicit yes, immediately before it runs.
-
-Schema changes are file-first: write the file in `supabase/migrations/`, apply that exact content, keep filename versions matching the applied history.
-
-**Communication**
-
-- **Plain, literal language everywhere.** Short sentences, one idea each, 10th-grade reading level; technical terms are fine, dense or clever phrasing is not. No metaphors, no compressed clauses that need decoding ("yours when it looks good") — say the plain version ("nothing is committed; tell me when to commit"). Use programming vocabulary and short code snippets, not prose descriptions of code. Shell commands are always complete and runnable: `cd <absolute path>` first when the directory matters, full file paths, explicit `<placeholders>`.
-
-**Effort**
-
-- **Spend effort where it's needed, nowhere else.** Routine ops she knows (starting servers, deploys) are hers — state what needs to happen. Verify at the level of the change: a class or style edit is verified by reading the code; use the browser when behavior is genuinely uncertain. Reserve tool calls for work that needs Claude.
-
-**Libraries & Reuse**
-
-- **Read the existing feature first.** When a request mirrors something already shipped, read that implementation and make the new thing be the old thing — same tables, same fields, same code paths — before designing anything parallel. An LLM output schema is the cheapest interface in the system to change; change it to fit existing storage rather than converting around it.
-- **Verify a "can't" before designing around it.** Never claim a library lacks a capability without checking its docs or the installed types (`node_modules/**/*.d.ts`).
-- **Shared maps travel as `/map` deep links.** A deep link regenerates the map for anyone; include one wherever a map is showcased, since an image alone can't be recreated.
-
-### Engineering Guardrails
-
-- Do not add one-off `if` / `else` chains for variable, level, unit, overlay, region, mode, or scale behavior. Add behavior to typed registries/configuration and derive UI/API behavior from those sources of truth.
-- Treat map generation as a typed recipe: URL params ↔ `MapRecipe` ↔ UI state ↔ backend API params ↔ backend `MapRequest`. Do not scatter URL parsing, API serialization, or variable/level mapping inside incidental component code.
-- If a feature will grow with variables, levels, overlays, units, regions, modes, or color scales, extend the source-of-truth config first.
-- Keep the frontend thin. All scientific computation, climatology, compositing, projection choice, and map rendering belong on the backend.
+- Do not add scattered one-off `if`/`else` chains for variable, level, unit, overlay, region, mode, or scale behavior. Extend typed registries/configuration instead.
+- Keep the frontend thin. Scientific computation and rendering belong on the backend.
+- Treat map generation as a typed recipe from URL params through backend `MapRequest`.
+- Prefer production-shaped configuration contracts such as `PYRE_CACHE_DIR`, `PYRE_CLIMO_DIR`, `CORS_ORIGINS`, and `NEXT_PUBLIC_API_URL`.
+- Do not reintroduce legacy proof-of-concept endpoints or client-side grid coloring.
+- If adding meteorological math, conversions, multi-field derivations, or xarray metadata handling, add or reuse a shared helper before wiring the feature path.
+- All HDF5/netCDF access must use `disk_cache.open_netcdf()` or otherwise hold `disk_cache.HDF5_LOCK`; the bundled HDF5 C library is not thread-safe.
+- Do not tighten `climo_r2.dap_fetch_with_retries` to require `datetime64`; valid `cftime` climatology files can fall outside `datetime64[ns]`.
 - Preserve scientific rendering meaning: fixed physical color anchors, discrete stepped boundaries, explicit units, provenance-aware labels, and 200+ DPI output.
-- Prefer production-shaped configuration contracts, such as `PYRE_CACHE_DIR` or `PYRE_CLIMO_DIR`, over temporary hardcoded paths.
-- Trip wire for meteorological math: if a feature introduces a new meteorological formula, repeats an existing formula, converts physical units, derives a field from multiple CORe variables/levels, or needs xarray metadata preservation, first add or reuse a shared helper/module. Do not implement the math inline in the feature path.
-- Do not reintroduce legacy proof-of-concept endpoints or client-side grid coloring. `/api/map` and `/api/scale-meta` are the active API surface.
-- Keep changes stepwise and verifiable: make one structural change, run the relevant backend/frontend check, then continue.
-- Structured data is a standing SEO concern (#86): every new page type or public content feature ships with matching schema.org JSON-LD in the same change. The site is a free educational meteorology tool, so default to `LearningResource` for tool/tutorial pages, `Article`/`BlogPosting` for Synopsis and news posts, `Person`/`WebSite` sitewide, and `BreadcrumbList` where there's a hierarchy. Static export bakes the `<script type="application/ld+json">` at build time. Don't invent misleading types (e.g. `Dataset` for rendered images). When you add a page type with no obvious fit, flag it rather than skip it.
+- New public page types or public content features should ship matching schema.org JSON-LD. Use `LearningResource`, `Article`/`BlogPosting`, `Person`, `WebSite`, and `BreadcrumbList` where appropriate.
+- Verify a library cannot do something before designing around it; check docs or installed types.
+- Shared maps should travel as `/map` deep links so the recipe can be regenerated.
 
-### React / Frontend Guardrails
+## React Guardrails
 
-- `app/map/MapBuilder.tsx` is a thin composition root (July 2026 refactor, formerly `App.tsx`): state lives in `app/map/builder/useCompositeRecipe.ts` and `useMapGeneration.ts`, UI in focused panel components. Do not add workflows, drawers, panels, or data orchestration back into `MapBuilder.tsx` — extend the matching hook or panel, or add a new focused module.
-- Routes are Next.js App Router directories under `frontend/app/`. The site is a static export: no server components that need a runtime, no API routes. Build-time data fetching (e.g. published posts) is fine.
-- Interactive pages are `'use client'` components mounted from small `page.tsx` files; keep the page files thin.
-- Prefer focused components and hooks over thousand-line components. Split by product responsibility: time selection, variable/level selection, region selection, wind overlay controls, Color Lab, request lifecycle, and rendered-map display.
-- Avoid using `useEffect` as a general state orchestration tool. Use it for synchronization with external systems only: network requests, subscriptions, DOM/browser APIs, timers, or URL/search-param synchronization.
-- Prefer derived values from render state (`useMemo` only when it avoids real work or stabilizes references), event handlers, reducers, or explicit state machines over effect chains that copy state into more state.
-- Avoid broad `if`/`else` UI logic for variable, level, unit, mode, region, or scale behavior. Put option availability, labels, defaults, and API mappings in typed config/registry modules, then render from that model.
-- Keep URL and API serialization centralized in `mapRecipe.ts`; keep variable/level mapping centralized in `variableConfig.ts`. Components should consume these contracts rather than re-encoding request logic.
-- For complex UI state, prefer `useReducer` with typed actions or a small domain-specific hook over many interdependent `useState` calls and corrective effects.
-- Keep server state separate from UI state. Fetch/render lifecycle should have clear loading, success, and error states, and should clean up blob URLs or abort in-flight requests where applicable.
-- When refactoring existing React code, preserve behavior first, add focused tests or smoke checks where feasible, and extract one concern at a time.
+- Keep route `page.tsx` files thin; mount focused client components from them.
+- Do not add workflows, drawers, panels, or data orchestration back into `MapBuilder.tsx`; extend the matching hook or panel, or add a focused module.
+- Prefer focused components and hooks over thousand-line components.
+- Use `useEffect` only for external synchronization such as network requests, subscriptions, DOM APIs, timers, or URL/search-param sync.
+- Prefer derived render values, event handlers, reducers, and explicit state machines over effect chains that copy state into more state.
+- Keep server state separate from UI state; request lifecycle should have clear loading, success, error, abort, and blob cleanup behavior.
+- Use Tailwind classes throughout; avoid inline styles and separate CSS files.
 
-### Target Data Flow: Surgical Retrieval
+## Communication
 
-1. **Index fetch** — retrieve the `.idx` file for the target GRIB2 to identify byte offsets for the requested field(s).
-2. **Partial Content Request** — HTTP `Range` header pulls only the bytes for that field. No disk I/O.
-3. **In-memory compute** — load bytes into xarray/numpy. Calculate wind speed, anomaly, or composite mean across N time steps.
-4. **Render** — Matplotlib + Cartopy PNG at 200+ DPI. Title metadata extracted from the data, never from user input.
-5. **Stream** — FastAPI `StreamingResponse` returns PNG to frontend.
-
-**GRIB2 naming:** GCS archive (primary) `pgb.{YYYYMMDD}{HH}.grb` and `flx.{YYYYMMDD}{HH}.grb`; NOMADS fallback (last ~7 days) `core.t{HH}z.spgb.ensmean.anl.grib2`. Both serve the same **0.703° T170 gaussian grid** (256×512). Earlier drafts of this file named a `pgrb2.0p25` product — that filename does not resolve on NOMADS and no 0.25° CORe product was found (verified 2026-07-27).
-**Index files:** same name + `.{hash}.idx`
-**NOAA NOMADS base:** `https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod/`
-
-### Index File Format
-
-Each line: `{record}:{byte_start}:d={YYYYMMDDhh}:{VAR}:{level}:anl:ens mean`
-
-The byte range for a record is `byte_start` to `next_record_byte_start - 1`. Parse the `.idx` to find offsets, then issue a single `Range: bytes=start-end` request.
-
-### CORe Variables and Pressure Levels
-
-Variables available in the 0.703° ensemble mean files (`spgb.ensmean`):
-
-| GRIB Short Name | Description | Levels (mb) |
-|---|---|---|
-| TMP | Temperature | 1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 70, 50, 20, 10 |
-| UGRD | U-component wind | same 16 levels |
-| VGRD | V-component wind | same 16 levels |
-| SPFH | Specific Humidity | same 16 levels |
-| HGT | Geopotential Height | same 16 levels |
-| PRES | Surface Pressure | surface only |
-
-Wind speed is derived: `sqrt(UGRD² + VGRD²)`. Wind direction is derived similarly. Both UGRD and VGRD must be fetched together.
-
-`config.py` `VARIABLES` dict should use these GRIB short names as keys.
-
-### Current Code Status
-
-The active map-rendering API is `/api/map`. It validates a typed map recipe, fetches requested observation and climatology fields, computes raw composites, anomalies, normalized anomalies, and climatology views, renders a server-side Matplotlib/Cartopy PNG, and streams it to the frontend.
-
-The active scale metadata API is `/api/scale-meta`. It exposes backend color-scale metadata for the frontend Color Lab.
-
-Legacy proof-of-concept endpoints and client-side grid coloring should not be reintroduced.
-
-Current backend capabilities include:
-- Surgical CORe pgb/flx retrieval using `.idx` parsing and HTTP Range requests.
-- GCS-first retrieval with NOMADS fallback paths for some recent flx data.
-- 3-hourly maps, daily composites, and monthly/month-list composites.
-- Climatology, anomaly, and normalized anomaly modes for supported pressure-level variables.
-- R2 daily/monthly climatology support, with sub-monthly anomaly modes forced to `r2-daily`.
-- Climatology/anomaly modes for the starter surface/named-level variables (2m temp, 10m wind, MSLP, PWAT) via R2 single-level baselines declared as `r2_climo` specs in `config.VARIABLES`; specific humidity is raw-only.
-- Omega (VVEL, 100–1000 mb via per-variable `levels` lists), precipitation rate (mm/day display), and OLR (ULWRF at TOA), all with full climatology/anomaly support; PRATE/ULWRF are 0–3h average forecast fields.
-- Raw-only case-study variables: CAPE/CIN in three parcel variants (surface-based, mixed-layer `_ml`, most-unstable `_mu`), 2m dewpoint (°F), absolute vorticity (10⁻⁵/s), snow depth (in) — empty `climo_sources` gates them to raw mode everywhere.
-- MSLP plots MSLET (Eta/membrane reduction), not `PRES:mean sea level` — see the comment in `config.py`.
-- Wind speed, combinable wind overlays (shading/isotachs/barbs/vectors), H/L pressure centers, pressure/height/temp contour overlays, relative humidity derivation, many named regions, and fixed stepped color scales.
-- All HDF5/netCDF access is serialized behind `disk_cache.HDF5_LOCK` (#51: the bundled HDF5 C library is not thread-safe and concurrent access segfaulted the Render service). Every netCDF open/read/write must hold it; the GRIB path (cfgrib/eccodes) intentionally stays concurrent.
-- `climo_r2.dap_fetch_with_retries` rejects a fetch whose time axis is **numeric** — that is a rate-limited/corrupt DAP response (#94). Do not "tighten" this to require `datetime64`: climatology files stamped on a placeholder year (the 4×-daily LTM files, #72) fall outside the `datetime64[ns]` range and decode to valid `cftime` objects, which that stricter test rejected — costing four retries and ~90s before failing.
-
-Current frontend capabilities include:
-- A public site shell: landing page (`/`), map builder (`/map`), About, FAQ, Terms/Privacy (markdown in `content/`), and the Synopsis blog (`/synopsis`).
-- The Composite Builder composed in `app/map/MapBuilder.tsx` from focused panels (`app/map/builder/`), Color Lab modules (`app/map/colorLab/`), and shared primitives (`ui/controls.tsx`).
-- Typed recipe serialization in `mapRecipe.ts` (repo-root of `frontend/`); variable/level API mapping in `variableConfig.ts`. Old `/?variable=…` share links redirect to `/map` via `app/RecipeRedirect.tsx`.
-- Accounts (Supabase auth, `app/auth/`), a saved-map library (projects → folders → maps: recipe JSON in Postgres, PNG + thumbnail in the private `maps` bucket), and save/load modals in `app/map/projects/`.
-- Admin-only surfaces: Color Lab, Admin Stats panel (`chrome/AdminStatsPanel.tsx`, tabbed usage/visitor/growth views over SECURITY DEFINER RPCs), and the Synopsis editor.
-- Synopsis blog (#36): admin-only BlockNote editor at `/synopsis/editor`, drafts/scheduling/publish in the `posts` table, static post pages baked at build time (`app/synopsis/[slug]/`, dependency-free `BlockRenderer`), images referenced as bucket paths and resolved at build.
-- GoatCounter page-view analytics (env-gated) plus anonymous per-render `map_requests` logging.
-
-### Backend (`backend/app/`)
-
-- **`main.py`** — FastAPI app and all API endpoints. Loads `.env` before app-module imports. CORS origins come from the `CORS_ORIGINS` env var (comma-separated; empty = warn and allow none).
-- **`config.py`** — `REGIONS` dict (lat/lon bounding boxes, 0–360 longitude) and `VARIABLES` dict (GRIB key mappings, per-variable `levels`, `climo_sources` gating). Source of truth — don't hardcode bounds or variable names elsewhere.
-- **`api_options.py`** — valid modes/units/climo-source enums and query-param helpers derived from config.
-- **`map_service.py`** — orchestrates `MapRequest` → fetch/compute/render pipeline.
-- **`map_pipeline/`** — time selection, climatology policy, fetch planning, labels, request logging, computation helpers, and wind overlays.
-- **`retrieval.py`** — surgical CORe GRIB retrieval (`.idx` parsing, HTTP Range, GCS-first with NOMADS fallback).
-- **`climo_r2.py`** — R2 daily/monthly climatology over OPeNDAP with constraint-expression fetches and disk caching.
-- **`disk_cache.py`** — cache roots (`PYRE_CACHE_DIR`) and `HDF5_LOCK` + `open_netcdf()`; all netCDF access goes through here.
-- **`visualizer.py`** — renders Matplotlib/Cartopy PNGs and owns current color-scale logic.
-- **`scripts/`** — `precompute_climo.py`, `generate_region_thumbnails.py`.
-
-### Frontend (`frontend/`)
-
-Next.js App Router, static export. Domain modules live at the `frontend/` root (not `src/`):
-
-- **`app/`** — routes: `page.tsx` (landing, plus `RecipeRedirect` for legacy share links), `map/` (builder), `about/`, `faq/`, `privacy/`, `terms/`, `synopsis/` (blog: index, `[slug]/`, `editor/`, `preview/`), `auth/` (provider, modal, callback, reset), `sitemap.ts`, `layout.tsx`.
-- **`app/map/`** — `MapBuilder.tsx` (composition root: wires recipe/generation/designer hooks, URL sync, save/load glue, modal visibility), `SettingsDrawer.tsx`, and:
-  - **`builder/`** — `useCompositeRecipe.ts` (all recipe state + MapRecipe conversion + guard effects), `useMapGeneration.ts` (request lifecycle, blob URL handling), panel components (`VariableLevelPanel`, `TemporalPanel`, `AnalysisPanel`, `OverlaysPanel`, `TimeScaleControls`, `MapPanel`, `RegionsModal`, `PanelsSection`), and the region catalogue (`regionCatalog.ts`, `RegionThumbnail.tsx`).
-  - **`colorLab/`** — `scaleModel.ts` (pure scale math + types), `useScaleDesigner.ts` (designer state + scale-meta fetch + generate-time `scale_spec`), `ColorLabPanel.tsx` (modal UI).
-  - **`projects/`** — saved-library modals (`LibraryModal`, `SaveMapModal`, `NameModal`).
-- **`mapRecipe.ts`**, **`variableConfig.ts`**, **`sharedOptions.ts`** — typed recipe/URL/API serialization and variable/level mapping (root-level; the guardrail contracts).
-- **`lib/`** — `supabase.ts` (null-safe client: site fully works without accounts config), `library.ts` (projects/folders/saved maps), `storage.ts`, `posts.ts` (build-time published-post fetch), `postsAdmin.ts` (editor CRUD + rebuild trigger), `api.ts` (`API_BASE` from `NEXT_PUBLIC_API_URL`), `images.ts`, `goatcounter.ts`, `database.types.ts`.
-- **`chrome/`** — `SiteHeader.tsx`, `SiteFooter.tsx`, `AdminStatsPanel.tsx`.
-- **`ui/`** — `controls.tsx` (TabStrip, SelectField, ToggleButton, Section, etc.), `PageShell.tsx` (standard reading-page width).
-- **`content/`** — FAQ/TERMS/PRIVACY markdown rendered by their routes.
-- Styled with **Tailwind CSS v4** (via `@tailwindcss/postcss`). Use Tailwind classes throughout; avoid inline styles and separate CSS files.
-- Env vars are `NEXT_PUBLIC_*`: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, GoatCounter URL.
-
-### Supabase (`supabase/`)
-
-- **Migrations** (`supabase/migrations/`, tracked in git) are the schema history. File-first rule: write the file, apply that exact content, keep filename versions matching applied history. Gotcha: MCP-applied migrations skip default grants — always add explicit `GRANT`s alongside RLS policies or authenticated calls hit 42501.
-- **Tables:** `profiles` (+ `is_admin` flag — the single admin gate), `projects`/`folders`/`saved_maps` (owner-scoped library; recipe JSON in rows, PNGs in storage), `map_requests` (anonymous per-render analytics with visitor hashing), `posts` (Synopsis blog: drafts, `publish_at` scheduling, published flag).
-- **Storage buckets:** `maps` (private; saved-map PNGs + thumbnails), `post-images` (public; blog photos and copies of saved-map PNGs). Body/image references store bucket paths, never full URLs.
-- **RPCs:** admin stats functions (SECURITY DEFINER, admin-checked) backing `AdminStatsPanel`.
-- **Edge Functions:** `rebuild-site` — the one place the Render deploy-hook URL lives. Mode `rebuild` (admin JWT) rebuilds the static site; mode `cron` (`x-cron-secret`) publishes due scheduled posts, then rebuilds.
-
----
-
-## Compositing Modes
-
-| Mode | PSL Equivalent | Input |
-|---|---|---|
-| 3-Hourly | `composites/hour/` | 1 date, date range, or date list + hour (00/03/06/09/12/15/18/21z) |
-| Daily Mean | `composites/day/` | 1 or more dates averaged across synoptic hours (currently 00/06/12/18z) |
-| Monthly/Seasonal | `composites/printpage.pl` | Month range or non-consecutive month list |
-
-Anomaly mode is a toggle on supported composites: subtract the 30-year climatological mean. Sub-monthly anomaly modes currently use R2 daily climatology; monthly anomaly modes support `monthly-pgb` and `r2-monthly`. Render with a divergent colormap centered at zero. CORe-native daily/3-hourly climatology remains a longer-term open problem.
-
----
-
-## Scientific Rendering Constraints
-
-These apply to all code in `visualizer.py` and any future rendering module:
-
-- **Fixed color anchors** — colors map to absolute physical values, never auto-scaled to data range.
-- **Discrete stepped boundaries** — use `BoundaryNorm`, not smooth gradients.
-- **Provenance in title** — extract valid time and level from xarray dataset metadata; never accept as free-text parameters.
-- **Projection** — match CRS to region (PlateCarree for broad coverage, Albers/Stereographic for regional).
-- **Resolution** — 200+ DPI minimum.
-
----
-
-## GRIB2 / cfgrib Notes
-
-- Open with `engine="cfgrib"`. Use `filter_by_keys` in `backend_kwargs` to select by `typeOfLevel` and `level`.
-- NOAA uses 0–360 longitude; frontend maps expect -180–180. Convert with `lon - 360` for western hemisphere.
-- `.idx` files are auto-generated alongside GRIB2 files when cfgrib opens them locally.
+- Be concise, concrete, and literal.
+- Ask when a technical note seems stale or when a change may affect science, data, or deployment behavior.
+- State what changed, how it was verified, and any remaining browser smoke tests.

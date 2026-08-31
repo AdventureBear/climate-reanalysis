@@ -603,4 +603,4 @@ def get_map(
 
 @app.get("/api/get-regions")
 def return_regions():
-    return(list(_REGION_EXTENTS.keys()))
+    return((_REGION_EXTENTS))
