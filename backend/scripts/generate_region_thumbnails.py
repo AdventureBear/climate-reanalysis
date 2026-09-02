@@ -20,6 +20,8 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.map_pipeline.request import MapRequest  # noqa: E402
+from app.map_service import create_map_buffer  # noqa: E402
 from app.visualizer import _REGION_EXTENTS, _REGION_PROJECTIONS  # noqa: E402
 
 
@@ -89,6 +91,17 @@ def projected_bounds(
     return x_min - x_pad, x_max + x_pad, y_min - y_pad, y_max + y_pad
 
 
+def add_region_features(ax, region: str) -> None:
+    ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#0b1624", edgecolor="none", zorder=0)
+    ax.add_feature(cfeature.LAND.with_scale("50m"), facecolor="#d8dde2", edgecolor="none", zorder=1)
+    ax.add_feature(cfeature.LAKES.with_scale("50m"), facecolor="#0b1624", edgecolor="none", zorder=2)
+    ax.add_feature(cfeature.COASTLINE.with_scale("50m"), edgecolor="#2f3a46", linewidth=0.42, zorder=3)
+    ax.add_feature(cfeature.BORDERS.with_scale("50m"), edgecolor="#5f6874", linewidth=0.28, zorder=4)
+
+    if region in US_DETAIL_REGIONS:
+        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="#7a828c", linewidth=0.22, zorder=5)
+
+
 def draw_thumbnail(region: str, out_path: Path, size_px: int) -> None:
     if region not in _REGION_EXTENTS:
         raise ValueError(f"Unknown region: {region}")
@@ -114,14 +127,7 @@ def draw_thumbnail(region: str, out_path: Path, size_px: int) -> None:
 
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
-    ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#0b1624", edgecolor="none", zorder=0)
-    ax.add_feature(cfeature.LAND.with_scale("50m"), facecolor="#d8dde2", edgecolor="none", zorder=1)
-    ax.add_feature(cfeature.LAKES.with_scale("50m"), facecolor="#0b1624", edgecolor="none", zorder=2)
-    ax.add_feature(cfeature.COASTLINE.with_scale("50m"), edgecolor="#2f3a46", linewidth=0.42, zorder=3)
-    ax.add_feature(cfeature.BORDERS.with_scale("50m"), edgecolor="#5f6874", linewidth=0.28, zorder=4)
-
-    if region in US_DETAIL_REGIONS:
-        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="#7a828c", linewidth=0.22, zorder=5)
+    add_region_features(ax, region)
 
     ax.set_axis_off()
     buffer = io.BytesIO()
@@ -140,6 +146,20 @@ def draw_thumbnail(region: str, out_path: Path, size_px: int) -> None:
     image.save(out_path)
 
 
+def draw_preview(region: str, out_path: Path, width_px: int) -> None:
+    if region not in _REGION_EXTENTS:
+        raise ValueError(f"Unknown region: {region}")
+
+    # Keep detail pages visually identical to the former API-backed preview:
+    # render the backend's blank-map product first, then only reduce its size.
+    rendered = create_map_buffer(MapRequest(variable="blank_map", level=None, region=region))
+    image = Image.open(rendered).convert("RGB")
+    height_px = round(image.height * width_px / image.width)
+    image = image.resize((width_px, height_px), Image.Resampling.LANCZOS)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(out_path, format="PNG", optimize=True)
+
+
 def write_manifest(region_to_file: dict[str, str], manifest_path: Path) -> None:
     lines = [
         "export const REGION_THUMBNAILS: Record<string, string> = {",
@@ -150,14 +170,36 @@ def write_manifest(region_to_file: dict[str, str], manifest_path: Path) -> None:
     manifest_path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def write_preview_manifest(region_to_file: dict[str, str], manifest_path: Path) -> None:
+    lines = [
+        "export const REGION_PREVIEWS: Record<string, string> = {",
+        *[f"  {region!r}: '/region-previews/{filename}'," for region, filename in region_to_file.items()],
+        "}",
+        "",
+    ]
+    manifest_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate static region picker thumbnails.")
+    parser = argparse.ArgumentParser(description="Generate static region map assets.")
     parser.add_argument(
         "regions",
         nargs="*",
         help="Region names to render. Defaults to every configured region.",
     )
     parser.add_argument("--size", type=int, default=192, help="Square output size in pixels.")
+    parser.add_argument(
+        "--asset",
+        choices=("thumbnails", "previews"),
+        default="thumbnails",
+        help="Which region asset set to generate.",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=800,
+        help="Preview output width in pixels. Only used with --asset previews.",
+    )
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -167,7 +209,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manifest",
         type=Path,
-        default=FRONTEND_ROOT / "src" / "regionThumbnails.ts",
+        default=None,
         help="Frontend TypeScript manifest to write.",
     )
     return parser.parse_args()
@@ -176,17 +218,31 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     regions = args.regions or DEFAULT_REGIONS
+    if args.asset == "previews":
+        if args.out_dir == FRONTEND_ROOT / "public" / "region-thumbnails":
+            args.out_dir = FRONTEND_ROOT / "public" / "region-previews"
+        if args.manifest is None:
+            args.manifest = FRONTEND_ROOT / "lib" / "regionPreviews.ts"
+    elif args.manifest is None:
+        args.manifest = FRONTEND_ROOT / "lib" / "regionThumbnails.ts"
+
     args.out_dir.mkdir(parents=True, exist_ok=True)
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
 
     region_to_file: dict[str, str] = {}
     for region in regions:
         filename = f"{slugify(region)}.png"
-        draw_thumbnail(region, args.out_dir / filename, args.size)
+        if args.asset == "previews":
+            draw_preview(region, args.out_dir / filename, args.width)
+        else:
+            draw_thumbnail(region, args.out_dir / filename, args.size)
         region_to_file[region] = filename
 
-    write_manifest(region_to_file, args.manifest)
-    print(f"Generated {len(region_to_file)} thumbnails in {args.out_dir}")
+    if args.asset == "previews":
+        write_preview_manifest(region_to_file, args.manifest)
+    else:
+        write_manifest(region_to_file, args.manifest)
+    print(f"Generated {len(region_to_file)} {args.asset} in {args.out_dir}")
     print(f"Wrote manifest to {args.manifest}")
 
 

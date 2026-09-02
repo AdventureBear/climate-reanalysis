@@ -165,6 +165,33 @@ export function buildRegionSections(availableRegions?: Iterable<string> | null):
 
 export const REGION_SECTIONS: RegionSection[] = buildRegionSections()
 
+export function filterRegionSections(
+  sections: RegionSection[],
+  query: string,
+  getSearchText?: (entry: RegionEntry) => string,
+): RegionSection[] {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return sections
+
+  return sections
+    .map(section => {
+      const categoryMatches = section.category.toLowerCase().includes(normalizedQuery)
+      const entries = section.rows.flat().filter(entry => (
+        categoryMatches ||
+        (getSearchText
+          ? getSearchText(entry)
+          : `${entry.key} ${entry.label}`
+        ).toLowerCase().includes(normalizedQuery)
+      ))
+
+      return {
+        ...section,
+        rows: chunk(entries, REGION_PICKER_COLUMNS),
+      }
+    })
+    .filter(section => section.rows.length > 0)
+}
+
 export function getRegionLabel(regionKey: string) {
   return REGION_LABELS[regionKey] ?? regionKey
 }

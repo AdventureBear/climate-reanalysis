@@ -2,7 +2,8 @@ import Link from "next/link"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { PageShell } from "../../../ui/PageShell"
-import { listRegions, regionBlankMapSrc, slugifyRegion, type Region } from "../../../lib/regions"
+import { REGION_PREVIEWS } from "../../../lib/regionPreviews"
+import { listRegions, slugifyRegion, type Region } from "../../../lib/regions"
 
 export const dynamicParams = false
 
@@ -56,7 +57,7 @@ export default async function RegionPage({ params }: { params: Promise<Params> }
 
   if (!region) notFound()
 
-  const blankMapSrc = regionBlankMapSrc(region.name)
+  const previewMapSrc = REGION_PREVIEWS[region.name]
   const projectionParams = projectionParameters(region)
 
   return (
@@ -84,7 +85,7 @@ export default async function RegionPage({ params }: { params: Promise<Params> }
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <figure className="overflow-hidden rounded-lg border border-slate-700 bg-white shadow-xl">
             <img
-              src={blankMapSrc}
+              src={previewMapSrc}
               alt={`Blank PyRe Weather base map for ${region.name}`}
               className="w-full object-contain"
             />

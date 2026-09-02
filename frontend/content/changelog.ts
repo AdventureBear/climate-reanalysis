@@ -7,8 +7,8 @@ export const changelogEntries: ChangelogDay[] = [
   {
     date: '2026-09-02',
     changes: [
-      'Added a /regions page that lists all available regions, and a preview blnak map with coordinates and projection used. Links to the map builder with a new "blank map" option.',
-      'Caribbean region added, using Mercatur projection'  ],
+      'Added a /regions page that lists all available regions, and a preview blank map with coordinates and projection used. Links to the map builder with a new "blank map" option.',
+      'Caribbean region added, using Mercator projection'  ],
   },
   {
     date: '2026-08-25',
