@@ -581,6 +581,31 @@ class TestTransientRetry:
         assert len(hits) == 1  # missing data fails immediately, no retry
 
 
+class TestFlxFallback:
+    def test_nomads_403_after_gcs_404_is_unavailable_data(self, monkeypatch):
+        def response(status_code: int):
+            r = requests.Response()
+            r.status_code = status_code
+            r.url = f"https://example.test/{status_code}.idx"
+            r._content = b""
+            return r
+
+        class FakeSession:
+            def __init__(self):
+                self.responses = [response(404), response(403)]
+
+            def get(self, *_args, **_kwargs):
+                return self.responses.pop(0)
+
+        monkeypatch.setattr(retrieval, "_session", FakeSession())
+
+        with pytest.raises(retrieval.DataUnavailableError) as exc:
+            retrieval._fetch_flx_index_and_url("20260902", "21")
+
+        assert "CORe flx data are not available" in str(exc.value)
+        assert "24-36 hours" in str(exc.value)
+
+
 # ── Unit: streaming composite mean ───────────────────────────────────────────────
 # Composites consume members into a running sum instead of holding every grid
 # (a 91-day request OOM-killed the Render instance). These tests prove the

@@ -1,8 +1,8 @@
 // Rendered-map display: error banner, loading state, or the streamed PNG —
 // with Save and Share actions attached to the artifact itself (#38 Option A:
 // you act on the map you just made, not on distant chrome).
-import { useState } from 'react'
-import { Check, Link as LinkIcon, Save } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Link as LinkIcon, Save, TriangleAlert, X } from 'lucide-react'
 
 function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }) {
   const [copied, setCopied] = useState(false)
@@ -48,7 +48,98 @@ function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   )
 }
 
-export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null, notice = null, onDismissNotice }: {
+function ErrorModal({
+  message,
+  retry,
+  onDismiss,
+}: {
+  message: string
+  retry?: { label: string; question?: string; onClick: () => void } | null
+  onDismiss: () => void
+}) {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onDismiss()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onDismiss])
+
+  function retryQuestion(label: string, question?: string) {
+    if (question) return question
+    if (label.startsWith('Generate through ')) {
+      return `Generate the map through ${label.replace('Generate through ', '')} instead?`
+    }
+    if (label.startsWith('Generate without ')) {
+      return `Generate the map without ${label.replace('Generate without ', '')}?`
+    }
+    if (label.startsWith('Generate ') && label.endsWith(' only')) {
+      return `${label}?`
+    }
+    return 'Generate an adjusted map using the available data?'
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-[2px]" onClick={onDismiss} />
+      <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="map-error-title"
+          className="pointer-events-auto w-[min(94vw,42rem)] rounded-xl border border-slate-700/60 bg-slate-900 text-white shadow-[0_20px_70px_rgba(0,0,0,0.58)] ring-1 ring-white/5"
+        >
+          <div className="flex items-start justify-between gap-5 rounded-t-xl bg-sky-950/35 px-8 py-6 sm:px-11 sm:py-7">
+            <div className="flex min-w-0 items-center gap-4">
+              <span className="flex shrink-0 items-center justify-center text-red-500">
+                <TriangleAlert size={32} />
+              </span>
+              <span id="map-error-title" className="text-base font-semibold text-slate-50">
+                Map unavailable
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Dismiss"
+              className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="px-8 pb-8 pt-8 sm:px-11 sm:pb-9 sm:pt-9">
+            <p className="text-sm leading-7 text-white">{message}</p>
+            {retry && (
+              <div className="mt-8 flex flex-col items-start gap-3">
+                <p className="text-sm leading-6 text-slate-100">{retryQuestion(retry.label, retry.question)}</p>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-3 px-8 pb-8 sm:px-11 sm:pb-10">
+            {retry && (
+              <button
+                type="button"
+                onClick={retry.onClick}
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-700/65 px-5 text-sm font-medium text-white transition-colors hover:bg-sky-600/75"
+              >
+                Generate
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null, notice = null, onDismissNotice, onDismissError }: {
   mapSrc: string | null
   error: string | null
   loading: boolean
@@ -56,34 +147,28 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
   onSave?: () => void
   saving?: boolean
   // One-click informed retry when a composite has missing data (#95).
-  retry?: { label: string; onClick: () => void } | null
+  retry?: { label: string; question?: string; onClick: () => void } | null
   // Dismissible note when the builder changed the request (#72).
   notice?: string | null
   onDismissNotice?: () => void
+  onDismissError?: () => void
 }) {
   const noticeEl = notice && onDismissNotice
     ? <Notice text={notice} onDismiss={onDismissNotice} />
     : null
+  const errorModal = error && onDismissError
+    ? <ErrorModal message={error} retry={retry} onDismiss={onDismissError} />
+    : null
   return (
     <>
+        {errorModal}
         {isVertical ? (
           <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-            {(mapSrc || error || loading) ? (
+            {(mapSrc || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center w-full h-full">
                 {noticeEl}
-                {error && (
-                  <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
-                    {error}
-                    {retry && (
-                      <button type="button" onClick={retry.onClick}
-                        className="mt-3 block w-full cursor-pointer rounded border border-red-500 bg-red-900/60 px-3 py-1.5 font-medium text-red-100 hover:bg-red-900">
-                        {retry.label}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
-                {mapSrc && !error && (
+                {loading && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
+                {mapSrc && (
                   <>
                     <MapActions onSave={onSave} saving={saving} />
                     <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map"
@@ -97,22 +182,11 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
           </div>
         ) : (
           <>
-            {(mapSrc || error || loading) ? (
+            {(mapSrc || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center min-h-48">
                 {noticeEl}
-                {error && (
-                  <div className="text-red-400 bg-red-950 border border-red-700 rounded px-4 py-3 max-w-xl text-sm">
-                    {error}
-                    {retry && (
-                      <button type="button" onClick={retry.onClick}
-                        className="mt-3 block w-full cursor-pointer rounded border border-red-500 bg-red-900/60 px-3 py-1.5 font-medium text-red-100 hover:bg-red-900">
-                        {retry.label}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {loading && !error && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
-                {mapSrc && !error && (
+                {loading && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
+                {mapSrc && (
                   <>
                     <MapActions onSave={onSave} saving={saving} />
                     <img key={mapSrc} src={mapSrc} alt="Climate reanalysis map" className="max-w-full xl:max-w-[75%] rounded shadow-xl" />

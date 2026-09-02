@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../../../lib/api'
 import { supabase } from '../../../lib/supabase'
+import { DATA_AVAILABILITY_NOTE, observationDateAvailabilityError } from '../../../mapRecipe'
 import type { DataGap } from './dataGap'
 
 export type { DataGap, GapRetry } from './dataGap'
@@ -65,6 +66,19 @@ export function useMapGeneration() {
   }, [])
 
   async function generateFromParams(params: Record<string, string>): Promise<string[]> {
+    const availabilityError = observationDateAvailabilityError(params)
+    if (availabilityError) {
+      setLoading(false)
+      setError(availabilityError)
+      setDataGap(null)
+      setRequestNotice(null)
+      setMapSrc(prev => {
+        if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+        return null
+      })
+      return []
+    }
+
     setLoading(true)
     setError(null)
     setDataGap(null)
@@ -89,14 +103,18 @@ export function useMapGeneration() {
         if (detail && typeof detail === 'object' && Array.isArray(detail.missing)) {
           // Structured data-gap error: message for the banner, missing list
           // for the retry offer.
-          setError(String(detail.message ?? `HTTP ${res.status}`))
+          const message = String(detail.message ?? `HTTP ${res.status}`)
+          setError(message.includes('24-36 hours') ? message : `${message} ${DATA_AVAILABILITY_NOTE}`)
           setDataGap({
             missing: detail.missing,
             total: Number(detail.total) || detail.missing.length,
             params,
           })
         } else {
-          setError(typeof detail === 'string' ? detail : `HTTP ${res.status}`)
+          const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
+          setError(message.includes('CORe') && message.includes('not available') && !message.includes('24-36 hours')
+            ? `${message} ${DATA_AVAILABILITY_NOTE}`
+            : message)
         }
       }
     } catch (err) {

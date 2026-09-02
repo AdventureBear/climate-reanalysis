@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import inspect
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -66,6 +66,9 @@ IGNORED_PARAMS_HEADER = "X-PyRe-Ignored-Params"
 MAX_COMPOSITE_DATES = 93    # one season of daily composites
 MAX_COMPOSITE_MONTHS = 60   # five years of monthly means
 MAX_DAILY_COMPOSITE_FETCHES = MAX_COMPOSITE_DATES * 4
+CORE_ARCHIVE_START_DATE = "19500101"
+CORE_ARCHIVE_START_MONTH = "195001"
+DATA_AVAILABILITY_NOTE = "The data usually lag real time by 24-36 hours."
 
 cors_origins = os.getenv("CORS_ORIGINS", "")
 # Browser Origin headers never carry a trailing slash; strip any configured by
@@ -181,6 +184,147 @@ def _validate_precip_total_range_metadata(
                 f"({int(window_hours)} hours from range, {precip_window} from precip_window)"
             ),
         )
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _current_observation_date() -> str:
+    return _now_utc().strftime("%Y%m%d")
+
+
+def _current_observation_month() -> str:
+    return _now_utc().strftime("%Y%m")
+
+
+def _newest_allowed_observation_date() -> str:
+    """Newest CORe observation day the public map API should request."""
+    return (_now_utc() - timedelta(days=1)).strftime("%Y%m%d")
+
+
+def _pretty_api_date(token: str) -> str:
+    parsed = datetime.strptime(token, "%Y%m%d")
+    return f"{parsed.strftime('%b')} {parsed.day}, {parsed.year}"
+
+
+def _pretty_api_month(token: str) -> str:
+    parsed = datetime.strptime(token, "%Y%m")
+    return f"{parsed.strftime('%b')} {parsed.year}"
+
+
+def _valid_api_date_token(token: str) -> str:
+    if len(token) != 8 or not token.isdigit():
+        raise HTTPException(status_code=422, detail=f"invalid date {token!r}: expected YYYYMMDD")
+    try:
+        datetime.strptime(token, "%Y%m%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"invalid date {token!r}: expected YYYYMMDD")
+    return token
+
+
+def _valid_api_month_token(token: str) -> str:
+    if len(token) != 6 or not token.isdigit():
+        raise HTTPException(status_code=422, detail=f"invalid month {token!r}: expected YYYYMM")
+    try:
+        datetime.strptime(token, "%Y%m")
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"invalid month {token!r}: expected YYYYMM")
+    return token
+
+
+def _validate_observation_months_available(*, months: str) -> None:
+    if not months:
+        return
+    tokens = [m.strip() for m in months.split(",") if m.strip()]
+    if not tokens:
+        return
+    parsed = [_valid_api_month_token(token) for token in tokens]
+    earliest_requested = min(parsed)
+    if earliest_requested < CORE_ARCHIVE_START_MONTH:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The CORe reanalysis data starts on {_pretty_api_date(CORE_ARCHIVE_START_DATE)}. "
+                f"Please choose a month between {_pretty_api_month(CORE_ARCHIVE_START_MONTH)} "
+                f"and {_pretty_api_month((_now_utc().replace(day=1) - timedelta(days=1)).strftime('%Y%m'))}."
+            ),
+        )
+    latest_requested = max(parsed)
+    current_month = _current_observation_month()
+    if latest_requested >= current_month:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "CORe monthly data is only available for "
+                f"{_pretty_api_month((_now_utc().replace(day=1) - timedelta(days=1)).strftime('%Y%m'))} and earlier."
+            ),
+        )
+
+
+def _validate_observation_dates_available(*, date: str, dates: str, start_date: str, months: str) -> None:
+    if months:
+        return
+    tokens = [d.strip() for d in dates.split(",") if d.strip()] if dates else []
+    if date:
+        tokens.append(date.strip())
+    if start_date:
+        tokens.append(start_date.strip())
+    if not tokens:
+        return
+    parsed = [_valid_api_date_token(token) for token in tokens]
+    earliest_requested = min(parsed)
+    newest_allowed = _newest_allowed_observation_date()
+    if earliest_requested < CORE_ARCHIVE_START_DATE:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"The CORe reanalysis data starts on {_pretty_api_date(CORE_ARCHIVE_START_DATE)}. "
+                f"Please choose a date between {_pretty_api_date(CORE_ARCHIVE_START_DATE)} "
+                f"and {_pretty_api_date(newest_allowed)}."
+            ),
+        )
+    latest_requested = max(parsed)
+    today = _current_observation_date()
+    if latest_requested >= today:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"CORe reanalysis data is only available prior to today's date. "
+                f"{DATA_AVAILABILITY_NOTE} "
+                f"Please choose a date prior to {_pretty_api_date(today)}."
+            ),
+        )
+
+
+def _parse_missing_member_time(label: str) -> datetime | None:
+    try:
+        date_part, hour_part = label.split()[:2]
+        hour = hour_part.lower().removesuffix("z")
+        return datetime.strptime(f"{date_part}{hour}", "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    except (ValueError, IndexError):
+        return None
+
+
+def _pretty_valid_time(value: datetime) -> str:
+    return f"{value.strftime('%b')} {value.day}, {value.year} at {value:%H}z UTC"
+
+
+def _recent_data_lag_message(exc: DataUnavailableError) -> str | None:
+    missing_times = [
+        parsed for item in getattr(exc, "missing", [])
+        if (parsed := _parse_missing_member_time(item)) is not None
+    ]
+    if not missing_times:
+        return None
+    requested_time = max(missing_times)
+    now = _now_utc()
+    if requested_time <= now and now - requested_time <= timedelta(hours=36):
+        return (
+            "CORe reanalysis data lag by 24-36 hours from the current time. "
+            f"Try requesting a map prior to {_pretty_valid_time(requested_time)}."
+        )
+    return None
 
 
 def _ignored_query_params(endpoint, request: Request) -> list[str]:
@@ -501,6 +645,8 @@ def get_map(
             )
         if len(set(parsed_months)) != len(parsed_months):
             raise HTTPException(status_code=422, detail="months contains duplicate months")
+    _validate_observation_months_available(months=months)
+    _validate_observation_dates_available(date=date, dates=dates, start_date=start_date, months=months)
     if region not in REGIONS:
         raise HTTPException(status_code=422, detail=f"region must be one of {list(REGIONS.keys())}")
     if climo_source not in VALID_CLIMO_SOURCES:
@@ -562,9 +708,10 @@ def get_map(
         # Composite gaps ship a structured detail so the frontend can offer
         # an informed retry: truncate the range, or regenerate with
         # skip_missing=1 (#95).
-        detail: object = str(exc)
+        message = _recent_data_lag_message(exc) or str(exc)
+        detail: object = message
         if getattr(exc, "missing", None):
-            detail = {"message": str(exc), "missing": exc.missing, "total": exc.total}
+            detail = {"message": message, "missing": exc.missing, "total": exc.total}
         raise HTTPException(status_code=404, detail=detail) from exc
     except HTTPException:
         raise

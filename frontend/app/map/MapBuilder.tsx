@@ -9,7 +9,7 @@ import { saveMap } from '../../lib/library'
 import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
 import { blobFromObjectUrl } from '../../lib/images'
 import { suggestedMapName } from './mapName'
-import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl } from '../../mapRecipe'
+import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl, type MapRecipeRetry } from '../../mapRecipe'
 import { gapRetryFromGap } from './builder/useMapGeneration'
 import { normalizeColorStep } from '../../sharedOptions'
 import { getRegionLabel } from './builder/regionCatalog'
@@ -74,6 +74,7 @@ export default function MapBuilder() {
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   // Explains a mode the builder had to change when opening a link (#72).
   const [modeNotice, setModeNotice] = useState<string | null>(null)
+  const [preflightRetry, setPreflightRetry] = useState<MapRecipeRetry | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -118,6 +119,7 @@ export default function MapBuilder() {
       // panel until the user clicks Generate.
       const recipeParams = mapRecipeToParams(recipe)
       if (recipeParams.ok) {
+        setPreflightRetry(null)
         const paramsForRender = recipeParams.params
         void generateFromParams(paramsForRender).then(ignoredParams => {
           const cleanedParams = new URLSearchParams(paramsForRender)
@@ -127,6 +129,9 @@ export default function MapBuilder() {
           selfUpdatedParamsRef.current = cleanedParamsString
           window.history.replaceState(null, '', cleanedParamsString ? `?${cleanedParamsString}` : window.location.pathname)
         })
+      } else {
+        setError(recipeParams.error)
+        setPreflightRetry(recipeParams.retry ?? null)
       }
     }
     applyFromLocation()
@@ -147,10 +152,12 @@ export default function MapBuilder() {
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setPreflightRetry(null)
 
     const recipeParams = mapRecipeToParams(currentMapRecipe())
     if (!recipeParams.ok) {
       setError(recipeParams.error)
+      setPreflightRetry(recipeParams.retry ?? null)
       return
     }
     const params = recipeParams.params
@@ -173,9 +180,11 @@ export default function MapBuilder() {
   // params) or the same range with skip_missing=1 (the map's margin
   // discloses the skipped times). Recipe state and URL follow the params.
   const gapRetry = gapRetryFromGap(dataGap)
-  function handleGapRetry() {
-    if (!gapRetry) return
-    const params = gapRetry.params
+  const mapRetry = gapRetry ?? preflightRetry
+  function handleMapRetry() {
+    if (!mapRetry) return
+    const params = mapRetry.params
+    setPreflightRetry(null)
     const retryRecipe = mapRecipeFromUrl(new URLSearchParams(params))
     if (retryRecipe) applyRecipeToState(retryRecipe)
     selfUpdatedParamsRef.current = new URLSearchParams(params).toString()
@@ -287,9 +296,10 @@ export default function MapBuilder() {
 
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
-          retry={gapRetry ? { label: gapRetry.label, onClick: handleGapRetry } : null}
+          retry={mapRetry ? { label: mapRetry.label, question: mapRetry.question, onClick: handleMapRetry } : null}
           notice={[requestNotice, modeNotice].filter(Boolean).join(' ') || null}
           onDismissNotice={() => { setRequestNotice(null); setModeNotice(null) }}
+          onDismissError={() => { setError(null); setPreflightRetry(null) }}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
 

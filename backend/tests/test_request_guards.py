@@ -88,6 +88,151 @@ def test_duplicate_dates_are_rejected(monkeypatch):
     assert response.json()["detail"] == "dates contains duplicate dates"
 
 
+def test_future_single_date_is_rejected_before_render(monkeypatch):
+    renders = 0
+
+    def fake_create_map_buffer(_req):
+        nonlocal renders
+        renders += 1
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "20260902",
+            "hour": "12",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "only available prior to today's date" in response.json()["detail"]
+    assert "Please choose a date prior to Sep 2, 2026" in response.json()["detail"]
+    assert "24-36 hours" in response.json()["detail"]
+    assert renders == 0
+
+
+def test_future_composite_date_is_rejected_before_render(monkeypatch):
+    renders = 0
+
+    def fake_create_map_buffer(_req):
+        nonlocal renders
+        renders += 1
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "dates": "20260831,20260901,20260902",
+            "hour": "12",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "Please choose a date prior to Sep 2, 2026" in response.json()["detail"]
+    assert renders == 0
+
+
+def test_pre_archive_date_is_rejected_before_render(monkeypatch):
+    renders = 0
+
+    def fake_create_map_buffer(_req):
+        nonlocal renders
+        renders += 1
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "date": "19330901",
+            "hour": "21",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "The CORe reanalysis data starts on Jan 1, 1950. "
+        "Please choose a date between Jan 1, 1950 and Sep 1, 2026."
+    )
+    assert renders == 0
+
+
+def test_current_month_is_rejected_before_render(monkeypatch):
+    renders = 0
+
+    def fake_create_map_buffer(_req):
+        nonlocal renders
+        renders += 1
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "months": "202609",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "CORe monthly data is only available for Aug 2026 and earlier."
+    )
+    assert renders == 0
+
+
+def test_future_month_in_range_is_rejected_before_render(monkeypatch):
+    renders = 0
+
+    def fake_create_map_buffer(_req):
+        nonlocal renders
+        renders += 1
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "months": "202608,202609,202610",
+            "variable": "height",
+            "level": "500",
+            "region": "CONUS",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "CORe monthly data is only available for Aug 2026 and earlier."
+    assert renders == 0
+
+
 def test_precip_total_anomaly_is_raw_only(monkeypatch):
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)
@@ -1012,6 +1157,24 @@ def test_unreachable_climatology_says_raw_maps_still_work(monkeypatch):
     assert response.status_code == 503
     assert "Raw maps still work" in response.json()["detail"]
     assert "internal detail" not in response.json()["detail"]
+
+
+def test_recent_core_gap_names_36_hour_lag(monkeypatch):
+    exc = main_module.DataUnavailableError(
+        "CORe pgb data are not available for 20260901 15z",
+        missing=["20260901 15z"],
+    )
+    monkeypatch.setattr(main_module, "_now_utc", lambda: main_module.datetime(2026, 9, 2, 19, tzinfo=main_module.timezone.utc))
+
+    response = _map_error_body(monkeypatch, exc)
+
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert detail["message"] == (
+        "CORe reanalysis data lag by 24-36 hours from the current time. "
+        "Try requesting a map prior to Sep 1, 2026 at 15z UTC."
+    )
+    assert detail["missing"] == ["20260901 15z"]
 
 
 def test_unexpected_failure_does_not_echo_the_exception(monkeypatch, caplog):

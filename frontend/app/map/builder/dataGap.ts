@@ -8,10 +8,67 @@
 // can be computed from them.
 export type DataGap = { missing: string[]; total: number; params: Record<string, string> }
 
-export type GapRetry = { label: string; params: Record<string, string> }
+export type GapRetry = { label: string; question?: string; params: Record<string, string> }
 
 const isoDate = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`
 const isoMonth = (m: string) => `${m.slice(0, 4)}-${m.slice(4, 6)}`
+const THREE_HOURLY_HOURS = ['00', '03', '06', '09', '12', '15', '18', '21']
+
+function prettyDate(d: string) {
+  const parsed = new Date(`${isoDate(d)}T00:00:00Z`)
+  if (Number.isNaN(parsed.valueOf())) return isoDate(d)
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(parsed)
+}
+
+function shiftDate(date: string, days: number): string {
+  const parsed = new Date(`${isoDate(date)}T00:00:00Z`)
+  if (Number.isNaN(parsed.valueOf())) return date
+  parsed.setUTCDate(parsed.getUTCDate() + days)
+  return parsed.toISOString().slice(0, 10).replace(/-/g, '')
+}
+
+function previousThreeHourlyRetry(params: Record<string, string>): GapRetry | null {
+  if (!params.hour || params.hours) return null
+  const idx = THREE_HOURLY_HOURS.indexOf(params.hour)
+  if (idx < 0) return null
+  const previousHour = THREE_HOURLY_HOURS[(idx - 1 + THREE_HOURLY_HOURS.length) % THREE_HOURLY_HOURS.length]
+  const shiftsBackOneDate = params.hour === '00'
+  const next: Record<string, string> = { ...params, hour: previousHour }
+
+  if (shiftsBackOneDate) {
+    if (params.dates) next.dates = params.dates.split(',').filter(Boolean).map(d => shiftDate(d, -1)).join(',')
+    if (params.date) next.date = shiftDate(params.date, -1)
+  }
+
+  const dates = (next.dates ?? next.date ?? '').split(',').filter(Boolean).sort()
+  const latestDate = dates[dates.length - 1]
+  const timeLabel = latestDate ? `${prettyDate(latestDate)} ${previousHour}z` : `${previousHour}z`
+  const question = dates.length > 1
+    ? `Generate this map ending at ${timeLabel} instead?`
+    : `Generate the map for ${timeLabel} instead?`
+  return {
+    label: `Generate ${timeLabel}`,
+    question,
+    params: next,
+  }
+}
+
+function previousDailyRetry(params: Record<string, string>, dates: string[]): GapRetry | null {
+  if (!params.hours || dates.length !== 1) return null
+  const previousDate = shiftDate(dates[0], -1)
+  const next: Record<string, string> = { ...params, date: previousDate, date_mode: 'single' }
+  delete next.dates
+  return {
+    label: `Generate ${prettyDate(previousDate)}`,
+    question: `Generate this map for ${prettyDate(previousDate)} instead?`,
+    params: next,
+  }
+}
 
 // Turn a data gap into at most one offer:
 // - gap at the end of the range  -> a shorter request (honest title for free)
@@ -36,7 +93,10 @@ export function gapRetryFromGap(gap: DataGap | null): GapRetry | null {
 
   // Date-hour members ("20250722 12z").
   const dates = (params.dates ?? params.date ?? '').split(',').filter(Boolean)
-  if (dates.length <= 1) return null
+  if (params.hour && !params.hours) {
+    return previousThreeHourlyRetry(params)
+  }
+  if (dates.length <= 1) return previousDailyRetry(params, dates)
   const missingDates = new Set(missing.map(m => m.split(' ')[0]))
   const sorted = [...dates].sort()
   const earliestMissing = [...missingDates].sort()[0]

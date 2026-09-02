@@ -19,6 +19,7 @@ import {
   type WindUnit,
   type IsotachInterval,
   AUTO_DENSITY,
+  newestAllowedObservationMonth,
 } from '../../../mapRecipe'
 import {
   MONTHLY_UNAVAILABLE_API_VARIABLES,
@@ -91,10 +92,10 @@ export function useCompositeRecipe() {
   const [hour,        setHour]        = useState('00')
   const [customDates, setCustomDates] = useState<string[]>([defaultDate()])
 
-  const [month,        setMonth]        = useState(() => new Date().toISOString().slice(0, 7))
-  const [monthStart,   setMonthStart]   = useState(() => new Date().toISOString().slice(0, 7))
-  const [monthEnd,     setMonthEnd]     = useState(() => new Date().toISOString().slice(0, 7))
-  const [customMonths, setCustomMonths] = useState<string[]>([new Date().toISOString().slice(0, 7)])
+  const [month,        setMonth]        = useState(newestAllowedObservationMonth)
+  const [monthStart,   setMonthStart]   = useState(newestAllowedObservationMonth)
+  const [monthEnd,     setMonthEnd]     = useState(newestAllowedObservationMonth)
+  const [customMonths, setCustomMonths] = useState<string[]>([newestAllowedObservationMonth()])
 
   const [climoMonth, setClimoMonth] = useState(() => new Date().toISOString().slice(5, 7))
 

@@ -106,6 +106,7 @@ NOMADS_BASE = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/core/prod"
 
 # CORe valid hours (3-hourly)
 VALID_HOURS = ["00", "03", "06", "09", "12", "15", "18", "21"]
+DATA_AVAILABILITY_NOTE = "The data usually lag real time by 24-36 hours."
 SYNOPTIC_HOURS = ["00", "06", "12", "18"]
 
 # NOMADS only: maps valid hour → batch directory hour.
@@ -205,7 +206,8 @@ def require_core_index_available(valid_date: str, valid_hour: str, *, stream: st
     if exists:
         return
     raise DataUnavailableError(
-        f"CORe {stream} data are not available for {valid_date} {valid_hour}z yet.",
+        f"CORe {stream} data are not available for {valid_date} {valid_hour}z yet. "
+        f"{DATA_AVAILABILITY_NOTE}",
         missing=[f"{valid_date} {valid_hour}z"],
     )
 
@@ -261,7 +263,8 @@ def fetch_index(date: str, hour: str) -> list[IndexRecord]:
     if r.status_code == 404:
         raise DataUnavailableError(
             f"CORe pgb data are not available for {date} {hour}z — "
-            "the date may be outside the archive or not yet published."
+            f"the date may be outside the archive or not yet published. {DATA_AVAILABILITY_NOTE}",
+            missing=[f"{date} {hour}z"],
         )
     r.raise_for_status()
     records = parse_index_text(r.text)
@@ -289,10 +292,11 @@ def _fetch_flx_index_and_url(date: str, hour: str) -> tuple[list[IndexRecord], s
         nomads_idx_url = _nomads_flx_index_url(date, hour)
         log.debug("FLX_IDX  GCS missing → GET %s", nomads_idx_url)
         r = _session.get(nomads_idx_url, timeout=15)
-        if r.status_code == 404:
+        if r.status_code in (403, 404):
             raise DataUnavailableError(
                 f"CORe flx data are not available for {date} {hour}z — "
-                "the date may be outside the archive or not yet published."
+                f"the date may be outside the archive or not yet published. {DATA_AVAILABILITY_NOTE}",
+                missing=[f"{date} {hour}z"],
             ) from exc
         r.raise_for_status()
         grib_url = _nomads_flx_url(date, hour)
@@ -644,7 +648,8 @@ def gather_composite_members(
         if not skip_missing or n_ok == 0 or len(missing) > total // 20:
             raise DataUnavailableError(
                 f"CORe records missing for {len(missing)} of {total} "
-                f"composite members: {', '.join(sorted(missing))}",
+                f"composite members: {', '.join(sorted(missing))}. "
+                f"{DATA_AVAILABILITY_NOTE}",
                 missing=sorted(missing), total=total,
             )
         log.warning(

@@ -1,7 +1,18 @@
 // Temporal Range card: date/month mode selection and the matching inputs for
 // every time scale (3-hourly, daily, monthly, climatology).
 import { Minus, Plus } from 'lucide-react'
-import { dateRange, monthRange, type SubMode } from '../../../mapRecipe'
+import {
+  CORE_ARCHIVE_START_DATE,
+  CORE_ARCHIVE_START_MONTH,
+  dateRange,
+  dateRangeAvailabilityMessage,
+  futureObservationDateMessage,
+  monthlyAvailabilityMessage,
+  monthRange,
+  newestAllowedObservationMonth,
+  newestAllowedObservationDate,
+  type SubMode,
+} from '../../../mapRecipe'
 import { CardRow, HourStepper, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import { defaultDate, type CompositeRecipeState } from './useCompositeRecipe'
 
@@ -46,6 +57,71 @@ function formatDuration(hours: number | null) {
 
 function formatPrecipRangeDuration(startDate: string, startHour: string, endDate: string, endHour: string) {
   return formatDuration(rangeHours(startDate, startHour, endDate, endHour))
+}
+
+function DateInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className: string
+}) {
+  const maxDate = newestAllowedObservationDate()
+  const availabilityTitle = `${dateRangeAvailabilityMessage()} ${futureObservationDateMessage()}`
+  const invalidMessage = (input: HTMLInputElement) => {
+    if (input.validity.rangeUnderflow) return dateRangeAvailabilityMessage()
+    if (input.validity.rangeOverflow) return futureObservationDateMessage()
+    return availabilityTitle
+  }
+  return (
+    <input
+      type="date"
+      value={value}
+      min={CORE_ARCHIVE_START_DATE}
+      max={maxDate}
+      title={availabilityTitle}
+      aria-label={availabilityTitle}
+      onInvalid={e => e.currentTarget.setCustomValidity(invalidMessage(e.currentTarget))}
+      onInput={e => e.currentTarget.setCustomValidity('')}
+      onChange={e => {
+        e.currentTarget.setCustomValidity('')
+        onChange(e.target.value)
+      }}
+      className={className}
+    />
+  )
+}
+
+function MonthInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  className: string
+}) {
+  const maxMonth = newestAllowedObservationMonth()
+  const availabilityTitle = monthlyAvailabilityMessage()
+  return (
+    <input
+      type="month"
+      value={value}
+      min={CORE_ARCHIVE_START_MONTH}
+      max={maxMonth}
+      title={availabilityTitle}
+      aria-label={availabilityTitle}
+      onInvalid={e => e.currentTarget.setCustomValidity(availabilityTitle)}
+      onInput={e => e.currentTarget.setCustomValidity('')}
+      onChange={e => {
+        e.currentTarget.setCustomValidity('')
+        onChange(e.target.value)
+      }}
+      className={className}
+    />
+  )
 }
 
 export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeState; isVertical: boolean }) {
@@ -101,13 +177,13 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       return (
         <>
           {monthSubMode === 'single' && (
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="input" />
+            <MonthInput value={month} onChange={setMonth} className="input" />
           )}
           {monthSubMode === 'range' && (
             <div className="flex gap-1.5 items-center flex-wrap">
-              <input type="month" value={monthStart} onChange={e => setMonthStart(e.target.value)} className="input" />
+              <MonthInput value={monthStart} onChange={setMonthStart} className="input" />
               <span className="text-slate-600 text-xs">→</span>
-              <input type="month" value={monthEnd}   onChange={e => setMonthEnd(e.target.value)}   className="input" />
+              <MonthInput value={monthEnd} onChange={setMonthEnd} className="input" />
               <span className="text-slate-500 text-xs">{monthRange(monthStart, monthEnd).length} mo</span>
             </div>
           )}
@@ -115,9 +191,11 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
             <div className="flex flex-col gap-1.5">
               {customMonths.map((m, i) => (
                 <div key={i} className="flex gap-1.5 items-center">
-                  <input type="month" value={m}
-                    onChange={e => setCustomMonths(prev => prev.map((x, j) => j === i ? e.target.value : x))}
-                    className="input flex-1" />
+                  <MonthInput
+                    value={m}
+                    onChange={value => setCustomMonths(prev => prev.map((x, j) => j === i ? value : x))}
+                    className="input flex-1"
+                  />
                   <button type="button" disabled={customMonths.length === 1}
                     onClick={() => setCustomMonths(prev => prev.filter((_, j) => j !== i))}
                     className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
@@ -126,7 +204,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
                 </div>
               ))}
               <button type="button"
-                onClick={() => setCustomMonths(prev => [...prev, new Date().toISOString().slice(0, 7)])}
+                onClick={() => setCustomMonths(prev => [...prev, newestAllowedObservationMonth()])}
                 className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
                 <Plus size={12} /> Add Month
               </button>
@@ -139,7 +217,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     if (precipTotalVariable && dateSubMode === 'single') {
       return (
         <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input min-w-0 flex-1" />
+          <DateInput value={date} onChange={setDate} className="input min-w-0 flex-1" />
           <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
         </div>
       )
@@ -150,15 +228,14 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       return (
         <div className="flex flex-col gap-1.5">
           <div className="flex gap-1.5 items-center flex-wrap">
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input min-w-0" />
+            <DateInput value={startDate} onChange={setStartDate} className="input min-w-0" />
             <HourStepper hour={startHour} setHour={setStartHour} compact={isVertical} />
             <span className="text-slate-600 text-xs">→</span>
-            <input
-              type="date"
+            <DateInput
               value={endDate}
-              onChange={e => {
-                setEndDate(e.target.value)
-                setDate(e.target.value)
+              onChange={value => {
+                setEndDate(value)
+                setDate(value)
               }}
               className="input min-w-0"
             />
@@ -178,9 +255,11 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
           </div>
           {customDates.map((d, i) => (
             <div key={i} className="flex gap-1.5 items-center">
-              <input type="date" value={d}
-                onChange={e => setCustomDates(prev => prev.map((x, j) => j === i ? e.target.value : x))}
-                className="input flex-1" />
+              <DateInput
+                value={d}
+                onChange={value => setCustomDates(prev => prev.map((x, j) => j === i ? value : x))}
+                className="input flex-1"
+              />
               <button type="button" disabled={customDates.length === 1}
                 onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
                 className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
@@ -202,16 +281,16 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       <>
         {dateSubMode === 'single' && (
           <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input min-w-0 flex-1" />
+            <DateInput value={date} onChange={setDate} className="input min-w-0 flex-1" />
             {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
           </div>
         )}
         {dateSubMode === 'range' && (
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5 items-center flex-wrap">
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="input min-w-0" />
+              <DateInput value={startDate} onChange={setStartDate} className="input min-w-0" />
               <span className="text-slate-600 text-xs">→</span>
-              <input type="date" value={endDate}   onChange={e => setEndDate(e.target.value)}   className="input min-w-0" />
+              <DateInput value={endDate} onChange={setEndDate} className="input min-w-0" />
               {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
               {startDate && endDate && startDate <= endDate && (
                 <span className="text-slate-500 text-xs">{dateRange(startDate, endDate).length}d</span>
@@ -228,9 +307,11 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
           <div className="flex flex-col gap-1.5">
             {customDates.map((d, i) => (
               <div key={i} className="flex gap-1.5 items-center">
-                <input type="date" value={d}
-                  onChange={e => setCustomDates(prev => prev.map((x, j) => j === i ? e.target.value : x))}
-                  className="input flex-1" />
+                <DateInput
+                  value={d}
+                  onChange={value => setCustomDates(prev => prev.map((x, j) => j === i ? value : x))}
+                  className="input flex-1"
+                />
                 <button type="button" disabled={customDates.length === 1}
                   onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
                   className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">

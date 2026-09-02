@@ -17,6 +17,9 @@ import {
 // in backend/app/main.py) so users get instant feedback instead of a 422.
 export const MAX_COMPOSITE_DATES = 93
 export const MAX_COMPOSITE_MONTHS = 60
+export const CORE_ARCHIVE_START_DATE = '1950-01-01'
+export const CORE_ARCHIVE_START_MONTH = '1950-01'
+export const DATA_AVAILABILITY_NOTE = 'The data usually lag real time by 24-36 hours.'
 
 export type TimeScale = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 export type SubMode = 'single' | 'range' | 'list'
@@ -81,9 +84,11 @@ export type MapRecipe = {
   colorStep?: string
 }
 
+export type MapRecipeRetry = { label: string; question?: string; params: Record<string, string> }
+
 export type MapRecipeParamsResult =
   | { ok: true; params: Record<string, string> }
-  | { ok: false; error: string }
+  | { ok: false; error: string; retry?: MapRecipeRetry }
 
 // Glyph density. The stride is rescaled per region on the backend, so one
 // number means one on-page spacing everywhere (#45). AUTO sends the backend
@@ -105,6 +110,121 @@ export function toApiDate(s: string) {
 
 export function toApiMonth(s: string) {
   return s.replace('-', '')
+}
+
+export function newestAllowedObservationDate(now = new Date()): string {
+  const d = new Date(now)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+export function currentObservationDate(now = new Date()): string {
+  return now.toISOString().slice(0, 10)
+}
+
+export function currentObservationMonth(now = new Date()): string {
+  return now.toISOString().slice(0, 7)
+}
+
+export function newestAllowedObservationMonth(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  d.setUTCMonth(d.getUTCMonth() - 1)
+  return d.toISOString().slice(0, 7)
+}
+
+export function prettyDate(isoDate: string): string {
+  const parsed = new Date(`${isoDate}T00:00:00Z`)
+  if (Number.isNaN(parsed.valueOf())) return isoDate
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(parsed)
+}
+
+export function prettyMonth(isoMonth: string): string {
+  const parsed = new Date(`${isoMonth}-01T00:00:00Z`)
+  if (Number.isNaN(parsed.valueOf())) return isoMonth
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(parsed)
+}
+
+export function dateRangeAvailabilityMessage(now = new Date()): string {
+  return (
+    `The CORe reanalysis data starts on ${prettyDate(CORE_ARCHIVE_START_DATE)}. `
+    + `Please choose a date between ${prettyDate(CORE_ARCHIVE_START_DATE)} and ${prettyDate(newestAllowedObservationDate(now))}.`
+  )
+}
+
+export function futureObservationDateMessage(now = new Date()): string {
+  return (
+    `CORe reanalysis data is only available prior to today's date. ${DATA_AVAILABILITY_NOTE} `
+    + `Please choose a date prior to ${prettyDate(currentObservationDate(now))}.`
+  )
+}
+
+export function monthlyAvailabilityMessage(now = new Date()): string {
+  return (
+    `CORe monthly data is only available for ${prettyMonth(newestAllowedObservationMonth(now))} and earlier.`
+  )
+}
+
+function monthlyAvailabilityRetry(params: Record<string, string>, now = new Date()): MapRecipeRetry | null {
+  const months = requestedObservationMonths(params)
+  if (!months.length) return null
+  const latestAvailable = toApiMonth(newestAllowedObservationMonth(now))
+  if (months.every(month => month <= latestAvailable)) return null
+
+  const keep = months.filter(month => month <= latestAvailable)
+  const nextMonths = keep.length ? keep : [latestAvailable]
+  const latestKept = nextMonths[nextMonths.length - 1]
+  const nextParams = { ...params, months: nextMonths.join(',') }
+  const question = nextMonths.length === 1
+    ? `Generate this map for ${prettyMonth(apiMonthToIso(latestKept))} instead?`
+    : `Generate this map through ${prettyMonth(apiMonthToIso(latestKept))} instead?`
+
+  return {
+    label: nextMonths.length === 1 ? `Generate ${apiMonthToIso(latestKept)}` : `Generate through ${apiMonthToIso(latestKept)}`,
+    question,
+    params: nextParams,
+  }
+}
+
+function latestRequestedObservationDate(params: Record<string, string>): string | null {
+  const values = [
+    ...(params.dates ?? '').split(','),
+    params.date ?? '',
+    params.start_date ?? '',
+  ].map(s => s.trim()).filter(Boolean)
+  if (!values.length) return null
+  return values.reduce((latest, value) => value > latest ? value : latest, values[0])
+}
+
+function requestedObservationMonths(params: Record<string, string>): string[] {
+  return (params.months ?? '').split(',').map(s => s.trim()).filter(Boolean)
+}
+
+export function observationDateAvailabilityError(params: Record<string, string>, now = new Date()): string | null {
+  const months = requestedObservationMonths(params)
+  if (months.length) {
+    const latestMonth = months.reduce((latest, value) => value > latest ? value : latest, months[0])
+    return latestMonth >= toApiMonth(currentObservationMonth(now)) ? monthlyAvailabilityMessage(now) : null
+  }
+  const requested = [
+    ...(params.dates ?? '').split(','),
+    params.date ?? '',
+    params.start_date ?? '',
+  ].map(s => s.trim()).filter(Boolean)
+  if (!requested.length) return null
+  const earliestRequested = requested.reduce((earliest, value) => value < earliest ? value : earliest, requested[0])
+  if (earliestRequested < toApiDate(CORE_ARCHIVE_START_DATE)) return dateRangeAvailabilityMessage(now)
+  const latestRequested = latestRequestedObservationDate(params)
+  const today = toApiDate(currentObservationDate(now))
+  return latestRequested && latestRequested >= today ? futureObservationDateMessage(now) : null
 }
 
 export function parseApiDate(value: string): ApiDate | null {
@@ -237,7 +357,11 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
 
   if (time.scale === 'monthly') {
     if (time.subMode === 'single') {
-      return { ok: true, params: { months: toApiMonth(time.month) } }
+      const params = { months: toApiMonth(time.month) }
+      const availabilityError = observationDateAvailabilityError(params)
+      return availabilityError
+        ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
+        : { ok: true, params }
     }
     if (time.subMode === 'range') {
       const months = monthRange(time.monthStart, time.monthEnd)
@@ -245,14 +369,22 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
       if (months.length > MAX_COMPOSITE_MONTHS) {
         return { ok: false, error: `Month ranges are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
       }
-      return { ok: true, params: { months: months.join(',') } }
+      const params = { months: months.join(',') }
+      const availabilityError = observationDateAvailabilityError(params)
+      return availabilityError
+        ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
+        : { ok: true, params }
     }
     const months = time.customMonths.filter(Boolean).map(toApiMonth)
     if (!months.length) return { ok: false, error: 'Add at least one month.' }
     if (months.length > MAX_COMPOSITE_MONTHS) {
       return { ok: false, error: `Month lists are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
     }
-    return { ok: true, params: { months: months.join(',') } }
+    const params = { months: months.join(',') }
+    const availabilityError = observationDateAvailabilityError(params)
+    return availabilityError
+      ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
+      : { ok: true, params }
   }
 
   const params: Record<string, string> = {}
@@ -265,6 +397,8 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   if (time.subMode === 'single') {
     params.date = toApiDate(time.date)
     params.date_mode = 'single'
+    const availabilityError = observationDateAvailabilityError(params)
+    if (availabilityError) return { ok: false, error: availabilityError }
     return { ok: true, params }
   }
   if (time.subMode === 'range') {
@@ -277,6 +411,8 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
     }
     params.dates = dates.join(',')
     params.date_mode = 'range'
+    const availabilityError = observationDateAvailabilityError(params)
+    if (availabilityError) return { ok: false, error: availabilityError }
     return { ok: true, params }
   }
 
@@ -291,6 +427,8 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   } else {
     params.dates = dates.join(',')
   }
+  const availabilityError = observationDateAvailabilityError(params)
+  if (availabilityError) return { ok: false, error: availabilityError }
   return { ok: true, params }
 }
 
@@ -303,14 +441,13 @@ function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult 
   }
   const endHour = 'hour' in time && time.hour && HOURS.includes(time.hour) ? time.hour : '00'
   if (time.subMode === 'single') {
-    return {
-      ok: true,
-      params: {
-        date: toApiDate(time.date),
-        date_mode: 'single',
-        [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
-      },
+    const params = {
+      date: toApiDate(time.date),
+      date_mode: 'single',
+      [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
     }
+    const availabilityError = observationDateAvailabilityError(params)
+    return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
   }
   if (time.subMode !== 'range') {
     const dates = time.customDates.filter(Boolean).map(toApiDate)
@@ -318,31 +455,29 @@ function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult 
     if (dates.length > MAX_COMPOSITE_DATES) {
       return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
     }
-    return {
-      ok: true,
-      params: {
-        date_mode: 'list',
-        [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
-        ...(dates.length === 1 ? { date: dates[0] } : { dates: dates.join(',') }),
-      },
+    const params = {
+      date_mode: 'list',
+      [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
+      ...(dates.length === 1 ? { date: dates[0] } : { dates: dates.join(',') }),
     }
+    const availabilityError = observationDateAvailabilityError(params)
+    return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
   }
   const startHour = time.startHour && HOURS.includes(time.startHour) ? time.startHour : '00'
   const windowHours = hoursBetween(time.startDate, startHour, time.endDate, endHour)
   if (!windowHours || windowHours <= 0 || windowHours % 3 !== 0) {
     return { ok: false, error: 'Precipitation total ranges must end after the start time in 3-hour increments.' }
   }
-  return {
-    ok: true,
-    params: {
-      date: toApiDate(time.endDate),
-      date_mode: 'range',
-      hour: endHour,
-      start_date: toApiDate(time.startDate),
-      start_hour: startHour,
-      precip_window: String(windowHours),
-    },
+  const params = {
+    date: toApiDate(time.endDate),
+    date_mode: 'range',
+    hour: endHour,
+    start_date: toApiDate(time.startDate),
+    start_hour: startHour,
+    precip_window: String(windowHours),
   }
+  const availabilityError = observationDateAvailabilityError(params)
+  return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
 }
 
 export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
@@ -389,7 +524,12 @@ export function mapRecipeToParams(recipe: MapRecipe): MapRecipeParamsResult {
     const timeParams = variable === 'precip_total'
       ? precipTotalTimeRecipeToParams(recipe.time!)
       : timeRecipeToParams(recipe.time!)
-    if (!timeParams.ok) return timeParams
+    if (!timeParams.ok) {
+      const retry = timeParams.retry
+        ? { ...timeParams.retry, params: { ...params, ...timeParams.retry.params } }
+        : undefined
+      return retry ? { ...timeParams, retry } : timeParams
+    }
     Object.assign(params, timeParams.params)
   }
 
