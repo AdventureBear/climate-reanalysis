@@ -1,10 +1,19 @@
 // Region browser modal. Stays mounted (open prop) so collapsed/expanded
 // section state persists across open/close, as it did pre-extraction.
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Minus, Plus, X } from 'lucide-react'
+import { API_BASE } from '../../../lib/api'
 import { REGION_THUMBNAILS } from '../../../lib/regionThumbnails'
-import { REGION_SECTIONS } from './regionCatalog'
+import { buildRegionSections, REGION_SECTIONS } from './regionCatalog'
 import { RegionThumbnail } from './RegionThumbnail'
+
+type RegionMetadata = {
+  name: string
+}
+
+function apiPath(base: string, path: string) {
+  return `${base.replace(/\/$/, '')}${path}`
+}
 
 export function RegionsModal({ open, region, onSelect, onClose }: {
   open: boolean
@@ -12,9 +21,44 @@ export function RegionsModal({ open, region, onSelect, onClose }: {
   onSelect: (regionKey: string) => void
   onClose: () => void
 }) {
+  const [availableRegions, setAvailableRegions] = useState<string[] | null>(null)
   const [openRegionSections, setOpenRegionSections] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(REGION_SECTIONS.map(section => [section.category, section.defaultOpen ?? false]))
   )
+  const regionSections = useMemo(() => buildRegionSections(availableRegions), [availableRegions])
+
+  useEffect(() => {
+    if (!open || availableRegions) return
+
+    let cancelled = false
+    async function fetchRegions() {
+      try {
+        const res = await fetch(apiPath(API_BASE, '/api/regions'))
+        if (!res.ok) return
+        const data = await res.json()
+        if (!Array.isArray(data)) return
+        const regionNames = data
+          .map((item: RegionMetadata) => item?.name)
+          .filter((name): name is string => typeof name === 'string' && name.length > 0)
+
+        if (!cancelled) setAvailableRegions(regionNames)
+      } catch {
+        // Keep the static fallback catalogue if the backend metadata endpoint is unavailable.
+      }
+    }
+
+    void fetchRegions()
+    return () => {
+      cancelled = true
+    }
+  }, [availableRegions, open])
+
+  useEffect(() => {
+    setOpenRegionSections(openSections => ({
+      ...Object.fromEntries(regionSections.map(section => [section.category, section.defaultOpen ?? false])),
+      ...openSections,
+    }))
+  }, [regionSections])
 
   function toggleRegionSection(category: string) {
     setOpenRegionSections(openSections => ({
@@ -39,7 +83,7 @@ export function RegionsModal({ open, region, onSelect, onClose }: {
                 </button>
               </div>
               <div className="overflow-y-auto px-6 py-5">
-                {REGION_SECTIONS.map(section => (
+                {regionSections.map(section => (
                   <div
                     key={section.category}
                     className={`${openRegionSections[section.category] ? 'bg-slate-700/55' : ''} first:rounded-t-lg last:rounded-b-lg overflow-hidden`}

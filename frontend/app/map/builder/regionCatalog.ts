@@ -1,6 +1,6 @@
-// Region browser catalogue: which regions the UI offers and how they are
-// grouped. Region bounds themselves live in the backend REGIONS config; keys
-// here must match those backend keys exactly.
+// Region browser catalogue. Backend REGIONS remains the availability source;
+// this file only owns grouping, labels, and hard-coded preference ordering
+// until those become user-configurable metadata.
 export type RegionEntry = { key: string; label: string; available: boolean }
 export type RegionSection = {
   category: string
@@ -8,133 +8,163 @@ export type RegionSection = {
   rows: RegionEntry[][]
 }
 
-export const REGION_SECTIONS: RegionSection[] = [
+type RegionPreference = 'US'
+type RegionCategoryDefinition = {
+  category: string
+  defaultOpen?: boolean
+  regions: string[]
+}
+
+const REGION_PICKER_COLUMNS = 3
+export const REGION_PICKER_REGION_PREFERENCE: RegionPreference = 'US'
+
+const REGION_LABELS: Record<string, string> = {
+  'Northwest US': 'Pacific Northwest',
+  'Southwest US': 'Southwest',
+  'South Central': 'Southern Plains',
+  'Southeast US': 'Southeast',
+}
+
+const REGION_CATEGORY_DEFINITIONS: RegionCategoryDefinition[] = [
   {
     category: 'US',
     defaultOpen: true,
-    rows: [
-      [
-        { key: 'CONUS',         label: 'CONUS',         available: true },
-        { key: 'North America', label: 'North America', available: true },
-      ],
+    regions: [
+      'CONUS',
+      'North America',
     ],
   },
   {
     category: 'US Regions',
     defaultOpen: true,
-    rows: [
-      [
-        { key: 'Northwest US',    label: 'Pacific Northwest', available: true },
-        { key: 'Northern Plains', label: 'Northern Plains',   available: true },
-        { key: 'Northeast',       label: 'Northeast',         available: true },
-      ],
-      [
-        { key: 'Western US',     label: 'Western US',        available: true },
-        { key: 'Central Plains', label: 'Central Plains',    available: true },
-        { key: 'Eastern US',     label: 'Eastern US',        available: true },
-      ],
-      [
-        { key: 'Southwest US',  label: 'Southwest',       available: true },
-        { key: 'South Central', label: 'Southern Plains', available: true },
-        { key: 'Southeast US',  label: 'Southeast',       available: true },
-      ],
-      [
-        { key: 'Alaska', label: 'Alaska', available: true },
-        { key: 'Hawaii', label: 'Hawaii', available: true },
-      ],
+    regions: [
+      'Northwest US',
+      'Northern Plains',
+      'Northeast',
+      'Western US',
+      'Central Plains',
+      'Eastern US',
+      'Southwest US',
+      'South Central',
+      'Southeast US',
+      'Caribbean',
+      'Alaska',
+      'Hawaii',
     ],
   },
   {
     category: 'World',
-    rows: [
-      [
-        { key: 'World',               label: 'World',               available: true },
-        { key: 'Northern Hemisphere', label: 'Northern Hemisphere', available: true },
-        { key: 'Southern Hemisphere', label: 'Southern Hemisphere', available: true },
-      ],
-      [
-        { key: 'North America', label: 'North America', available: true },
-        { key: 'South America', label: 'South America', available: true },
-        { key: 'Europe',        label: 'Europe',        available: true },
-      ],
-      [
-        { key: 'Asia',      label: 'Asia',      available: true },
-        { key: 'East Asia', label: 'East Asia', available: true },
-        { key: 'Australia', label: 'Australia', available: true },
-        { key: 'New Zealand', label: 'New Zealand', available: true },
-      ],
-      [
-        { key: 'Northern Africa', label: 'Northern Africa', available: true },
-        { key: 'Middle East',     label: 'Middle East',     available: true },
-        { key: 'Southern Africa', label: 'Southern Africa', available: true },
-      ],
-      [
-        { key: 'Western Canada',   label: 'Western Canada',   available: true },
-        { key: 'Canada',           label: 'Canada',           available: true },
-        { key: 'Southeast Canada', label: 'Southeast Canada', available: true },
-      ],
-      [
-        { key: 'India', label: 'India', available: true },
-      ],
+    regions: [
+      'World',
+      'Northern Hemisphere',
+      'Southern Hemisphere',
+      'North America',
+      'South America',
+      'Europe',
+      'Asia',
+      'East Asia',
+      'Australia',
+      'New Zealand',
+      'Northern Africa',
+      'Middle East',
+      'Southern Africa',
+      'Western Canada',
+      'Canada',
+      'Southeast Canada',
+      'India',
     ],
   },
   {
     category: 'Tropical & Equatorial',
-    rows: [
-      [
-        { key: 'India',           label: 'India',           available: true },
-        { key: 'Southern Africa', label: 'Southern Africa', available: true },
-        { key: 'Northern Africa', label: 'Northern Africa', available: true },
-      ],
-      [
-        { key: 'Caribbean', label: 'Caribbean', available: true },
-      ],
-      [
-        { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
-        { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
-        { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
-      ],
-      [
-        { key: 'Western Pacific', label: 'Western Pacific', available: true },
-        { key: 'Central Pacific', label: 'Central Pacific', available: true },
-        { key: 'Eastern Pacific', label: 'Eastern Pacific', available: true },
-      ],
-      [
-        { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true },
-        { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true },
-      ],
+    regions: [
+      'India',
+      'Southern Africa',
+      'Northern Africa',
+      'Caribbean',
+      'Indian Ocean',
+      'Tropical Atlantic',
+      'Western Atlantic',
+      'Western Pacific',
+      'Central Pacific',
+      'Eastern Pacific',
+      'Southwest Pacific',
+      'Southeast Pacific',
     ],
   },
   {
     category: 'Ocean Basins',
-    rows: [
-      [
-        { key: 'North Pacific',   label: 'North Pacific',   available: true },
-        { key: 'Western Pacific', label: 'Western Pacific', available: true },
-        { key: 'Central Pacific', label: 'Central Pacific', available: true },
-      ],
-      [
-        { key: 'Eastern Pacific',   label: 'Eastern Pacific',   available: true },
-        { key: 'Southwest Pacific', label: 'Southwest Pacific', available: true },
-        { key: 'Southeast Pacific', label: 'Southeast Pacific', available: true },
-      ],
-      [
-        { key: 'North Atlantic',    label: 'North Atlantic',    available: true },
-        { key: 'Caribbean',         label: 'Caribbean',         available: true },
-        { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
-        { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
-        { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
-      ],
+    regions: [
+      'North Pacific',
+      'Western Pacific',
+      'Central Pacific',
+      'Eastern Pacific',
+      'Southwest Pacific',
+      'Southeast Pacific',
+      'North Atlantic',
+      'Caribbean',
+      'Western Atlantic',
+      'Tropical Atlantic',
+      'Indian Ocean',
     ],
   },
 ]
 
-export function getRegionLabel(regionKey: string) {
-  for (const section of REGION_SECTIONS) {
-    for (const row of section.rows) {
-      const region = row.find(r => r.key === regionKey)
-      if (region) return region.label
+const REGION_CATEGORY_ORDER_BY_PREFERENCE: Record<RegionPreference, string[]> = {
+  US: ['US', 'US Regions', 'Tropical & Equatorial', 'World', 'Ocean Basins', 'Other Regions'],
+}
+
+const CATEGORIZED_REGION_KEYS = new Set(
+  REGION_CATEGORY_DEFINITIONS.flatMap(section => section.regions)
+)
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    rows.push(items.slice(i, i + size))
+  }
+  return rows
+}
+
+function categoryRank(category: string) {
+  const order = REGION_CATEGORY_ORDER_BY_PREFERENCE[REGION_PICKER_REGION_PREFERENCE]
+  const index = order.indexOf(category)
+  return index === -1 ? order.length : index
+}
+
+function regionEntry(key: string, availableRegionKeys: Set<string> | null): RegionEntry {
+  return {
+    key,
+    label: getRegionLabel(key),
+    available: availableRegionKeys ? availableRegionKeys.has(key) : true,
+  }
+}
+
+export function buildRegionSections(availableRegions?: Iterable<string> | null): RegionSection[] {
+  const availableRegionKeys = availableRegions ? new Set(availableRegions) : null
+  const sections: RegionSection[] = REGION_CATEGORY_DEFINITIONS.map(section => ({
+    category: section.category,
+    defaultOpen: section.defaultOpen,
+    rows: chunk(section.regions.map(region => regionEntry(region, availableRegionKeys)), REGION_PICKER_COLUMNS),
+  }))
+
+  if (availableRegionKeys) {
+    const uncategorizedRegions = [...availableRegionKeys]
+      .filter(region => !CATEGORIZED_REGION_KEYS.has(region))
+      .sort((a, b) => a.localeCompare(b))
+
+    if (uncategorizedRegions.length > 0) {
+      sections.push({
+        category: 'Other Regions',
+        rows: chunk(uncategorizedRegions.map(region => regionEntry(region, availableRegionKeys)), REGION_PICKER_COLUMNS),
+      })
     }
   }
-  return regionKey
+
+  return sections.sort((a, b) => categoryRank(a.category) - categoryRank(b.category))
+}
+
+export const REGION_SECTIONS: RegionSection[] = buildRegionSections()
+
+export function getRegionLabel(regionKey: string) {
+  return REGION_LABELS[regionKey] ?? regionKey
 }

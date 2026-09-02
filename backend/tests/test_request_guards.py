@@ -136,7 +136,8 @@ def test_regions_endpoint_includes_projection_metadata():
 
     caribbean = next(region for region in regions if region["name"] == "Caribbean")
     assert caribbean["slug"] == "caribbean"
-    assert caribbean["extent"] == {"west": -103.5, "east": -55.5, "south": -2.5, "north": 31.5}
+    assert caribbean["extent"] == {"west": -100, "east": -58, "south": 5, "north": 34}
+    assert caribbean["fetch_bounds"] == {"lat_min": 2.5, "lat_max": 37.5, "lon_min": 257.5, "lon_max": 305.5}
     assert caribbean["projection"]["label"] == "Mercator"
 
 
