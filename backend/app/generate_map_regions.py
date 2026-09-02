@@ -1,10 +1,8 @@
+from app.config import REGIONS
+from app.visualizer import describe_region_catalog
 
-from app.visualizer import _REGION_EXTENTS
 
 def get_regions():
-    print("Returning:" , _REGION_EXTENTS.keys())
-    return _REGION_EXTENTS.keys
-
-
+    return describe_region_catalog(REGIONS)
 
 

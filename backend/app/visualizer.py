@@ -67,6 +67,7 @@ _REGION_PROJECTIONS: dict[str, ccrs.Projection] = {
     "Southwest US": ccrs.AlbersEqualArea(central_longitude=-114, central_latitude=35, standard_parallels=(29, 39)),
     "South Central": ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=32, standard_parallels=(26, 36)),
     "Southeast US": ccrs.AlbersEqualArea(central_longitude=-82, central_latitude=31, standard_parallels=(25, 35)),
+    "Caribbean": ccrs.Mercator(central_longitude=-80, min_latitude=-7.5, max_latitude=32.5),
     "Western US": ccrs.AlbersEqualArea(central_longitude=-115, central_latitude=39, standard_parallels=(32, 45)),
     "Alaska": ccrs.NorthPolarStereo(central_longitude=-150),
     "Hawaii": ccrs.PlateCarree(),
@@ -112,6 +113,7 @@ _REGION_EXTENTS: dict[str, tuple[float, float, float, float]] = {
     "Southwest US": (-126.5, -105.5, 27.5, 42.5),
     "South Central": (-106.5, -86.5, 23.5, 39.5),
     "Southeast US": (-92.5, -71.5, 21.5, 39.5),
+    "Caribbean": (-103.5, -55.5, -2.5, 31.5),
     "Western US": (-127.5, -100.5, 28.5, 51.5),
     "Alaska": (-174.5, -126.5, 47.5, 74.5),
     "Hawaii": (-163.5, -151.5, 15.5, 25.5),
@@ -162,6 +164,8 @@ def _projection_label(proj: ccrs.Projection) -> str:
         return "North Polar Stereographic"
     if isinstance(proj, ccrs.SouthPolarStereo):
         return "South Polar Stereographic"
+    if isinstance(proj, ccrs.Mercator):
+        return "Mercator"
     if isinstance(proj, ccrs.PlateCarree):
         return "Plate Carree"
     return proj.__class__.__name__
@@ -184,6 +188,61 @@ def _extent_label(lon0: float, lon1: float, lat0: float, lat1: float) -> str:
         f"Lat: {_format_extent_value(lat0, 'lat')} to {_format_extent_value(lat1, 'lat')}"
     )
 
+
+def _region_slug(name: str) -> str:
+    return "-".join(name.lower().split())
+
+
+def _projection_params(proj: ccrs.Projection) -> dict:
+    params = getattr(proj, "proj4_params", {}) or {}
+    result = {}
+    for key, value in params.items():
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            result[key] = value
+        elif isinstance(value, (list, tuple)):
+            result[key] = list(value)
+        else:
+            result[key] = str(value)
+    return result
+
+
+def describe_region_catalog(regions: dict[str, dict]) -> list[dict]:
+    """Return frontend-safe metadata for every configured map region."""
+    catalog = []
+    for name, bounds in regions.items():
+        lon0, lon1, lat0, lat1 = _REGION_EXTENTS.get(
+            name,
+            (
+                bounds["lon"][0],
+                bounds["lon"][1],
+                bounds["lat"][0],
+                bounds["lat"][1],
+            ),
+        )
+        proj = _REGION_PROJECTIONS.get(name, ccrs.PlateCarree())
+        catalog.append({
+            "name": name,
+            "slug": _region_slug(name),
+            "extent": {
+                "west": lon0,
+                "east": lon1,
+                "south": lat0,
+                "north": lat1,
+            },
+            "extent_label": _extent_label(lon0, lon1, lat0, lat1),
+            "fetch_bounds": {
+                "lat_min": bounds["lat"][0],
+                "lat_max": bounds["lat"][1],
+                "lon_min": bounds["lon"][0],
+                "lon_max": bounds["lon"][1],
+            },
+            "projection": {
+                "label": _projection_label(proj),
+                "kind": proj.__class__.__name__,
+                "parameters": _projection_params(proj),
+            },
+        })
+    return catalog
 
 
 def _apply_polar_boundary(ax) -> None:

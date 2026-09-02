@@ -118,6 +118,28 @@ def test_pwat_advertises_normalized_mode():
     assert "normalized" in response.json()["variable_modes"]["precipitable_water"]
 
 
+def test_regions_endpoint_includes_projection_metadata():
+    client = TestClient(main_module.app)
+
+    response = client.get("/api/regions")
+
+    assert response.status_code == 200
+    regions = response.json()
+    conus = next(region for region in regions if region["name"] == "CONUS")
+
+    assert conus["slug"] == "conus"
+    assert conus["extent"] == {"west": -127.5, "east": -63.5, "south": 21.5, "north": 52.5}
+    assert conus["extent_label"] == "Lon: 127.5°W to 63.5°W; Lat: 21.5°N to 52.5°N"
+    assert conus["fetch_bounds"] == {"lat_min": 12.5, "lat_max": 74.5, "lon_min": 215.5, "lon_max": 317.5}
+    assert conus["projection"]["label"] == "Albers Equal Area"
+    assert conus["projection"]["parameters"]["proj"] == "aea"
+
+    caribbean = next(region for region in regions if region["name"] == "Caribbean")
+    assert caribbean["slug"] == "caribbean"
+    assert caribbean["extent"] == {"west": -103.5, "east": -55.5, "south": -2.5, "north": 31.5}
+    assert caribbean["projection"]["label"] == "Mercator"
+
+
 def test_blank_map_request_is_accepted(monkeypatch):
     captured = []
 

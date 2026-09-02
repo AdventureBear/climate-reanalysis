@@ -49,6 +49,12 @@ REGIONS = {
         "lat": (20.5, 41.5),
         "lon": (267.5, 299.5),
     },
+    "Caribbean": {
+        # Gulf Coast/southern Florida through eastern Mexico, Central America,
+        # the Caribbean island arc, and northern South America.
+        "lat": (-7.5, 36.5),
+        "lon": (251.5, 309.5),
+    },
     "Western US": {
         "lat": (26.5, 54.5),
         "lon": (228.5, 261.5),

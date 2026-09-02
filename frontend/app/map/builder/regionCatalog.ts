@@ -87,6 +87,9 @@ export const REGION_SECTIONS: RegionSection[] = [
         { key: 'Northern Africa', label: 'Northern Africa', available: true },
       ],
       [
+        { key: 'Caribbean', label: 'Caribbean', available: true },
+      ],
+      [
         { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },
         { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
         { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
@@ -117,6 +120,7 @@ export const REGION_SECTIONS: RegionSection[] = [
       ],
       [
         { key: 'North Atlantic',    label: 'North Atlantic',    available: true },
+        { key: 'Caribbean',         label: 'Caribbean',         available: true },
         { key: 'Western Atlantic',  label: 'Western Atlantic',  available: true },
         { key: 'Tropical Atlantic', label: 'Tropical Atlantic', available: true },
         { key: 'Indian Ocean',      label: 'Indian Ocean',      available: true },

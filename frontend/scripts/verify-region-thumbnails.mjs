@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Guards against region previews silently disappearing: every path referenced in
-// src/regionThumbnails.ts must resolve to a real file under public/. This is the
+// lib/regionThumbnails.ts must resolve to a real file under public/. This is the
 // realistic regression vector — a renamed file or region key drops the preview with
 // no build/lint error. Run: `npm run check:thumbnails` (also wire into CI/build).
 import { readFileSync, existsSync } from 'node:fs'
@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
-const source = join(root, 'src', 'regionThumbnails.ts')
+const source = join(root, 'lib', 'regionThumbnails.ts')
 const publicDir = join(root, 'public')
 
 const text = readFileSync(source, 'utf8')
@@ -17,7 +17,7 @@ const text = readFileSync(source, 'utf8')
 const refs = [...text.matchAll(/['"](\/region-thumbnails\/[a-z0-9-]+\.png)['"]/g)].map(m => m[1])
 
 if (refs.length === 0) {
-  console.error('✗ No region-thumbnail paths found in src/regionThumbnails.ts — parser or file changed.')
+  console.error('✗ No region-thumbnail paths found in lib/regionThumbnails.ts — parser or file changed.')
   process.exit(1)
 }
 

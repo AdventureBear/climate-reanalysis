@@ -8,6 +8,7 @@ export const REGION_THUMBNAILS: Record<string, string> = {
   'Southwest US': '/region-thumbnails/southwest-us.png',
   'South Central': '/region-thumbnails/south-central.png',
   'Southeast US': '/region-thumbnails/southeast-us.png',
+  'Caribbean': '/region-thumbnails/caribbean.png',
   'Western US': '/region-thumbnails/western-us.png',
   'Alaska': '/region-thumbnails/alaska.png',
   'Hawaii': '/region-thumbnails/hawaii.png',

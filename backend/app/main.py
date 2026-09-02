@@ -10,8 +10,6 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 
-from app.visualizer import _REGION_EXTENTS
-
 # Load .env before importing app modules: config.CACHE_ROOT (and anything else
 # read at module import time) must see .env values, not just process env.
 load_dotenv()
@@ -49,7 +47,7 @@ from .rate_limit import (
 )
 from .retrieval import DataUnavailableError, VALID_HOURS
 from .variable_resolution import resolve_variable_selection
-from .visualizer import DEFAULT_WIND_DENSITY, ISOTACH_INTERVALS_KT, describe_color_scale
+from .visualizer import DEFAULT_WIND_DENSITY, ISOTACH_INTERVALS_KT, describe_color_scale, describe_region_catalog
 
 logging.basicConfig(
     level=logging.INFO,
@@ -601,6 +599,7 @@ def get_map(
             detail="Something went wrong while building this map. Please try again.",
         ) from exc
 
+@app.get("/api/regions")
 @app.get("/api/get-regions")
 def return_regions():
-    return((_REGION_EXTENTS))
+    return describe_region_catalog(REGIONS)
