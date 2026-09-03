@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import calendar as cal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
@@ -45,6 +45,17 @@ class TimeSelection:
     obs_day: int
     daily_hours: list[str]
     is_daily_composite: bool
+    # The exact expanded members this selection denotes (Phase 1,
+    # docs/TIME_SELECTION_PLAN.md): every sub-monthly selection carries its
+    # full (YYYYMMDD, HH) list — dates x hours for daily composites, the
+    # request hour applied to each date otherwise. Empty for monthly;
+    # monthly members are month_members. Authoritative going forward; the
+    # legacy fields above remain until fetch paths migrate (Phase 2).
+    date_hour_members: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def month_members(self) -> list[tuple[int, int]]:
+        return self.year_months
 
     @property
     def composite(self) -> bool:
@@ -89,6 +100,15 @@ def parse_time_selection(req: TimeRequest) -> TimeSelection:
         obs_day = 28
 
     daily_hours = [h.strip() for h in req.hours.split(",") if h.strip()] if req.hours else []
+
+    # Expansion order matches the existing fetchers: dates outer, hours inner.
+    if monthly_mode:
+        date_hour_members: list[tuple[str, str]] = []
+    elif daily_hours:
+        date_hour_members = [(d, h) for d in date_list for h in daily_hours]
+    else:
+        date_hour_members = [(d, req.hour) for d in date_list]
+
     return TimeSelection(
         monthly_mode=monthly_mode,
         year_months=year_months,
@@ -97,6 +117,7 @@ def parse_time_selection(req: TimeRequest) -> TimeSelection:
         obs_day=obs_day,
         daily_hours=daily_hours,
         is_daily_composite=bool(daily_hours and not monthly_mode),
+        date_hour_members=date_hour_members,
     )
 
 

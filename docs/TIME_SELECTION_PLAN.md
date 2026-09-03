@@ -114,9 +114,16 @@ Stale irrelevant params are ignored when `time_scale` makes intent clear
 
 ### Phase 1 — Members-first internals (backend, invisible)
 
-- [ ] Extend `TimeSelection` (`backend/app/map_pipeline/time_selection.py`) to
+- [x] Extend `TimeSelection` (`backend/app/map_pipeline/time_selection.py`) to
   always carry expanded members (`date_hour_members`, `month_members`).
-- [ ] Existing fetch paths untouched; corpus stays green.
+  Done 2026-09-03: `date_hour_members` field populated by the parser for
+  every sub-monthly selection (dates x hours for daily composites, request
+  hour per date otherwise; expansion order matches the fetchers — dates
+  outer, hours inner). `month_members` is a property aliasing
+  `year_months`. Legacy fields remain until fetch paths migrate (Phase 2).
+- [x] Existing fetch paths untouched; corpus stays green. Member-level
+  assertions added to 7 corpus cases (single, slice, daily x2, monthly,
+  bare-date x2); corpus 27/27, full suite 295/295.
 
 ### Phase 2 — Canonical contract + pair-aware fetch (backend)
 

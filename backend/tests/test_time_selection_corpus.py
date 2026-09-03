@@ -23,13 +23,15 @@ CASES = [
         "frontend-3hourly-single",
         {"date": "20260901", "hour": "09"},
         {"obs_kind": "single", "date_list": ["20260901"], "obs_month": 9,
-         "obs_day": 1, "monthly_mode": False, "daily_hours": [], "composite": False},
+         "obs_day": 1, "monthly_mode": False, "daily_hours": [], "composite": False,
+         "date_hour_members": [("20260901", "09")]},
     ),
     (
         "frontend-3hourly-slice-currently-labeled-range",
         {"dates": "20260901,20260902", "hour": "09"},
         {"obs_kind": "composite", "date_list": ["20260901", "20260902"],
-         "obs_month": 9, "obs_day": 1, "daily_hours": []},
+         "obs_month": 9, "obs_day": 1, "daily_hours": [],
+         "date_hour_members": [("20260901", "09"), ("20260902", "09")]},
     ),
     (
         "frontend-3hourly-list",
@@ -40,7 +42,9 @@ CASES = [
         "frontend-daily-single",
         {"date": "20260901", "hours": "00,06,12,18"},
         {"obs_kind": "daily", "date_list": ["20260901"],
-         "daily_hours": ["00", "06", "12", "18"], "is_daily_composite": True},
+         "daily_hours": ["00", "06", "12", "18"], "is_daily_composite": True,
+         "date_hour_members": [("20260901", "00"), ("20260901", "06"),
+                               ("20260901", "12"), ("20260901", "18")]},
     ),
     (
         "frontend-daily-range",
@@ -54,7 +58,8 @@ CASES = [
         {"months": "202609"},
         {"obs_kind": "monthly", "monthly_mode": True,
          "year_months": [(2026, 9)], "obs_month": 9, "obs_day": 15,
-         "date_list": []},
+         "date_list": [], "date_hour_members": [],
+         "month_members": [(2026, 9)]},
     ),
     (
         "frontend-monthly-list",
@@ -88,14 +93,17 @@ CASES = [
         # today; the sender almost always meant the whole day).
         "legacy-bare-date",
         {"date": "20260901"},
-        {"obs_kind": "single", "date_list": ["20260901"], "daily_hours": []},
+        {"obs_kind": "single", "date_list": ["20260901"], "daily_hours": [],
+         # The dataclass hour default "00" lands in the members today.
+         "date_hour_members": [("20260901", "00")]},
     ),
     (
         # DECISION-2: becomes per-date daily composites.
         "legacy-bare-dates",
         {"dates": "20260829,20260830"},
         {"obs_kind": "composite", "date_list": ["20260829", "20260830"],
-         "daily_hours": []},
+         "daily_hours": [],
+         "date_hour_members": [("20260829", "00"), ("20260830", "00")]},
     ),
     (
         # SLICE-CLIMO: same cartesian members forever; Phase 2 names this a
@@ -103,7 +111,10 @@ CASES = [
         "legacy-dates-nonsynoptic-hours",
         {"dates": "20260829,20260830", "hours": "03,18"},
         {"obs_kind": "daily", "daily_hours": ["03", "18"],
-         "date_list": ["20260829", "20260830"]},
+         "date_list": ["20260829", "20260830"],
+         # Dates outer, hours inner — the fetchers' cartesian order.
+         "date_hour_members": [("20260829", "03"), ("20260829", "18"),
+                               ("20260830", "03"), ("20260830", "18")]},
     ),
     (
         "legacy-date-multi-hours",
