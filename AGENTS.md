@@ -47,7 +47,7 @@ Supabase schema history lives in `supabase/migrations/`. Schema changes are file
 - Approval of a spec or plan is not approval to run a migration.
 - Keep migration filenames aligned with applied history.
 - MCP-applied migrations can skip default grants; include explicit grants with RLS policies.
-
+-  Whenever you create a table in Supabase, turn on Row Level Security and write its policies in the same step. Never leave a table reachable by the publishable key without policies protecting it.
 ## Project Shape
 
 PyRe replaces the discontinued PSL/NCEP reanalysis plotting workflows using NOAA/CPC CORe data.

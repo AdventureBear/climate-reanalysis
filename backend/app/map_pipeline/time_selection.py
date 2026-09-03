@@ -24,6 +24,10 @@ def _valid_month(token: str) -> tuple[int, int]:
     return parsed.year, parsed.month
 
 
+# CONTRACT GUARD: any new time param or selection shape added here (or to the
+# parser below) must get corpus cases in tests/test_time_selection_corpus.py.
+# Changing what an existing shape means requires a deliberate, decision-cited
+# edit to that corpus. See docs/TIME_SELECTION_PLAN.md.
 class TimeRequest(Protocol):
     date: str
     dates: str

@@ -21,6 +21,9 @@ export const CORE_ARCHIVE_START_DATE = '1950-01-01'
 export const CORE_ARCHIVE_START_MONTH = '1950-01'
 export const DATA_AVAILABILITY_NOTE = 'The data usually lag real time by 24-36 hours.'
 
+// CONTRACT GUARD: adding a TimeScale/SubMode value or a new time param to
+// timeRecipeToParams/timeRecipeFromUrl requires matching corpus cases in
+// backend/tests/test_time_selection_corpus.py. See docs/TIME_SELECTION_PLAN.md.
 export type TimeScale = '3-hourly' | 'daily' | 'monthly' | 'climatology'
 export type SubMode = 'single' | 'range' | 'list'
 export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
