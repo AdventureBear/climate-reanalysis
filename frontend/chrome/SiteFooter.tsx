@@ -11,6 +11,7 @@ import { navHref } from '../lib/siteUrls'
 const FOOTER_LINKS = [
   { href: '/changelog', label: 'Changelog' },
   { href: '/faq', label: 'FAQ' },
+  { href: '/feedback', label: 'Feedback' },
   { href: '/about', label: 'About' },
   { href: '/privacy', label: 'Privacy' },
   { href: '/terms', label: 'Terms' },

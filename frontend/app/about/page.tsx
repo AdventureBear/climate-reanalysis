@@ -97,8 +97,8 @@ export default function AboutPage() {
         </p>
         <p className="mt-3 text-base leading-relaxed text-slate-200">
           Email{' '}
-          <a href="mailto:suzyq@pyreweather.org" className="text-sky-300 underline underline-offset-2 hover:text-sky-200">
-            suzyq@pyreweather.org
+          <a href="mailto:support@pyreweather.org" className="text-sky-300 underline underline-offset-2 hover:text-sky-200">
+            support@pyreweather.org
           </a>
           .
         </p>

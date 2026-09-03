@@ -7,7 +7,7 @@
     "dev": "next dev -p 5173",
     "build": "rm -rf .next && next build",
     "build:www": "npm run build && rm -rf out/map out/auth out/admin",
-    "build:app": "npm run build && rm -rf out/about out/faq out/privacy out/terms out/changelog out/synopsis out/regions out/index.html",
+    "build:app": "npm run build && rm -rf out/about out/faq out/feedback out/privacy out/terms out/changelog out/synopsis out/regions out/index.html",
     "lint": "eslint .",
     "start": "next start"
   },

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { RecipeRedirect } from './RecipeRedirect'
 import { CreateAccountSection } from './CreateAccountSection'
+import { NewsletterSection } from './NewsletterSection'
 import { DonateSection } from './DonateSection'
 import { UsageSection } from './UsageSection'
 import Link from 'next/link'
@@ -87,6 +88,7 @@ export default function LandingPage() {
       </section>
 
       <CreateAccountSection />
+      <NewsletterSection />
       <DonateSection />
       <UsageSection />
     </div>

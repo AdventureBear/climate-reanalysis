@@ -10,6 +10,7 @@ export const changelogEntries: ChangelogDay[] = [
       'Added a /regions page that lists all available regions, and a preview blank map with coordinates and projection used. Links to the map builder with a new "blank map" option.',
       'Caribbean region added, using Mercator projection'  ],
   },
+
   {
     date: '2026-08-25',
     changes: [

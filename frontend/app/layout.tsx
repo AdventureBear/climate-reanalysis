@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { AuthProvider } from './auth/AuthProvider'
 import { SiteHeader } from '../chrome/SiteHeader'
 import { SiteFooter } from '../chrome/SiteFooter'
+import { AnnouncementBar } from '../chrome/AnnouncementBar'
 import { Analytics } from './analytics'
 import { JsonLd } from '../ui/JsonLd'
 import { graph, personSchema, websiteSchema } from '../lib/structuredData'
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Analytics />
         <AuthProvider>
           <div className="min-h-screen bg-[#131d3f] text-slate-100 flex flex-col">
+            <AnnouncementBar />
             <SiteHeader />
             <div className="flex flex-1 flex-col">{children}</div>
             <SiteFooter />

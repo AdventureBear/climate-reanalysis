@@ -38,4 +38,4 @@ We may update these terms; the effective date above reflects the latest revision
 
 ## Contact
 
-Questions about these terms: **suzyq@pyreweather.org**
+Questions about these terms: **support@pyreweather.org**

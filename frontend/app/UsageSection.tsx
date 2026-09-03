@@ -23,7 +23,7 @@ const USES = [
   },
   {
     q: 'Commercial use?',
-    a: 'Yes. Create an account and email suzyq@pyreweather.org so we know where the maps are being used. We will add you to the Collaborators section of the About page, and you can link back to PyRe from the credits of your article or video.',
+    a: 'Yes. Create an account and email support@pyreweather.org so we know where the maps are being used. We will add you to the Collaborators section of the About page, and you can link back to PyRe from the credits of your article or video.',
   },
 ]
 
