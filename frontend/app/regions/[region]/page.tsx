@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { PageShell } from "../../../ui/PageShell"
 import { REGION_PREVIEWS } from "../../../lib/regionPreviews"
 import { listRegions, slugifyRegion, type Region } from "../../../lib/regions"
+import { SITE_URL } from "../../../lib/siteUrls"
 
 export const dynamicParams = false
 
@@ -34,6 +35,7 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   return {
     title: `PyRe Weather - ${region.name} Region`,
     description: `${region.name} map region extent and projection details for PyRe Weather.`,
+    alternates: { canonical: `${SITE_URL}/regions/${region.slug}/` },
   }
 }
 

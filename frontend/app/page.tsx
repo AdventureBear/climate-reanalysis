@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { RecipeRedirect } from './RecipeRedirect'
 import { CreateAccountSection } from './CreateAccountSection'
 import { DonateSection } from './DonateSection'
@@ -5,7 +6,12 @@ import { UsageSection } from './UsageSection'
 import Link from 'next/link'
 import { JsonLd } from '../ui/JsonLd'
 import { graph, learningResourceSchema } from '../lib/structuredData'
+import { SITE_URL } from '../lib/siteUrls'
 import { WeeklyFeaturedMapsSection } from './WeeklyFeaturedMapsSection'
+
+export const metadata: Metadata = {
+  alternates: { canonical: `${SITE_URL}/` },
+}
 
 // Landing page. Hero blends real map renders into the dusk background with
 // the text on top; the builder CTA sits low so the maps do the talking.

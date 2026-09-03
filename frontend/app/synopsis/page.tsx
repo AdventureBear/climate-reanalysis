@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { listPublishedPosts } from '../../lib/posts'
+import { SITE_URL } from '../../lib/siteUrls'
 import { EditorLink } from './EditorLink'
 import { PageShell } from '../../ui/PageShell'
 import { SynopsisPostList } from './SynopsisPostList'
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
   title: 'The Synopsis — PyRe Weather',
   description:
     'Weather stories and case studies: historical events explained with reanalysis maps you can explore yourself.',
+  alternates: { canonical: `${SITE_URL}/synopsis/` },
 }
 
 export default async function SynopsisIndex() {

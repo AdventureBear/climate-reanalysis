@@ -2,11 +2,13 @@ import { PageShell } from '../../ui/PageShell'
 import type { Metadata } from 'next'
 import { RegionList } from './RegionList'
 import { listRegions } from '../../lib/regions'
+import { SITE_URL } from '../../lib/siteUrls'
 
 
 export const metadata: Metadata = {
   title: 'PyRe Weather - Map Regions',
   description: 'Browse the world regions available in the PyRe Weather map builder.',
+  alternates: { canonical: `${SITE_URL}/regions/` },
 }
 
 export default async function Regions() {

@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { PageShell } from '../../ui/PageShell'
+import { SITE_URL } from '../../lib/siteUrls'
 
 export const metadata: Metadata = {
   title: 'About — PyRe Weather',
+  alternates: { canonical: `${SITE_URL}/about/` },
 }
 
 function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {

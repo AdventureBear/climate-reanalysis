@@ -8,6 +8,7 @@ import { PageShell } from '../../../ui/PageShell'
 import { Lightbox } from './Lightbox'
 import { JsonLd } from '../../../ui/JsonLd'
 import { articleSchema, breadcrumbSchema, graph } from '../../../lib/structuredData'
+import { SITE_URL } from '../../../lib/siteUrls'
 
 type Params = { slug: string }
 
@@ -50,6 +51,7 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   return {
     title: `${post.title} — The Synopsis — PyRe Weather`,
     description: post.description,
+    alternates: { canonical: `${SITE_URL}/synopsis/${slug}/` },
     openGraph: {
       title: post.title,
       description: post.description,

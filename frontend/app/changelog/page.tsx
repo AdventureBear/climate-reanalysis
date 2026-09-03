@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import { changelogEntries } from '../../content/changelog'
 import { PageShell } from '../../ui/PageShell'
+import { SITE_URL } from '../../lib/siteUrls'
 
 export const metadata: Metadata = {
   title: 'Changelog - PyRe Weather',
   description: 'User-facing updates to PyRe Weather maps, tools, and data workflows.',
+  alternates: { canonical: `${SITE_URL}/changelog/` },
 }
 
 function formatDate(value: string) {
