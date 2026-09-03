@@ -6,8 +6,9 @@
 // rather than hosting downloadable data, and Dataset Search expects the
 // latter (see #86 for the reasoning).
 import { POST_IMAGE_BASE, displayHeadline, leadImagePath, type Post } from './posts'
+import { SITE_URL } from './siteUrls'
 
-export const SITE_URL = 'https://www.pyreweather.org'
+export { SITE_URL }
 const AUTHOR_NAME = 'Suzanne Atkinson'
 
 // Stable @ids let the graph reference one entity instead of repeating it.

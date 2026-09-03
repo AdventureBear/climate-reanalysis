@@ -7,7 +7,8 @@
 //                    publishes posts whose publish_at has arrived, then
 //                    rebuilds once if any were published.
 //
-// Secrets: RENDER_DEPLOY_HOOK_URL (from Render → static site → Deploy Hook),
+// Secrets: RENDER_DEPLOY_HOOK_URL (from Render → static site → Deploy Hook;
+//          comma-separated when multiple static sites serve the build),
 //          CRON_SECRET (any random string; the schedule sends it back).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -26,10 +27,17 @@ function json(body: unknown, status = 200): Response {
 async function pokeRender(): Promise<Response> {
   // Operational failures return 200 with ok:false so the editor can show the
   // real reason (the client library hides bodies of non-2xx responses).
-  const hook = Deno.env.get("RENDER_DEPLOY_HOOK_URL");
-  if (!hook) return json({ ok: false, error: "no deploy hook is configured (expected outside production)" });
-  const res = await fetch(hook, { method: "POST" });
-  if (!res.ok) return json({ ok: false, error: `Render answered HTTP ${res.status}` });
+  // RENDER_DEPLOY_HOOK_URL may be a comma-separated list — one hook per
+  // static site (www + app serve the same build and must rebuild together).
+  const raw = Deno.env.get("RENDER_DEPLOY_HOOK_URL");
+  if (!raw) return json({ ok: false, error: "no deploy hook is configured (expected outside production)" });
+  const hooks = raw.split(",").map((h) => h.trim()).filter(Boolean);
+  const failures: string[] = [];
+  for (const hook of hooks) {
+    const res = await fetch(hook, { method: "POST" });
+    if (!res.ok) failures.push(`Render answered HTTP ${res.status}`);
+  }
+  if (failures.length > 0) return json({ ok: false, error: failures.join("; ") });
   return json({ ok: true });
 }
 

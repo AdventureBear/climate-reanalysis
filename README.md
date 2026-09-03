@@ -65,6 +65,10 @@ VITE_API_URL=http://127.0.0.1:8000
 # Optional, production only: GoatCounter page-view analytics endpoint.
 # Leave unset in dev so local work never counts as traffic.
 # VITE_GOATCOUNTER_URL=https://<sitecode>.goatcounter.com/count
+# Production only (both Render static sites): makes header/footer links cross
+# the www/app subdomain boundary with absolute URLs. Leave unset in dev so
+# every link stays relative to localhost.
+# NEXT_PUBLIC_CROSS_HOST_NAV=1
 ```
 
 Without `CORS_ORIGINS`, the FastAPI app defaults to an empty CORS allowlist.

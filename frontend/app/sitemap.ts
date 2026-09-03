@@ -1,15 +1,16 @@
 import type { MetadataRoute } from 'next'
 import { listPublishedPosts } from '../lib/posts'
+import { APP_URL, SITE_URL as SITE } from '../lib/siteUrls'
 
 export const dynamic = 'force-static'
-
-const SITE = 'https://www.pyreweather.org'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const posts = await listPublishedPosts()
   const staticPages: MetadataRoute.Sitemap = [
     { url: `${SITE}/`, changeFrequency: 'weekly', priority: 1 },
-    { url: `${SITE}/map/`, changeFrequency: 'weekly', priority: 0.9 },
+    // /map is canonical on the app host. Cross-host sitemap entries need a
+    // Search Console *Domain* property for pyreweather.org (covers subdomains).
+    { url: `${APP_URL}/map/`, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${SITE}/synopsis/`, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${SITE}/changelog/`, changeFrequency: 'weekly', priority: 0.5 },
     { url: `${SITE}/faq/`, changeFrequency: 'monthly', priority: 0.5 },

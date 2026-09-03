@@ -37,7 +37,8 @@ from .units import (
 PACKAGE_CACHE_ROOT = Path(CACHE_ROOT) / "map_packages"
 PACKAGE_ROOT = PACKAGE_CACHE_ROOT / "single_date"
 GEOCODE_CACHE = PACKAGE_CACHE_ROOT / "geocode_cache.json"
-SITE_BASE = os.getenv("PYRE_SITE_BASE", "https://pyreweather.org").rstrip("/")
+# Deep links in generated packages point at the app host, where /map lives.
+SITE_BASE = os.getenv("PYRE_SITE_BASE", "https://app.pyreweather.org").rstrip("/")
 SYNOPTIC_HOURS = "00,06,12,18"
 PACKAGE_TTL = timedelta(hours=24)
 CLEANUP_INTERVAL = timedelta(minutes=30)

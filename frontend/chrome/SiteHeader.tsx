@@ -12,6 +12,7 @@ import { AuthModal } from '../app/auth/AuthModal'
 import { LibraryModal } from '../app/map/projects/LibraryModal'
 import { recipeShareUrl, type MapRecipe } from '../mapRecipe'
 import type { SavedMap } from '../lib/library'
+import { navHref } from '../lib/siteUrls'
 import AdminStatsPanel from './AdminStatsPanel'
 
 const NAV_LINKS = [
@@ -59,7 +60,7 @@ export function SiteHeader() {
   const navLink = (href: string, label: string, mobile = false) => (
     <Link
       key={href}
-      href={href}
+      href={navHref(href, pathname)}
       onClick={() => setMobileMenuOpen(false)}
       className={
         mobile
@@ -77,7 +78,7 @@ export function SiteHeader() {
 
   return (
     <header className="relative bg-slate-900 border-b border-slate-700 px-5 py-2 flex items-center gap-4">
-      <Link href="/" className="flex items-center gap-2 shrink-0">
+      <Link href={navHref('/', pathname)} className="flex items-center gap-2 shrink-0">
         <img src="/logo-mark.png" alt="" className="h-5 w-5" />
         <span className="font-bold tracking-tight text-sm text-slate-100">PyRe Weather</span>
       </Link>
@@ -107,7 +108,7 @@ export function SiteHeader() {
                   {isAdmin && (
                     <>
                       {ADMIN_LINKS.map(({ href, label, Icon }) => (
-                        <Link key={href} href={href} onClick={() => setAccountMenuOpen(false)}
+                        <Link key={href} href={navHref(href, pathname)} onClick={() => setAccountMenuOpen(false)}
                           className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-800">
                           <Icon size={14} /> {label}
                         </Link>
@@ -161,7 +162,7 @@ export function SiteHeader() {
                   {isAdmin && (
                     <>
                       {ADMIN_LINKS.map(({ href, label, Icon }) => (
-                        <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}
+                        <Link key={href} href={navHref(href, pathname)} onClick={() => setMobileMenuOpen(false)}
                           className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800">
                           <Icon size={14} /> {label}
                         </Link>
