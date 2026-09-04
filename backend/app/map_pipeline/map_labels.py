@@ -78,8 +78,16 @@ def map_date_label(
     def climo_ref() -> str:
         source = climo_source_labels.get(climo_source, climo_source)
         # The hourly baseline is specific to the analysis hour, so the label
-        # names it — "May 4 18z", not just "May 4" (#72).
-        hour_tag = f" {req.hour}z" if climo_source in {"r1-4xdaily", "core-3hourly"} else ""
+        # names it — "May 4 18z", not just "May 4" (#72). Pairs and multi-hour
+        # slices match each member's own hour, so the label says so instead.
+        # Ranges/slices keep the baseline line terse (source + period only);
+        # how per-member matching works is FAQ material, not title material.
+        if selection.pairs_mode:
+            return f"Baseline: {source} {climo_period}"
+        hour_tag = ""
+        if climo_source in {"r1-4xdaily", "core-3hourly"}:
+            member_hours = {h for _, h in selection.date_hour_members}
+            hour_tag = f" {req.hour}z" if req.hour and len(member_hours) <= 1 else ""
         if selection.monthly_mode:
             return f"Baseline: {selection_months_label()} · {source} {climo_period}"
         if len(selection.date_list) > 1:
@@ -108,8 +116,18 @@ def map_date_label(
             return f"Monthly {mode_label} · {period}{obs_source_tag}\n{climo_ref()}"
         return f"Monthly composite · {period}{obs_source_tag}"
 
+    def pairs_span_label() -> str:
+        members = selection.date_hour_members
+        first_d, first_h = members[0]
+        last_d, last_h = members[-1]
+        if selection.selection_mode == "list" and len(members) <= 4:
+            return ", ".join(f"{fmt(d)} {h}z" for d, h in members)
+        return f"{fmt(first_d)} {first_h}z – {fmt(last_d)} {last_h}z  ({len(members)} 3-hr intervals)"
+
     if req.mode in ("anomaly", "normalized"):
         mode_label = mode_labels[(req.mode, use_vector_wind_anomaly)]
+        if selection.pairs_mode:
+            return f"3-hourly {mode_label} · {pairs_span_label()}\n{climo_ref()}"
         if selection.is_daily_composite:
             hours_label = "/".join(h + "z" for h in selection.daily_hours)
             if len(selection.date_list) == 1:
@@ -129,6 +147,8 @@ def map_date_label(
             obs_time = f"{fmt(selection.date_list[0])} {req.hour}z"
         return f"{mode_label.capitalize()} · {obs_time}\n{climo_ref()}"
 
+    if selection.pairs_mode:
+        return pairs_span_label()
     if selection.is_daily_composite:
         hours_label = "/".join(h + "z" for h in selection.daily_hours)
         if req.variable == "precip_total":

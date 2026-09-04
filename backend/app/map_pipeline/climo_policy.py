@@ -4,6 +4,7 @@ import logging
 from typing import Protocol
 
 from ..config import R1_4XDAY_FIELDS, VARIABLES, supported_climo_sources
+from ..retrieval import SYNOPTIC_HOURS
 from .time_selection import TimeSelection
 
 log = logging.getLogger("pyre.api")
@@ -113,6 +114,23 @@ def _resolve_for_cadence(req: ClimoRequest, selection: TimeSelection) -> str:
             MONTHLY_FALLBACK_CLIMO_SOURCE,
         )
         return MONTHLY_FALLBACK_CLIMO_SOURCE
+
+    # SLICE-CLIMO (docs/TIME_SELECTION_PLAN.md, Decision 3): a non-synoptic
+    # slice (e.g. 03z+18z across dates) is hour-specific, so its anomaly
+    # baseline hour-matches each member. The synoptic-4 set stays on the
+    # daily-mean baseline (it IS a daily mean), and normalized mode keeps the
+    # daily-mean baseline too — the hourly source carries no sigma.
+    if (
+        req.mode == "anomaly"
+        and selection.is_daily_composite
+        and set(selection.daily_hours) != set(SYNOPTIC_HOURS)
+        and has_hourly_baseline(req.variable)
+    ):
+        log.info(
+            "CLIMO    non-synoptic slice → r1-4xdaily"
+            " (each member compared against the normal for its own hour)",
+        )
+        return HOURLY_CLIMO_SOURCE
 
     # Single-hour maps compare against that hour's normal; a daily mean would
     # leave the diurnal cycle inside the anomaly (#72).

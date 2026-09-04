@@ -127,18 +127,43 @@ Stale irrelevant params are ignored when `time_scale` makes intent clear
 
 ### Phase 2 — Canonical contract + pair-aware fetch (backend)
 
-- [ ] `time_scale` gate in the parser; new canonical params + validation
-  (3-hourly grid, ordered ranges, 372-member cap, clear 422s).
-- [ ] Hour-absence detection for legacy bare-date daily (Decision 2), including
-  the 0b caller fixes.
-- [ ] Pair-aware fetch path driven by `date_hour_members` through
-  `gather_composite_members` (keeps the structured 404 `{message, missing,
-  total}` contract).
-- [ ] Per-member hour-matched climatology (r1-4xdaily, day+hour weighted) for
-  anomaly/normalized ranges and slices.
-- [ ] New selection kind added or explicitly declined in EVERY dispatch table:
-  obs fetchers, wind components, MSLP/H-L centers, contour overlays,
-  `map_labels`, `request_logging`.
+Done 2026-09-03 (both stages). Suite: 332 passing (corpus grew to 32 shape
+cases + 20 rejections; new `tests/test_pairs_fetch_plan.py` + 5 endpoint
+tests in `tests/test_request_guards.py`).
+
+- [x] `time_scale` gate in the parser (`_parse_canonical` in
+  time_selection.py); all canonical params + validation (3-hourly grid,
+  ordered ranges, member cap, duplicate rejection, clear 422s). Cap
+  constants moved to time_selection.py as the single source; main.py
+  imports them. `time_scale=climatology` 422s with guidance (Decision 5).
+- [x] Hour-absence detection (Decision 2): endpoint + MapRequest `hour`
+  default changed "00" → ""; bare date/dates with no hour param expand to
+  the synoptic daily composite. precip_total exempt (falls back to the old
+  00z ending hour). Explicit `hour=00` stays a snapshot (endpoint test).
+- [x] Pairs fetch path: `_mean_pairs_obs` + `PAIR_MEMBER_FETCHERS` registry
+  in fetch_plan.py, one entry per single-member fetch kind, all through
+  `gather_composite_members` (structured 404 contract preserved).
+  precip_total deliberately excluded — endpoint 422s 3-hourly range/list
+  for it ("use precip_window").
+- [x] Hour-matched climatology: `fetch_climo`/`fetch_wind_climo_components`
+  take an hour override; `_member_day_hour_counts` weights per
+  (month, day, hour); `fetch_daily_climo_for_selection` and the wind
+  variant use it whenever the source is r1-4xdaily. SLICE-CLIMO in
+  climo_policy: non-synoptic slice anomalies hour-match; synoptic-4 and
+  normalized keep the daily-mean baseline (r1 carries no sigma).
+  map_service routes any multi-member sub-monthly selection through the
+  weighted fetchers and passes the member hour on single-member paths.
+- [x] "pairs" kind covered in every dispatch table: OBS_FETCHERS,
+  WIND_COMPONENT_FETCHERS, MSLP (`_mean_named_level_pairs`), contour
+  overlays (height/temp/2m-temp branches), `map_labels` (span labels +
+  "(hour-matched)" baseline tag), `request_logging`/`period_description`.
+  Completeness asserted by test_pairs_dispatch_covers_every_single_variable_kind.
+
+- [x] Live smoke check (Suzanne, 2026-09-03): midnight-crossing range map
+  compared against its four single-hour maps — correct. Titles simplified to
+  her wording: raw `2026-08-31 21z – 2026-09-01 06z  (4 3-hr intervals)`,
+  anomaly `3-hourly anomaly · <span>` with baseline line reduced to source +
+  period.
 
 ### Phase 3 — Frontend
 
@@ -150,6 +175,9 @@ Stale irrelevant params are ignored when `time_scale` makes intent clear
 - [ ] Saved-recipe loader maps legacy 3-hourly `range` rows to `slice`.
 - [ ] `dataGap.ts` retry surgery learns `start_time`/`end_time`/`times`.
 - [ ] Popup notice for URL-borne bare-date links whose meaning changed.
+- [ ] URL normalization: after parsing a legacy URL into the recipe, rewrite
+  the address bar to the canonical params (router.replace, no reload) so
+  copied/re-shared links leave the legacy shapes behind.
 - [ ] Labels: Range = continuous span with both endpoints; Slice = hour(s) @
   dates. Scale-switch stale-state cleanup.
 - [ ] Smoke matrix: every scale x single/range/list/slice, old links, saved
@@ -162,10 +190,25 @@ Stale irrelevant params are ignored when `time_scale` makes intent clear
 - [ ] Update PROJECT.md, docs/smoke-checklist.md, FAQ.md if user-visible.
 - [ ] Legacy parser is permanent; no stored content rewritten.
 
-## Spun-off issues (file separately, not in this effort)
+## Spun-off issues (filed 2026-09-03; this effort is #139)
 
-- [ ] Member caps / request cost / rate limiting / pro-tier lever.
-- [ ] Regroup time-scale vs climatology controls in the map builder UI.
+- [ ] #142 Member caps / request cost / rate limiting / pro-tier lever.
+- [ ] #143 Regroup time-scale vs climatology controls in the map builder UI.
+- [ ] #140 Unify accumulation under range semantics: the aggregation operator
+  (mean vs sum) is a per-variable property, so a range over an accumulating
+  variable should sum its members instead of erroring. `precip_window`
+  becomes UI sugar over a range; no new `*_window` params for future
+  accumulating variables. (Suzanne, 2026-09-03: "windows are just ranges.")
+- [ ] FAQ entries (with Phase 4 docs): "what is an anomaly of a composite?"
+  and an R1-vs-R2 baseline cheat sheet (which source, what cadence, when
+  each is used, why two anomaly requests for the same weather can differ
+  slightly). (Done early: FAQ #24 on why daily = 4 synoptic times,
+  2026-09-03.)
+- [ ] #141 Generalize the r2-daily-15day windowed baseline beyond PWAT. Variables
+  that swing hard hour to hour (precip when its anomalies get implemented,
+  possibly others) likely need the WPC-style centered 15-day mean/σ rather
+  than a single-day normal. Collect the NCEP PSL / WPC reference pages on
+  anomaly construction into docs as part of this.
 
 ## Audit results (0a, production, 2026-09-03)
 

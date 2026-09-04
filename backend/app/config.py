@@ -445,9 +445,12 @@ VARIABLES = {
         "grib_name": "PRATE",   # 0-3 hour average forecast field, not instantaneous
         "flx_level": "surface",
         "display_level": "surface",
-        # Precipitation anomalies need a separate product design: short-window
-        # rate anomalies are timing-sensitive and zero-heavy. Keep raw-only
-        # until accumulated/percentile-style baselines are wired.
+        # Anomaly/normalized modes are not implemented yet for precipitation.
+        # The baseline files already exist (r2_climo / r1_4xday below). To
+        # implement: add sources to climo_sources and decide how to handle
+        # near-zero cells — σ is tiny where rain is rare, so normalized
+        # values blow up (normalized_mask_threshold below is the start of
+        # that handling). Nothing blocks this technically.
         "climo_sources": (),
         "r2_climo": {"file": "prate.sfc", "var": "prate", "dataset": "gaussian_grid"},
         "r1_4xday": {"file": "prate.sfc", "var": "prate", "dataset": "surface_gauss"},
@@ -462,8 +465,10 @@ VARIABLES = {
         "grib_name": "PRATE",
         "flx_level": "surface",
         "display_level": "surface",
-        # Accumulated precip needs a like-for-like accumulated climatology
-        # window. Keep raw-only until that baseline is designed and wired.
+        # Anomaly mode is not implemented yet. To implement: build the normal
+        # total for the same window/ending hour by summing the R2 prate
+        # climatology (see precip_rate's r2_climo spec), then compare totals
+        # to totals. Nothing blocks this technically.
         "climo_sources": (),
         "normalized_mask_threshold": None,
     },

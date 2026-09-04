@@ -88,22 +88,26 @@ CASES = [
     ),
     # ── Legacy hand shapes ────────────────────────────────────────────────
     (
-        # DECISION-2: becomes a daily synoptic composite when hour-absence
-        # detection lands (the hour="00" default makes this a 00z snapshot
-        # today; the sender almost always meant the whole day).
+        # DECISION-2, executed Phase 2a (2026-09-03): a bare date with no
+        # hour param at all now means the whole day — the sender's
+        # near-universal intent. An explicit hour=00 stays a 00z snapshot.
         "legacy-bare-date",
         {"date": "20260901"},
-        {"obs_kind": "single", "date_list": ["20260901"], "daily_hours": [],
-         # The dataclass hour default "00" lands in the members today.
-         "date_hour_members": [("20260901", "00")]},
+        {"obs_kind": "daily", "date_list": ["20260901"],
+         "daily_hours": ["00", "06", "12", "18"], "is_daily_composite": True,
+         "date_hour_members": [("20260901", "00"), ("20260901", "06"),
+                               ("20260901", "12"), ("20260901", "18")]},
     ),
     (
-        # DECISION-2: becomes per-date daily composites.
+        # DECISION-2, executed Phase 2a: bare dates expand per-date.
         "legacy-bare-dates",
         {"dates": "20260829,20260830"},
-        {"obs_kind": "composite", "date_list": ["20260829", "20260830"],
-         "daily_hours": [],
-         "date_hour_members": [("20260829", "00"), ("20260830", "00")]},
+        {"obs_kind": "daily", "date_list": ["20260829", "20260830"],
+         "daily_hours": ["00", "06", "12", "18"],
+         "date_hour_members": [("20260829", "00"), ("20260829", "06"),
+                               ("20260829", "12"), ("20260829", "18"),
+                               ("20260830", "00"), ("20260830", "06"),
+                               ("20260830", "12"), ("20260830", "18")]},
     ),
     (
         # SLICE-CLIMO: same cartesian members forever; Phase 2 names this a
@@ -167,6 +171,100 @@ CASES = [
         {"months": "20269"},
         {"obs_kind": "monthly", "year_months": [(2026, 9)]},
     ),
+    # ── Canonical v2 contract (time_scale gate) ───────────────────────────
+    (
+        "canonical-3hourly-single",
+        {"time_scale": "3-hourly", "date_mode": "single",
+         "date": "20260901", "hour": "09"},
+        {"obs_kind": "single", "selection_mode": "single",
+         "date_hour_members": [("20260901", "09")], "pairs_mode": False},
+    ),
+    (
+        # Continuous range crossing midnight: 21z Sep 1 through 06z Sep 2.
+        "canonical-3hourly-range-midnight",
+        {"time_scale": "3-hourly", "date_mode": "range",
+         "start_time": "2026090121", "end_time": "2026090206"},
+        {"obs_kind": "pairs", "selection_mode": "range", "pairs_mode": True,
+         "date_list": ["20260901", "20260902"],
+         "date_hour_members": [("20260901", "21"), ("20260902", "00"),
+                               ("20260902", "03"), ("20260902", "06")]},
+    ),
+    (
+        "canonical-3hourly-list",
+        {"time_scale": "3-hourly", "date_mode": "list",
+         "times": "2026090109,2026090218"},
+        {"obs_kind": "pairs", "selection_mode": "list",
+         "date_hour_members": [("20260901", "09"), ("20260902", "18")]},
+    ),
+    (
+        # Slice: hours x dates, the one deliberate cartesian product.
+        "canonical-3hourly-slice-multi-hour",
+        {"time_scale": "3-hourly", "date_mode": "slice",
+         "dates": "20260901,20260902", "hours": "03,18"},
+        {"obs_kind": "daily", "selection_mode": "slice",
+         "daily_hours": ["03", "18"],
+         "date_hour_members": [("20260901", "03"), ("20260901", "18"),
+                               ("20260902", "03"), ("20260902", "18")]},
+    ),
+    (
+        "canonical-3hourly-slice-single-hour",
+        {"time_scale": "3-hourly", "date_mode": "slice",
+         "dates": "20260901,20260903", "hour": "21"},
+        {"obs_kind": "daily", "selection_mode": "slice",
+         "daily_hours": ["21"],
+         "date_hour_members": [("20260901", "21"), ("20260903", "21")]},
+    ),
+    (
+        # Stale hour is ignored when time_scale makes intent clear.
+        "canonical-daily-single-ignores-stale-hour",
+        {"time_scale": "daily", "date_mode": "single",
+         "date": "20260901", "hour": "09"},
+        {"obs_kind": "daily", "selection_mode": "single",
+         "daily_hours": ["00", "06", "12", "18"],
+         "date_hour_members": [("20260901", "00"), ("20260901", "06"),
+                               ("20260901", "12"), ("20260901", "18")]},
+    ),
+    (
+        "canonical-daily-range",
+        {"time_scale": "daily", "date_mode": "range",
+         "start_date": "20260901", "end_date": "20260903"},
+        {"obs_kind": "daily", "selection_mode": "range",
+         "date_list": ["20260901", "20260902", "20260903"]},
+    ),
+    (
+        "canonical-daily-list",
+        {"time_scale": "daily", "date_mode": "list",
+         "dates": "20260901,20260905"},
+        {"obs_kind": "daily", "selection_mode": "list",
+         "date_list": ["20260901", "20260905"]},
+    ),
+    (
+        "canonical-monthly-single",
+        {"time_scale": "monthly", "date_mode": "single", "month": "202609"},
+        {"obs_kind": "monthly", "selection_mode": "single",
+         "year_months": [(2026, 9)], "month_members": [(2026, 9)]},
+    ),
+    (
+        # Month range crossing a year boundary.
+        "canonical-monthly-range-year-crossing",
+        {"time_scale": "monthly", "date_mode": "range",
+         "start_month": "202611", "end_month": "202702"},
+        {"obs_kind": "monthly", "selection_mode": "range",
+         "year_months": [(2026, 11), (2026, 12), (2027, 1), (2027, 2)]},
+    ),
+    (
+        "canonical-monthly-list",
+        {"time_scale": "monthly", "date_mode": "list",
+         "months": "202601,202603"},
+        {"obs_kind": "monthly", "selection_mode": "list",
+         "year_months": [(2026, 1), (2026, 3)]},
+    ),
+    (
+        # date_mode defaults to single under the gate.
+        "canonical-default-date-mode",
+        {"time_scale": "3-hourly", "date": "20260901", "hour": "12"},
+        {"obs_kind": "single", "selection_mode": "single"},
+    ),
 ]
 
 
@@ -185,6 +283,55 @@ REJECTIONS = [
     ("malformed-month", {"months": "202613"}, "invalid month"),
     ("dates-only-commas", {"dates": ",,,"}, "no valid YYYYMMDD"),
     ("months-only-commas", {"months": ","}, "no valid YYYYMM"),
+    # ── Canonical v2 rejections ───────────────────────────────────────────
+    ("canonical-bad-scale", {"time_scale": "hourly", "date": "20260901"},
+     "time_scale must be one of"),
+    ("canonical-climatology-scale",
+     {"time_scale": "climatology", "months": "200007"},
+     "mode=climatology"),
+    ("canonical-bad-date-mode",
+     {"time_scale": "daily", "date_mode": "window", "date": "20260901"},
+     "date_mode must be one of"),
+    ("canonical-single-needs-hour",
+     {"time_scale": "3-hourly", "date_mode": "single", "date": "20260901"},
+     "requires 'hour'"),
+    ("canonical-range-needs-times",
+     {"time_scale": "3-hourly", "date_mode": "range"},
+     "requires 'start_time' and 'end_time'"),
+    ("canonical-range-backwards",
+     {"time_scale": "3-hourly", "date_mode": "range",
+      "start_time": "2026090212", "end_time": "2026090109"},
+     "end_time is before start_time"),
+    ("canonical-range-off-grid-hour",
+     {"time_scale": "3-hourly", "date_mode": "range",
+      "start_time": "2026090101", "end_time": "2026090212"},
+     "hour must be one of"),
+    # 47 days x 8 hours = 376 members > 372 cap.
+    ("canonical-range-over-cap",
+     {"time_scale": "3-hourly", "date_mode": "range",
+      "start_time": "2026010100", "end_time": "2026021621"},
+     "too many time members"),
+    ("canonical-list-duplicate-times",
+     {"time_scale": "3-hourly", "date_mode": "list",
+      "times": "2026090109,2026090109"},
+     "duplicate"),
+    ("canonical-slice-needs-hours",
+     {"time_scale": "3-hourly", "date_mode": "slice", "dates": "20260901"},
+     "requires 'hours'"),
+    ("canonical-daily-slice-invalid",
+     {"time_scale": "daily", "date_mode": "slice", "dates": "20260901"},
+     "slice applies to time_scale=3-hourly"),
+    ("canonical-daily-range-backwards",
+     {"time_scale": "daily", "date_mode": "range",
+      "start_date": "20260905", "end_date": "20260901"},
+     "end_date is before start_date"),
+    ("canonical-monthly-needs-month",
+     {"time_scale": "monthly", "date_mode": "single"},
+     "requires 'month'"),
+    ("canonical-monthly-range-backwards",
+     {"time_scale": "monthly", "date_mode": "range",
+      "start_month": "202609", "end_month": "202601"},
+     "end_month is before start_month"),
 ]
 
 

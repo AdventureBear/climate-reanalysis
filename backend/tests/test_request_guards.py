@@ -416,7 +416,9 @@ def test_pwat_normalized_available_for_single_hour_and_daily(monkeypatch):
     assert captured == {
         "requests": [
             ("normalized", "precipitable_water", "12", ""),
-            ("normalized", "precipitable_water", "00", "00,06,12,18"),
+            # hour stays "" when not sent (Decision 2: absence is meaningful
+            # now); the daily composite is driven by hours, not hour.
+            ("normalized", "precipitable_water", "", "00,06,12,18"),
         ],
     }
 
@@ -438,7 +440,7 @@ def test_non_pwat_normalized_single_hour_stays_blocked(monkeypatch):
     )
 
     assert response.status_code == 422
-    assert "single-hour maps" in response.json()["detail"]
+    assert "3-hourly maps" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -1188,3 +1190,86 @@ def test_unexpected_failure_does_not_echo_the_exception(monkeypatch, caplog):
     for secret in _LEAKY:
         assert secret not in detail
     assert "secret.nc" in caplog.text
+
+
+# ── Canonical v2 time params (Phase 2, docs/TIME_SELECTION_PLAN.md) ─────────
+
+def test_canonical_range_reaches_map_request(monkeypatch):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["req"] = req
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "time_scale": "3-hourly", "date_mode": "range",
+        "start_time": "2026010121", "end_time": "2026010206",
+        "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 200
+    req = captured["req"]
+    assert (req.time_scale, req.start_time, req.end_time) == ("3-hourly", "2026010121", "2026010206")
+
+
+def test_canonical_range_future_end_time_is_guarded(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "time_scale": "3-hourly", "date_mode": "range",
+        "start_time": "2099010100", "end_time": "2099010206",
+        "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 422
+    assert "prior to" in response.json()["detail"]
+
+
+def test_canonical_precip_total_range_rejected(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "time_scale": "3-hourly", "date_mode": "range",
+        "start_time": "2026010121", "end_time": "2026010206",
+        "variable": "precip_total", "level": "1000", "region": "CONUS",
+    })
+    assert response.status_code == 422
+    assert "precip_window" in response.json()["detail"]
+
+
+def test_legacy_bare_date_becomes_daily_composite(monkeypatch):
+    """Decision 2 at the endpoint: no hour param at all -> synoptic daily."""
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["req"] = req
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "date": "20260101", "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 200
+    from app.map_pipeline.time_selection import parse_time_selection
+    selection = parse_time_selection(captured["req"])
+    assert selection.obs_kind == "daily"
+    assert selection.daily_hours == ["00", "06", "12", "18"]
+
+
+def test_legacy_explicit_hour_zero_stays_snapshot(monkeypatch):
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["req"] = req
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "date": "20260101", "hour": "00", "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 200
+    from app.map_pipeline.time_selection import parse_time_selection
+    selection = parse_time_selection(captured["req"])
+    assert selection.obs_kind == "single"

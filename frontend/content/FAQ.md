@@ -385,4 +385,16 @@ PyRe plots MSLET, the closest GFS-comparable reduction CORe publishes (CORe has 
 
 ---
 
-*Last updated: 2026-07-09 — add new Q&A pairs at the appropriate level as they arise.*
+## 24. Why do daily maps average only 00z/06z/12z/18z when CORe has data every 3 hours?
+
+Two reasons, and the first is the one that matters.
+
+**Like-for-like anomalies.** The daily climatology baseline (the NCEP R2 daily normal that a daily anomaly subtracts) is itself built from the four synoptic analysis times: 00z, 06z, 12z, and 18z. PyRe's daily observation average uses the same four times, so the anomaly compares two quantities constructed the same way. Averaging all eight 3-hourly times against a four-time baseline would add a small systematic offset wherever the daily cycle is asymmetric — temperature especially.
+
+**Cost.** Four fetches instead of eight.
+
+An eight-time daily mean is still available: request a 3-hourly range from 00z through 21z of one day. Its anomaly compares each of the eight times against the normal for that specific hour (the R1 4×-daily baseline) instead of the R2 daily normal, so it is close to — but not identical to — the standard daily anomaly. The same weather requested both ways can differ slightly because the two baselines come from different reanalysis datasets.
+
+---
+
+*Last updated: 2026-09-03 — add new Q&A pairs at the appropriate level as they arise.*

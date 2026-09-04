@@ -177,6 +177,87 @@ def _mean_flx_wind_components(date_hour_pairs: list[tuple[str, str]], *, skip_mi
     return u_mean, v_mean
 
 
+def _mean_pairs_obs(req: FetchRequest, sel: TimeSelection, grib_name: str):
+    """Observation mean over exact (date, hour) members — the pairs path for
+    canonical 3-hourly ranges and lists. One member = one fetch, folded through
+    the shared missing-member policy exactly like every other composite."""
+    fetch_one = PAIR_MEMBER_FETCHERS[_variable_fetch_key(req.variable)]
+    acc = _RunningMean()
+    with ThreadPoolExecutor(max_workers=min(len(sel.date_hour_members), 8)) as pool:
+        futures = {pool.submit(fetch_one, req, grib_name, date, hour): f"{date} {hour}z"
+                   for date, hour in sel.date_hour_members}
+        _, missing = gather_composite_members(
+            futures, skip_missing=bool(req.skip_missing), consume=acc.add)
+    mean = acc.mean()
+    if missing:
+        mean.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
+    return mean
+
+
+# One entry per _variable_fetch_key, each fetching a single (date, hour)
+# member. precip_total is deliberately absent: an accumulation over a span is
+# a precip_window question, not a mean of members (rejected at the endpoint).
+PAIR_MEMBER_FETCHERS: dict[str, Callable] = {
+    "wind_speed": lambda req, grib, d, h: fetch_wind_speed(d, h, req.level),
+    "relative_vorticity": lambda req, grib, d, h: fetch_relative_vorticity(d, h, req.level),
+    "rel_humidity": lambda req, grib, d, h: fetch_relative_humidity(d, h, req.level),
+    "rel_humidity_2m": lambda req, grib, d, h: fetch_relative_humidity_2m(d, h),
+    "precip_rate": lambda req, grib, d, h: fetch_precip_rate(d, h),
+    "field": lambda req, grib, d, h: fetch_field(d, h, grib, req.level),
+    "pgb_named_level": lambda req, grib, d, h: _pgb_named_level_field(req, d, h),
+    "derived_named_level": lambda req, grib, d, h: _derived_named_level_field(req, d, h),
+    "flx": lambda req, grib, d, h: _flx_field(req, d, h),
+}
+
+
+def _mean_wind_components_pairs(req: FetchRequest, members: list[tuple[str, str]]):
+    """Pressure-level (U, V) means over exact (date, hour) members."""
+    u_acc, v_acc = _RunningMean(), _RunningMean()
+
+    def consume(pair):
+        u_acc.add(pair[0])
+        v_acc.add(pair[1])
+
+    with ThreadPoolExecutor(max_workers=min(len(members), 8)) as pool:
+        futures = {pool.submit(fetch_wind_components, d, h, req.level): f"{d} {h}z"
+                   for d, h in members}
+        _, missing = gather_composite_members(
+            futures, skip_missing=bool(req.skip_missing), consume=consume)
+    u_mean, v_mean = u_acc.mean(), v_acc.mean()
+    if missing:
+        skipped = ", ".join(sorted(missing))
+        u_mean.attrs["_pyre_skipped_members"] = skipped
+        v_mean.attrs["_pyre_skipped_members"] = skipped
+    return u_mean, v_mean
+
+
+def _mean_named_level_pairs(members: list[tuple[str, str]], grib: str, level_name: str, *, skip_missing: bool):
+    """Named-level pgb field mean over exact (date, hour) members (MSLP)."""
+    acc = _RunningMean()
+    with ThreadPoolExecutor(max_workers=min(len(members), 8)) as pool:
+        futures = {pool.submit(fetch_field_by_level_name, d, h, grib, level_name): f"{d} {h}z"
+                   for d, h in members}
+        _, missing = gather_composite_members(futures, skip_missing=skip_missing, consume=acc.add)
+    mean = acc.mean()
+    if missing:
+        mean.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
+    return mean
+
+
+def _mean_field_pairs(req: FetchRequest, members: list[tuple[str, str]], grib: str, level):
+    """Pressure-level field mean over exact (date, hour) members (overlays)."""
+    acc = _RunningMean()
+    with ThreadPoolExecutor(max_workers=min(len(members), 8)) as pool:
+        futures = {pool.submit(fetch_field, d, h, grib, level): f"{d} {h}z"
+                   for d, h in members}
+        _, missing = gather_composite_members(
+            futures, skip_missing=bool(req.skip_missing), consume=acc.add)
+    mean = acc.mean()
+    if missing:
+        mean.attrs["_pyre_skipped_members"] = ", ".join(sorted(missing))
+    return mean
+
+
 ClimoFetcher = Callable[[int, int, int, str], tuple]
 
 
@@ -288,6 +369,12 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
     ("single", "flx"): lambda req, sel, _grib: _flx_field(req, sel.date_list[0], req.hour),
 }
 
+# Pairs selections (canonical 3-hourly range/list) share one generic
+# implementation: the per-member fetcher table above drives every variable
+# that has a single-member fetch. precip_total is excluded on purpose.
+for _pair_key in PAIR_MEMBER_FETCHERS:
+    OBS_FETCHERS[("pairs", _pair_key)] = lambda req, sel, grib: _mean_pairs_obs(req, sel, grib)
+
 
 WindFetcher = Callable[[FetchRequest, TimeSelection], tuple]
 
@@ -302,10 +389,13 @@ WIND_COMPONENT_FETCHERS: dict[str, WindFetcher] = {
     "single": lambda req, sel: fetch_flx_wind_components(sel.date_list[0], req.hour)
     if _uses_10m_wind_overlay(req.variable)
     else fetch_wind_components(sel.date_list[0], req.hour, req.level),
+    "pairs": lambda req, sel: _mean_flx_wind_components(sel.date_hour_members, skip_missing=bool(req.skip_missing))
+    if _uses_10m_wind_overlay(req.variable)
+    else _mean_wind_components_pairs(req, sel.date_hour_members),
 }
 
 
-def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib_name: str):
+def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib_name: str, *, hour: int | None = None):
     if climo_source == "core-3hourly":
         if req.variable != "precipitable_water":
             raise ValueError(f"core-3hourly climatology is only wired for PWAT, not {req.variable!r}")
@@ -321,7 +411,9 @@ def fetch_climo(req: FetchRequest, climo_source: str, month: int, day: int, grib
     # the LTM files carry no sigma, which is why 3-hourly normalized mode is
     # not offered; std is returned as None and never read on this path.
     if climo_source == HOURLY_CLIMO_SOURCE:
-        hour = int(req.hour)
+        # Callers with heterogeneous member hours (pairs, multi-hour slices)
+        # pass hour explicitly; single-hour requests fall back to req.hour.
+        hour = int(req.hour) if hour is None else hour
         hourly_spec = VARIABLES[req.variable].get("r1_4xday")
         if hourly_spec is not None:
             return get_r1_hourly_climo_spec(hourly_spec, req.level, month, day, hour), None
@@ -378,7 +470,37 @@ def _calendar_day_counts(dates: list[str]) -> list[tuple[tuple[int, int], int]]:
     return sorted(counts.items())
 
 
+def _member_day_hour_counts(selection: TimeSelection) -> list[tuple[tuple[int, int, int], int]]:
+    """Weight each unique (month, day, hour) by how many members carry it —
+    the hour-matched analogue of _calendar_day_counts, for the r1-4xdaily
+    baseline under pairs selections and multi-hour slices (Feb 29 folds)."""
+    counts: dict[tuple[int, int, int], int] = {}
+    for date, hour in selection.date_hour_members:
+        month, day = int(date[4:6]), int(date[6:8])
+        if (month, day) == (2, 29):
+            month, day = 2, 28
+        key = (month, day, int(hour))
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items())
+
+
 def fetch_daily_climo_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection, grib_name: str):
+    # Hour-matched baseline: weight per (month, day, hour) member so a range
+    # crossing midnight (or a 03z+18z slice) compares each member against the
+    # normal for its own hour, not one borrowed hour.
+    if climo_source == HOURLY_CLIMO_SOURCE:
+        member_weights = _member_day_hour_counts(selection)
+        if len(member_weights) == 1:
+            (month, day, hour), _ = member_weights[0]
+            return fetch_climo(req, climo_source, month, day, grib_name, hour=hour)
+        total = sum(weight for _, weight in member_weights)
+        climo_data = [
+            (weight, fetch_climo(req, climo_source, month, day, grib_name, hour=hour))
+            for (month, day, hour), weight in member_weights
+        ]
+        mean = sum(weight * cm for weight, (cm, _) in climo_data) / total
+        return mean, None  # the hourly baseline is mean-only
+
     days = _calendar_day_counts(selection.date_list)
     if len(days) == 1:
         (month, day), _ = days[0]
@@ -394,9 +516,9 @@ def fetch_daily_climo_for_selection(req: FetchRequest, climo_source: str, select
     return mean, std
 
 
-def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int, day: int):
+def fetch_wind_climo_components(req: FetchRequest, climo_source: str, month: int, day: int, *, hour: int | None = None):
     if climo_source == HOURLY_CLIMO_SOURCE:
-        hour = int(req.hour)
+        hour = int(req.hour) if hour is None else hour
         spec = VARIABLES[req.variable].get("r1_4xday")
         if spec is not None and spec.get("derive") == "wind_speed":
             return (get_r1_hourly_climo(spec["u"], req.level, month, day, hour),
@@ -439,6 +561,8 @@ def fetch_mslp_field_for_selection(req: FetchRequest, selection: TimeSelection):
         return fetch_named_level_field_composite(selection.date_list, req.hour, grib, level_name, skip_missing=bool(req.skip_missing))
     if kind == "daily":
         return fetch_named_level_field_daily_composite(selection.date_list, selection.daily_hours, grib, level_name, skip_missing=bool(req.skip_missing))
+    if kind == "pairs":
+        return _mean_named_level_pairs(selection.date_hour_members, grib, level_name, skip_missing=bool(req.skip_missing))
     # Monthly selections use the monthly archive (PRES:MSL reduction).
     return fetch_monthly_named_level_composite(
         selection.year_months, cfg["monthly_grib_name"], cfg["monthly_level_name"]
@@ -491,6 +615,8 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
             return fetch_field(selection.date_list[0], req.hour, "HGT", level), meta
         if kind_key == "composite":
             return fetch_field_composite(selection.date_list, req.hour, "HGT", level, skip_missing=bool(req.skip_missing)), meta
+        if kind_key == "pairs":
+            return _mean_field_pairs(req, selection.date_hour_members, "HGT", level), meta
         return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "HGT", level, skip_missing=bool(req.skip_missing)), meta
 
     if kind == "temp":
@@ -508,6 +634,8 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
                 return fetch_flx_field(selection.date_list[0], req.hour, cfg["grib_name"], cfg["flx_level"]), meta
             if kind_key == "composite":
                 return _mean_named_flx_pairs([(d, req.hour) for d in selection.date_list], cfg["grib_name"], cfg["flx_level"]), meta
+            if kind_key == "pairs":
+                return _mean_named_flx_pairs(selection.date_hour_members, cfg["grib_name"], cfg["flx_level"]), meta
             return _mean_named_flx_pairs(
                 [(d, h) for d in selection.date_list for h in selection.daily_hours], cfg["grib_name"], cfg["flx_level"]
             ), meta
@@ -521,6 +649,8 @@ def fetch_contour_overlay_field(kind: str, req: FetchRequest, selection: TimeSel
             return fetch_field(selection.date_list[0], req.hour, "TMP", level), meta
         if kind_key == "composite":
             return fetch_field_composite(selection.date_list, req.hour, "TMP", level, skip_missing=bool(req.skip_missing)), meta
+        if kind_key == "pairs":
+            return _mean_field_pairs(req, selection.date_hour_members, "TMP", level), meta
         return fetch_field_daily_composite(selection.date_list, selection.daily_hours, "TMP", level, skip_missing=bool(req.skip_missing)), meta
 
     return None, f"unknown contour kind {kind!r}"
@@ -564,6 +694,21 @@ def fetch_weighted_wind_vector_climo(req: FetchRequest, climo_source: str, selec
 
 
 def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection):
+    # Same hour-matched weighting as fetch_daily_climo_for_selection.
+    if climo_source == HOURLY_CLIMO_SOURCE:
+        member_weights = _member_day_hour_counts(selection)
+        if len(member_weights) == 1:
+            (month, day, hour), _ = member_weights[0]
+            return fetch_wind_climo_components(req, climo_source, month, day, hour=hour)
+        total = sum(weight for _, weight in member_weights)
+        comps = [
+            (weight, fetch_wind_climo_components(req, climo_source, month, day, hour=hour))
+            for (month, day, hour), weight in member_weights
+        ]
+        mean_u = sum(weight * cu for weight, (cu, _) in comps) / total
+        mean_v = sum(weight * cv for weight, (_, cv) in comps) / total
+        return mean_u, mean_v
+
     days = _calendar_day_counts(selection.date_list)
     if len(days) == 1:
         (month, day), _ = days[0]

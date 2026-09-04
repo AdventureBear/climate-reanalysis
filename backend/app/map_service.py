@@ -137,7 +137,11 @@ def create_map_buffer(req: MapRequest):
     if req.mode != "raw":
         step += 1
         multi_month_climo = selection.monthly_mode and len(set(m for _, m in selection.year_months)) > 1
-        multi_day_climo = (not selection.monthly_mode) and len(selection.date_list) > 1
+        # Any multi-member sub-monthly selection routes through the weighted
+        # fetchers: multiple calendar days, a pairs range within one day, or a
+        # multi-hour slice on one date all need per-member baselines. A
+        # one-calendar-day composite reduces to the same single fetch inside.
+        multi_day_climo = (not selection.monthly_mode) and len(selection.date_hour_members) > 1
         climo_what = (
             f"30-year mean + σ of {VAR_NAMES.get(req.variable, req.variable)}"
             f"  for {', '.join(cal.month_abbr[m] for m in sorted(set(mn for _, mn in selection.year_months)))}"
@@ -158,6 +162,13 @@ def create_map_buffer(req: MapRequest):
         if multi_day_climo:
             log.info("  Note    : multiple dates → mean of matching calendar-day climos")
 
+        # Canonical selections may carry no req.hour; the single-member hour
+        # comes from the selection itself (identical to req.hour when set).
+        member_hour = (
+            int(selection.date_hour_members[0][1])
+            if selection.date_hour_members else None
+        )
+
         t0 = time.perf_counter()
         if use_vector_wind_anomaly:
             if req.mode == "normalized" and multi_month_climo:
@@ -174,14 +185,18 @@ def create_map_buffer(req: MapRequest):
                 climo_u_mean, climo_v_mean = fetch_daily_wind_climo_components_for_selection(req, climo_source, selection)
             else:
                 climo_u_mean, climo_v_mean = fetch_wind_climo_components(
-                    req, climo_source, selection.obs_month, selection.obs_day
+                    req, climo_source, selection.obs_month, selection.obs_day,
+                    hour=member_hour,
                 )
         elif multi_month_climo:
             climo_mean, climo_std = fetch_climo_weighted(req, climo_source, selection, grib_name)
         elif multi_day_climo:
             climo_mean, climo_std = fetch_daily_climo_for_selection(req, climo_source, selection, grib_name)
         else:
-            climo_mean, climo_std = fetch_climo(req, climo_source, selection.obs_month, selection.obs_day, grib_name)
+            climo_mean, climo_std = fetch_climo(
+                req, climo_source, selection.obs_month, selection.obs_day, grib_name,
+                hour=member_hour,
+            )
         climo_elapsed = time.perf_counter() - t0
 
         log.info("STEP %d ✓  climatology ready  (%.1fs)", step, climo_elapsed)

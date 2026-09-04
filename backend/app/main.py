@@ -62,10 +62,14 @@ IGNORED_PARAMS_HEADER = "X-PyRe-Ignored-Params"
 
 # Request guards: every date in a composite fans out to concurrent NOAA fetches
 # (and each distinct calendar day of an r2-daily anomaly costs 30 OPeNDAP calls),
-# so unbounded lists let one URL monopolize the service.
-MAX_COMPOSITE_DATES = 93    # one season of daily composites
-MAX_COMPOSITE_MONTHS = 60   # five years of monthly means
-MAX_DAILY_COMPOSITE_FETCHES = MAX_COMPOSITE_DATES * 4
+# so unbounded lists let one URL monopolize the service. The ceilings live in
+# time_selection.py (the canonical parser enforces them too) — one source.
+from app.map_pipeline.time_selection import (  # noqa: E402
+    MAX_COMPOSITE_DATES,
+    MAX_COMPOSITE_MONTHS,
+    MAX_DAILY_COMPOSITE_FETCHES,
+    parse_time_selection,
+)
 CORE_ARCHIVE_START_DATE = "19500101"
 CORE_ARCHIVE_START_MONTH = "195001"
 DATA_AVAILABILITY_NOTE = "The data usually lag real time by 24-36 hours."
@@ -506,8 +510,19 @@ def get_map(
     dates: str = "",
     date_mode: str = "",
     months: str = "",
-    hour: str = "00",
+    # "" = no hour requested: a bare date expands to the daily synoptic
+    # composite (Decision 2, docs/TIME_SELECTION_PLAN.md).
+    hour: str = "",
     hours: str = "",
+    # Canonical v2 time params — load-bearing only when time_scale is set.
+    time_scale: str = "",
+    times: str = "",
+    start_time: str = "",
+    end_time: str = "",
+    end_date: str = "",
+    start_month: str = "",
+    end_month: str = "",
+    month: str = "",
     variable: str = "wind_speed",
     level: str = "",
     waveband: str = "",
@@ -552,6 +567,21 @@ def get_map(
     variable, level = resolved.variable, resolved.level
     if variable == "blank_map":
         mode = "raw"
+    # precip_total is exempt from bare-date-means-daily (Decision 2): its
+    # windows are anchored to an explicit ending hour, so the old 00z default
+    # stands when no hour arrives.
+    if variable == "precip_total" and not hour and not time_scale:
+        hour = "00"
+    # An accumulation over a time span is a precip_window question, not a mean
+    # of members — the pairs fetch path deliberately has no precip_total entry.
+    if variable == "precip_total" and time_scale == "3-hourly" and date_mode in {"range", "list"}:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "precip_total does not support 3-hourly range/list selections; "
+                "use a single ending time with precip_window for accumulations"
+            ),
+        )
     _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
     if fill_mode not in {"contours", "shaded", "none"}:
         raise HTTPException(status_code=422, detail="fill_mode must be 'contours', 'shaded', or 'none'")
@@ -578,7 +608,7 @@ def get_map(
             status_code=422,
             detail="wind maps need at least one layer: shading, isotachs, or barbs/vectors",
         )
-    if not months and hour not in VALID_HOURS:
+    if not months and hour and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
     _validate_precip_total_range_metadata(
         variable=variable,
@@ -590,13 +620,19 @@ def get_map(
     )
     # Single-hour products usually compare against a mean-only hourly baseline.
     # PWAT is allowed because it has an R2 daily centered 15-day mean/std path.
-    if mode == "normalized" and not hours and not months and variable != "precipitable_water":
+    # A bare date (hour absent) is a daily composite now, so it is exempt;
+    # canonical 3-hourly selections are rejected as a class below.
+    single_hour_normalized = (
+        (not time_scale and bool(hour) and not hours and not months)
+        or (time_scale == "3-hourly")
+    )
+    if mode == "normalized" and single_hour_normalized and variable != "precipitable_water":
         raise HTTPException(
             status_code=422,
             detail=(
-                "normalized mode is not available for single-hour maps: the "
+                "normalized mode is not available for 3-hourly maps: the "
                 "per-hour climatology has no standard deviation. Use the daily "
-                "composite for normalized anomalies, or anomaly mode for this hour."
+                "composite for normalized anomalies, or anomaly mode instead."
             ),
         )
     if hours:
@@ -669,15 +705,22 @@ def get_map(
             detail="CORe surface/named-level starter fields currently support 3-hourly and daily maps only.",
         )
 
-    try:
-        buf = create_map_buffer(
-            MapRequest(
+    map_request = MapRequest(
                 date=date,
                 dates=dates,
                 date_mode=date_mode,
                 months=months,
                 hour=hour,
                 hours=hours,
+                time_scale=time_scale,
+                times=times,
+                start_time=start_time,
+                end_time=end_time,
+                start_date=start_date,
+                end_date=end_date,
+                start_month=start_month,
+                end_month=end_month,
+                month=month,
                 variable=variable,
                 level=level,
                 region=region,
@@ -701,7 +744,22 @@ def get_map(
                 contours=contours,
                 skip_missing=skip_missing,
             )
-        )
+
+    if variable != "blank_map":
+        # Parse once up front: malformed time selections 422 here, and
+        # canonical params (which bypass the legacy param-based guards above)
+        # get their availability check from the expanded selection.
+        selection_preview = parse_time_selection(map_request)
+        if time_scale:
+            _validate_observation_months_available(
+                months=",".join(f"{y}{m:02d}" for y, m in selection_preview.year_months)
+            )
+            _validate_observation_dates_available(
+                date="", dates=",".join(selection_preview.date_list), start_date="", months="",
+            )
+
+    try:
+        buf = create_map_buffer(map_request)
         headers = {IGNORED_PARAMS_HEADER: ",".join(ignored_params)} if ignored_params else None
         return StreamingResponse(buf, media_type="image/png", headers=headers)
     except DataUnavailableError as exc:

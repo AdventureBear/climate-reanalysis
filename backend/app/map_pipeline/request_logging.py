@@ -67,6 +67,16 @@ def obs_description(req: RequestLogContext, selection: TimeSelection) -> tuple[s
                 f"{len(selection.date_list) * len(selection.daily_hours)} fetches concurrent → {aggregate}"
             ),
         )
+    if selection.obs_kind == "pairs":
+        first_d, first_h = selection.date_hour_members[0]
+        last_d, last_h = selection.date_hour_members[-1]
+        return (
+            f"{var_name}  |  {first_d} {first_h}z → {last_d} {last_h}z  ({len(selection.date_hour_members)} 3-hourly members)",
+            (
+                f"{obs_source} GCS archive  |  surgical byte-range  |  "
+                f"{len(selection.date_hour_members)} fetches concurrent → mean"
+            ),
+        )
     if selection.obs_kind == "composite":
         aggregate = "sum" if req.variable == "precip_total" else "mean"
         return (

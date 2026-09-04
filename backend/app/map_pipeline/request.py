@@ -9,8 +9,23 @@ class MapRequest:
     dates: str = ""
     date_mode: str = ""
     months: str = ""
-    hour: str = "00"
+    # "" means "no hour requested" — a bare date then expands to the daily
+    # synoptic composite (Decision 2, docs/TIME_SELECTION_PLAN.md). In-process
+    # callers wanting a snapshot must pass hour explicitly (they all do).
+    hour: str = ""
     hours: str = ""
+    # Canonical v2 time params — load-bearing only when time_scale is set
+    # (docs/TIME_SELECTION_PLAN.md). date_mode above joins this contract
+    # under the gate; without time_scale it stays label-only.
+    time_scale: str = ""
+    times: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    start_date: str = ""
+    end_date: str = ""
+    start_month: str = ""
+    end_month: str = ""
+    month: str = ""
     variable: str = "wind_speed"
     level: int | str | None = None
     region: str = "CONUS"
