@@ -613,14 +613,20 @@ def get_map(
         )
     if not months and hour and hour not in VALID_HOURS:
         raise HTTPException(status_code=422, detail=f"hour must be one of {VALID_HOURS}")
-    _validate_precip_total_range_metadata(
-        variable=variable,
-        date=date,
-        hour=hour,
-        start_date=start_date,
-        start_hour=start_hour,
-        precip_window=precip_window,
-    )
+    # start_date is shared between two shapes: the legacy precip_total range
+    # (start_date + start_hour, no time_scale) and the canonical daily range
+    # (time_scale=daily + start_date/end_date). Canonical requests are
+    # validated by parse_time_selection; only legacy ones carry precip
+    # range metadata.
+    if not time_scale:
+        _validate_precip_total_range_metadata(
+            variable=variable,
+            date=date,
+            hour=hour,
+            start_date=start_date,
+            start_hour=start_hour,
+            precip_window=precip_window,
+        )
     # Single-hour products usually compare against a mean-only hourly baseline.
     # PWAT is allowed because it has an R2 daily centered 15-day mean/std path.
     # A bare date (hour absent) is a daily composite now, so it is exempt;

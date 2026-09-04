@@ -1260,6 +1260,42 @@ def test_canonical_precip_total_range_rejected(monkeypatch):
     assert "precip_window" in response.json()["detail"]
 
 
+def test_canonical_daily_range_reaches_map_request(monkeypatch):
+    """start_date/end_date belong to the canonical daily range when time_scale
+    is set; the legacy precip_total range-metadata guard must not fire (#152)."""
+    captured = {}
+
+    def fake_create_map_buffer(req):
+        captured["req"] = req
+        return io.BytesIO(b"png")
+
+    monkeypatch.setattr(main_module, "create_map_buffer", fake_create_map_buffer)
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "time_scale": "daily", "date_mode": "range",
+        "start_date": "20260101", "end_date": "20260103",
+        "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 200
+    from app.map_pipeline.time_selection import parse_time_selection
+    selection = parse_time_selection(captured["req"])
+    assert selection.obs_kind == "daily"
+    assert selection.date_list == ["20260101", "20260102", "20260103"]
+
+
+def test_legacy_precip_range_metadata_guard_still_fires(monkeypatch):
+    """Without time_scale, start_date is legacy precip range metadata and stays
+    rejected for other variables."""
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "date": "20260103", "hour": "00", "start_date": "20260101", "start_hour": "00",
+        "variable": "height", "level": "500", "region": "CONUS",
+    })
+    assert response.status_code == 422
+    assert "only supported for precip_total maps" in response.json()["detail"]
+
+
 def test_legacy_bare_date_becomes_daily_composite(monkeypatch):
     """Decision 2 at the endpoint: no hour param at all -> synoptic daily."""
     captured = {}
