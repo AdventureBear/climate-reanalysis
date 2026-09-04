@@ -286,7 +286,7 @@ function isConsecutiveMonths(months: string[]) {
   return monthRange(apiMonthToIso(months[0]), apiMonthToIso(months[months.length - 1])).join(',') === months.join(',')
 }
 
-function isConsecutiveDates(dates: string[]) {
+export function isConsecutiveDates(dates: string[]) {
   if (dates.length < 2) return true
   return dateRange(apiDateToIso(dates[0]), apiDateToIso(dates[dates.length - 1])).join(',') === dates.join(',')
 }

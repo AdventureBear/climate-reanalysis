@@ -263,7 +263,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     customDates, setCustomDates,
     sliceHours, setSliceHours,
     listTimes, setListTimes,
-    syncRangeStart,
+    syncRangeStart, syncMonthRangeStart,
   } = recipe
 
   function toggleSliceHour(h: string) {
@@ -319,7 +319,14 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       return (
         <>
           {monthSubMode === 'single' && (
-            <MonthInput value={month} onChange={setMonth} className="input" />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <MonthInput value={month} onChange={setMonth} className="input" />
+              <button type="button" onClick={syncMonthRangeStart}
+                title="Set Range's start month to this month"
+                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+                <RotateCcw size={12} /> Sync range start
+              </button>
+            </div>
           )}
           {monthSubMode === 'range' && (
             <div className="flex gap-1.5 items-center flex-wrap">

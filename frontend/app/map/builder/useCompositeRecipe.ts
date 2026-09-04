@@ -19,7 +19,11 @@ import {
   type WindUnit,
   type IsotachInterval,
   AUTO_DENSITY,
+  MAX_COMPOSITE_DATES,
+  dateRange,
+  isConsecutiveDates,
   newestAllowedObservationMonth,
+  toApiDate,
 } from '../../../mapRecipe'
 import {
   MONTHLY_UNAVAILABLE_API_VARIABLES,
@@ -236,18 +240,58 @@ export function useCompositeRecipe() {
     }
   }
 
+  // Daily Range and List mirror one selection until edited: entering a view
+  // that has never been touched seeds it from the other; a view the user has
+  // edited (or a link loaded) is permanent and is never overwritten.
+  const rangeDirtyRef = useRef(false)
+  const listDirtyRef = useRef(false)
+  const setStartDateTracked: typeof setStartDate = v => {
+    rangeDirtyRef.current = true
+    setStartDate(v)
+  }
+  const setEndDateTracked: typeof setEndDate = v => {
+    rangeDirtyRef.current = true
+    setEndDate(v)
+  }
+  const setCustomDatesTracked: typeof setCustomDates = v => {
+    listDirtyRef.current = true
+    setCustomDates(v)
+  }
+
   function chooseDateSubMode(next: SubMode) {
     if (next === 'slice' && sliceHours.length === 0) setSliceHours([hour])
+    if (timeScale === 'daily' && !precipTotalVariable) {
+      // Seeding uses the raw setters: a mirrored view stays clean and keeps
+      // mirroring until the user edits it directly.
+      if (next === 'list' && !listDirtyRef.current
+          && startDate && endDate && startDate <= endDate) {
+        const days = dateRange(startDate, endDate)
+        if (days.length <= MAX_COMPOSITE_DATES) setCustomDates(days)
+      }
+      if (next === 'range' && !rangeDirtyRef.current && customDates.length > 1) {
+        const sorted = [...customDates].filter(Boolean).sort()
+        // A non-consecutive list has no honest range form; leave the range.
+        if (isConsecutiveDates(sorted.map(toApiDate))) {
+          setStartDate(sorted[0])
+          setEndDate(sorted[sorted.length - 1])
+        }
+      }
+    }
     setDateSubMode(next)
+  }
+
+  /** Monthly's twin of the daily/3-hourly link: Range's start month = this month. */
+  function syncMonthRangeStart() {
+    setMonthStart(month)
   }
 
   // One-shot links on the Single panel. They touch Range only; List and
   // Slice keep whatever is entered. Nothing syncs without a click.
   function syncRangeStart() {
-    setStartDate(date)
+    setStartDateTracked(date)
   }
   function syncRangeEnd() {
-    setEndDate(date)
+    setEndDateTracked(date)
   }
 
   function chooseTimeScale(next: TimeScale) {
@@ -403,14 +447,22 @@ export function useCompositeRecipe() {
           if (time.subMode === 'range') {
             setStartDate(time.startDate)
             setEndDate(time.endDate)
+            rangeDirtyRef.current = true
+            listDirtyRef.current = false
             if (time.startHour) setStartHour(time.startHour)
           }
-          if (time.subMode === 'list') setCustomDates(time.customDates)
+          if (time.subMode === 'list') {
+            setCustomDates(time.customDates)
+            listDirtyRef.current = true
+            rangeDirtyRef.current = false
+          }
           return
         case '3-hourly':
           setDateSubMode(time.subMode)
           if (time.subMode === 'slice') {
             setCustomDates(time.customDates)
+            listDirtyRef.current = true
+            rangeDirtyRef.current = false
             setSliceHours(time.hours)
             if (time.hours[0]) setHour(time.hours[0])
             return
@@ -420,6 +472,8 @@ export function useCompositeRecipe() {
             // Mirror into the shared date/hour state so the precip list
             // panel (dates + one ending hour) hydrates too.
             setCustomDates(time.customTimes.map(t => t.date))
+            listDirtyRef.current = true
+            rangeDirtyRef.current = false
             if (time.customTimes[0]?.hour) setHour(time.customTimes[0].hour)
             return
           }
@@ -607,14 +661,14 @@ export function useCompositeRecipe() {
     dateSubMode, setDateSubMode: chooseDateSubMode,
     sliceHours, setSliceHours,
     listTimes, setListTimes,
-    syncRangeStart, syncRangeEnd,
+    syncRangeStart, syncRangeEnd, syncMonthRangeStart,
     monthSubMode, setMonthSubMode,
     date, setDate,
-    startDate, setStartDate,
-    endDate, setEndDate,
+    startDate, setStartDate: setStartDateTracked,
+    endDate, setEndDate: setEndDateTracked,
     startHour, setStartHour,
     hour, setHour,
-    customDates, setCustomDates,
+    customDates, setCustomDates: setCustomDatesTracked,
     month, setMonth,
     monthStart, setMonthStart,
     monthEnd, setMonthEnd,
