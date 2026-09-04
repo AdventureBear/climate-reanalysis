@@ -5,6 +5,17 @@ export type ChangelogDay = {
 
 export const changelogEntries: ChangelogDay[] = [
   {
+    date: '2026-09-03',
+    changes: [
+      'Added a new date mode option of "slice".   Slice looks at one or more hourly time frames (in 3 hour windows corresopnding to the synoptic times and the times inbetween), and averages or sums those windows across the series of dates selected. This is an intuitive feature when compositing (averaging) or comparing varibles with diurnal fluctations such as temperature, cloud cover, solar energy and features that may be directly or indirectly related to them such as the Low Level Jet which increases in strength after solar heating is reduced.  Vertical slices of the atmosphere such as a skew-T profile would also be signficantly different of created as a time-slice (every day at 12Z) vs a daily composite (00Z, 06Z, 12Z, 18Z averaged).  This is an exciting and needed update!'  ,
+    'Improved front end time scale and time/date selection interface, adding  "Slice" as a new date mode.  Prior to this, time scale of Daily, and a single, range or list of dates silently sent an hour (00, 03, 06, 09, 12, 15, 18, 21) to the API as well.  The result was a map that represented a single slice of time across those dates.   In some cases this is what is intended, for example, creating a composite of afternoon temperatures during a heat wave.   We have made this an explicit choice, under the name "Slice", where the list of dates and the selection of 1 or more hours creates a cartesion product of those and averages them together, or in the case of an accumulation variable like Total Preciptation, adds them all together.   ' +
+      '/n We suspect that in the majority of cases, the user wanted the daily composite - the average of the synoptic times (00, 06, 12, 18).   We have corrected this communication between the user interface and the API call, and clearly labeled teh resulting maps.' +
+      '/n This affected only 2% of the maps saved in the library.  When those users recall those links in the browser, they will see a popup that explains the slice behavior and gives instructoins as well as a direct link to switch to the daily composite mode instead.  ' +
+      '/n Of the maps affected, only one style of map appeared to have a significantly different pattern as compared to the daily composite.  These were surface wind speeds over a tropical region and cloud cover, both of which have significant diurnal patterns, so in these cases it may have been exactly what the user intended. ' +
+      'One of our leading principals at Pyre Weather is that the methods used for calculations, composites, anomalies and normalized maps are mathematically and scientifically sound, and that our user interface remains clear and easy to understand without ambiguity.  If you feel your maps have been affected (either saved maps in your account, or saved links for non-account users), please use the Feedback form in the footer, and we will help you resolve any issues ASAP as well as helping to clarify the potential errors in the maps you may have already created and shared. If you would prefer to speak of the issue via phone, indicate that in your feedback including your best number and whether you prefer text or phone call -SMA',
+       ]
+  },
+  {
     date: '2026-09-02',
     changes: [
       'Added a /regions page that lists all available regions, and a preview blank map with coordinates and projection used. Links to the map builder with a new "blank map" option.',
