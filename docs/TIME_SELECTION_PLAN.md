@@ -188,9 +188,24 @@ tests in `tests/test_request_guards.py`).
   precip; DATE/HOUR header row; slice hour multi-select; midnight rollover
   steppers; range limit feedback ("372 fetches (46 days)"); Sync range
   start link; TemporalPanel deduplicated into shared components.
-- [ ] Smoke matrix (Suzanne, in browser): every scale x mode, old links,
-  saved maps, weekly-featured cards, data-gap retry near the archive edge,
-  bare-date notice.
+- [x] Smoke matrix (Suzanne, 2026-09-04): every scale x mode, legacy links,
+  saved maps (incl. SQL-rebuilt URLs for other users' old range recipes),
+  weekly-featured cards, data-gap retries, notices. Found and fixed in the
+  process (the smoke tests earned their keep):
+  - Panel-state vs URL drift: barbs-default effect fired on mount; no-wind
+    links kept default glyph state; self-drawing overlays (height/pressure/
+    temp/shading) showed off-and-disabled. All fixed; root-cause refactor
+    filed as #151 "applyRecipeToState: reset-then-apply".
+  - Legacy multi-date+hour links now explain themselves in a modal (the old
+    builder attached the hour without the user choosing it) with a one-click
+    "Generate daily version".
+  - All-missing lag ranges get a retry ending ~36h ago; long date-list map
+    titles truncate instead of stretching the figure.
+  - precip_total gained canonical list + slice (summed windows, per-row
+    ending hours) with a window-spacing guard — partial #140.
+  - Daily Range/List mirror one selection until a view is edited (dirty
+    views are permanent); monthly gained its Sync range start link;
+  - Anomaly wind links default to vector glyphs; cftime warning spam muted.
 
 ### Phase 4 — Generators + docs (done 2026-09-04)
 
