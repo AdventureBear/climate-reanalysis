@@ -572,14 +572,17 @@ def get_map(
     # stands when no hour arrives.
     if variable == "precip_total" and not hour and not time_scale:
         hour = "00"
-    # An accumulation over a time span is a precip_window question, not a mean
-    # of members — the pairs fetch path deliberately has no precip_total entry.
-    if variable == "precip_total" and time_scale == "3-hourly" and date_mode in {"range", "list"}:
+    # A continuous range of ending times means overlapping accumulation
+    # windows (double-counted rain) — that is a precip_window question.
+    # Lists and slices of distinct, spaced ending times are real products
+    # (summed windows); the spacing guard below keeps them non-overlapping.
+    if variable == "precip_total" and time_scale == "3-hourly" and date_mode == "range":
         raise HTTPException(
             status_code=422,
             detail=(
-                "precip_total does not support 3-hourly range/list selections; "
-                "use a single ending time with precip_window for accumulations"
+                "precip_total does not support 3-hourly ranges; "
+                "use a single ending time with precip_window, or a list/slice "
+                "of ending times spaced at least precip_window hours apart"
             ),
         )
     _validate_common(variable, level, mode, wind_unit, pwat_unit, precip_unit, precip_window, scale_min, scale_max, color_step)
@@ -647,11 +650,6 @@ def get_map(
             )
         if len(set(parsed_hours)) != len(parsed_hours):
             raise HTTPException(status_code=422, detail="hours contains duplicate synoptic times")
-        if variable == "precip_total" and len(parsed_hours) != 1:
-            raise HTTPException(
-                status_code=422,
-                detail="precip_total daily maps use one ending synoptic time.",
-            )
     parsed_dates: list[str] = []
     if dates:
         parsed_dates = [d.strip() for d in dates.split(",") if d.strip()]
@@ -750,6 +748,28 @@ def get_map(
         # canonical params (which bypass the legacy param-based guards above)
         # get their availability check from the expanded selection.
         selection_preview = parse_time_selection(map_request)
+        # precip_total sums one accumulation window per member; ending times
+        # closer together than the window would count the same rain twice.
+        if variable == "precip_total" and len(selection_preview.date_hour_members) > 1:
+            ends = sorted(
+                datetime.strptime(f"{d}{h}", "%Y%m%d%H")
+                for d, h in selection_preview.date_hour_members
+            )
+            min_gap = min(
+                (later - earlier).total_seconds() / 3600
+                for earlier, later in zip(ends, ends[1:])
+            )
+            if min_gap < precip_window:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"precip_total ending times must be at least {precip_window} hours apart "
+                        f"(the accumulation window) so no rain is counted twice; "
+                        f"the closest selected times are {int(min_gap)} hours apart. "
+                        f"Space the times out, or choose a smaller precip_window "
+                        f"({int(min_gap)} hours or less fits this selection)."
+                    ),
+                )
         if time_scale:
             _validate_observation_months_available(
                 months=",".join(f"{y}{m:02d}" for y, m in selection_preview.year_months)

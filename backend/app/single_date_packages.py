@@ -39,7 +39,6 @@ PACKAGE_ROOT = PACKAGE_CACHE_ROOT / "single_date"
 GEOCODE_CACHE = PACKAGE_CACHE_ROOT / "geocode_cache.json"
 # Deep links in generated packages point at the app host, where /map lives.
 SITE_BASE = os.getenv("PYRE_SITE_BASE", "https://app.pyreweather.org").rstrip("/")
-SYNOPTIC_HOURS = "00,06,12,18"
 PACKAGE_TTL = timedelta(hours=24)
 CLEANUP_INTERVAL = timedelta(minutes=30)
 JOB_STATE_FILE = "job.json"
@@ -318,11 +317,13 @@ def cleanup_expired_packages(now: datetime | None = None, *, force: bool = False
 
 
 def daily_time_params(date: str) -> dict[str, Any]:
-    return {"date": date, "date_mode": "single", "hours": SYNOPTIC_HOURS}
+    # Canonical time params (docs/TIME_SELECTION_PLAN.md): daily implies the
+    # four synoptic times, no hours param needed.
+    return {"time_scale": "daily", "date_mode": "single", "date": date}
 
 
 def moment_time_params(date: str, hour: str) -> dict[str, Any]:
-    return {"date": date, "date_mode": "single", "hour": hour}
+    return {"time_scale": "3-hourly", "date_mode": "single", "date": date, "hour": hour}
 
 
 def package_time_context(date: str, hhmm: str, zone: str) -> tuple[dict[str, Any], str, datetime]:

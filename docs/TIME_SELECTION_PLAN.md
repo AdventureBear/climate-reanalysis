@@ -1,6 +1,7 @@
 # Time Selection Contract — Plan & Tracker
 
-Status: Phase 0 in progress. Check items off as they land.
+Status: COMPLETE (Phases 0-4 landed 2026-09-03/04). Kept as the record of
+the contract and its decisions; the corpus test enforces it going forward.
 
 ## Problem
 
@@ -165,42 +166,60 @@ tests in `tests/test_request_guards.py`).
   anomaly `3-hourly anomaly · <span>` with baseline line reduced to source +
   period.
 
-### Phase 3 — Frontend
+### Phase 3 — Frontend (done 2026-09-04)
 
-- [ ] `TimeRecipe` v2: `subMode` gains `slice`; 3-hourly `range` becomes
-  continuous (start date+hour → end date+hour); daily/monthly ranges use
+- [x] `TimeRecipe` v2: `subMode` gained `slice`; 3-hourly `range` is
+  continuous (start date+hour → end date+hour); 3-hourly `list` rows carry
+  per-row hours (`customTimes`); daily/monthly ranges emit
   `start_*`/`end_*`.
-- [ ] `timeRecipeToParams` always emits `time_scale` + `date_mode`;
-  `timeRecipeFromUrl` parses canonical first, legacy fallback second.
-- [ ] Saved-recipe loader maps legacy 3-hourly `range` rows to `slice`.
-- [ ] `dataGap.ts` retry surgery learns `start_time`/`end_time`/`times`.
-- [ ] Popup notice for URL-borne bare-date links whose meaning changed.
-- [ ] URL normalization: after parsing a legacy URL into the recipe, rewrite
-  the address bar to the canonical params (router.replace, no reload) so
-  copied/re-shared links leave the legacy shapes behind.
-- [ ] Labels: Range = continuous span with both endpoints; Slice = hour(s) @
-  dates. Scale-switch stale-state cleanup.
-- [ ] Smoke matrix: every scale x single/range/list/slice, old links, saved
-  maps, weekly-featured cards, data-gap retries, future-date modal.
+- [x] `timeRecipeToParams` emits `time_scale` + `date_mode` for every
+  non-climatology shape; `timeRecipeFromUrl` parses canonical first with
+  permanent legacy fallback. Legacy multi-date+hour URLs (and the 8 old
+  saved range maps) load as Slice.
+- [x] `dataGap.ts` retries learned the canonical shapes: end_time/end_date/
+  end_month truncation for trailing gaps, times-list filtering, and the
+  daily-single step-back.
+- [x] Bare-date changed-meaning notice (rides the existing modeNotice slot).
+- [x] URL normalization came free: the URL-sync effect already re-serializes
+  the parsed recipe and replaceState()s when different, so legacy URLs
+  rewrite to canonical on load.
+- [x] UI (built iteratively with Suzanne): four tabs under 3-hourly; shared
+  three-column grid (date / 6.5rem hour / 2rem) across every date mode incl
+  precip; DATE/HOUR header row; slice hour multi-select; midnight rollover
+  steppers; range limit feedback ("372 fetches (46 days)"); Sync range
+  start link; TemporalPanel deduplicated into shared components.
+- [ ] Smoke matrix (Suzanne, in browser): every scale x mode, old links,
+  saved maps, weekly-featured cards, data-gap retry near the archive edge,
+  bare-date notice.
 
-### Phase 4 — Generators + docs
+### Phase 4 — Generators + docs (done 2026-09-04)
 
-- [ ] Migrate backend URL generators (single-date packages, birthday maps,
-  synopsis tooling, frontpage/region scripts) to canonical params.
-- [ ] Update PROJECT.md, docs/smoke-checklist.md, FAQ.md if user-visible.
-- [ ] Legacy parser is permanent; no stored content rewritten.
+- [x] Generators emit canonical params: single_date_packages.py and
+  birthday_maps.py daily/moment helpers, synopsis.py recipe_to_params.
+  The representative-map and animation scripts build in-process MapRequests
+  only (no URLs) — deliberately left on the permanent legacy parse.
+- [x] Docs: PROJECT.md time-selection section states the v2 contract; FAQ
+  #24 (why daily = 4 synoptic times), #25 (anomaly of a composite), #26
+  (R1 vs R2 vs CORe baselines); smoke-checklist gained canonical recipes +
+  the Decision-2 pair; docs/MEMENTO.md is the glance reference.
+- [x] Vocabulary: "cadence" renamed to time scale everywhere
+  (_resolve_for_time_scale in climo_policy.py).
+- [x] Legacy parser is permanent; no stored content rewritten.
 
 ## Spun-off issues (filed 2026-09-03; this effort is #139)
 
 - [ ] #142 Member caps / request cost / rate limiting / pro-tier lever.
 - [ ] #143 Regroup time-scale vs climatology controls in the map builder UI.
 - [ ] #140 Unify accumulation under range semantics: the aggregation operator
+  (PARTIAL 2026-09-04: precip_total now supports canonical list and slice —
+  summed windows with a spacing guard against overlap; per-row ending hours
+  in the UI. Ranges stay blocked; precip_window as UI sugar remains #140.)
   (mean vs sum) is a per-variable property, so a range over an accumulating
   variable should sum its members instead of erroring. `precip_window`
   becomes UI sugar over a range; no new `*_window` params for future
   accumulating variables. (Suzanne, 2026-09-03: "windows are just ranges.")
 - [ ] FAQ entries (with Phase 4 docs): "what is an anomaly of a composite?"
-  and an R1-vs-R2 baseline cheat sheet (which source, what cadence, when
+  and an R1-vs-R2 baseline cheat sheet (which source, what time scale, when
   each is used, why two anomaly requests for the same weather can differ
   slightly). (Done early: FAQ #24 on why daily = 4 synoptic times,
   2026-09-03.)

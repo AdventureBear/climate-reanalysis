@@ -3,6 +3,7 @@ import ctypes.util
 import os
 import threading
 import uuid
+import warnings
 from contextlib import contextmanager
 
 import xarray as xr
@@ -76,7 +77,17 @@ def open_netcdf(*args, **kwargs):
     """
     with HDF5_LOCK:
         _silence_hdf5_errors_in_this_thread()
-        ds = xr.open_dataset(*args, **kwargs)
+        with warnings.catch_warnings():
+            # R1 climatology files timestamp their calendar days with year
+            # 0001 (a 30-year normal has no real year), which predates the
+            # 1582 calendar reform. xarray decodes them as cftime — which we
+            # handle — but warns once per file open. Not actionable; muted.
+            warnings.filterwarnings(
+                "ignore",
+                message=".*Unable to decode time axis.*",
+                category=xr.SerializationWarning,
+            )
+            ds = xr.open_dataset(*args, **kwargs)
         try:
             yield ds
         finally:

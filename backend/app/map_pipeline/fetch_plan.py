@@ -23,6 +23,7 @@ from ..climo_r2 import (
 )
 from ..retrieval import (
     _RunningMean,
+    _sum_of_pairs,
     fetch_field,
     gather_composite_members,
     fetch_monthly_named_level_composite,
@@ -371,9 +372,16 @@ OBS_FETCHERS: dict[tuple[str, str], ObsFetcher] = {
 
 # Pairs selections (canonical 3-hourly range/list) share one generic
 # implementation: the per-member fetcher table above drives every variable
-# that has a single-member fetch. precip_total is excluded on purpose.
+# that has a single-member fetch.
 for _pair_key in PAIR_MEMBER_FETCHERS:
     OBS_FETCHERS[("pairs", _pair_key)] = lambda req, sel, grib: _mean_pairs_obs(req, sel, grib)
+
+# precip_total sums its members (one accumulation window each) instead of
+# averaging; the endpoint guarantees the ending times don't overlap.
+OBS_FETCHERS[("pairs", "precip_total")] = lambda req, sel, _grib: _sum_of_pairs(
+    fetch_precip_total, sel.date_hour_members, req.precip_window,
+    skip_missing=bool(req.skip_missing),
+)
 
 
 WindFetcher = Callable[[FetchRequest, TimeSelection], tuple]

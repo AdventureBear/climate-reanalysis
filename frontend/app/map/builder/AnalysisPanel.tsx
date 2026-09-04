@@ -53,16 +53,15 @@ export function AnalysisPanel({ recipe, loading, className = '' }: {
           if (n > 1) return `Generate (${n} days)`
         }
       } else if (dateSubMode === 'list') {
-        const n = threeHourlyMembers
-          ? listTimes.filter(t => t.date).length
-          : customDates.filter(Boolean).length
+        const usesRows = isThreeHourly
+        const n = usesRows ? listTimes.filter(t => t.date).length : customDates.filter(Boolean).length
         if (n > 1) {
-          if (precipTotalVariable) return `Total (${n} dates)`
-          return threeHourlyMembers ? `Generate (${n} intervals)` : `Generate (${n} dates)`
+          if (precipTotalVariable) return `Total (${n} windows)`
+          return usesRows ? `Generate (${n} intervals)` : `Generate (${n} dates)`
         }
       } else if (dateSubMode === 'slice') {
         const n = customDates.filter(Boolean).length * Math.max(sliceHours.length, 1)
-        if (n > 1) return `Generate (${n} intervals)`
+        if (n > 1) return precipTotalVariable ? `Total (${n} windows)` : `Generate (${n} intervals)`
       }
     }
     return 'Generate Map'

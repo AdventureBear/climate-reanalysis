@@ -37,11 +37,13 @@ The frontend should remain a thin UI shell. Computation, climatology, compositin
 ### Time Modes
 
 - 3-hourly maps: one date, date range, or custom date list at a selected CORe hour.
-- Daily composites: one date, date range, or date list, currently averaging 00/06/12/18z.
+- Daily composites: one date, date range, or date list, averaging 00/06/12/18z.
 - Monthly/seasonal composites: one month, month range, or non-consecutive month list.
 - Climatology view: displays climatological mean for a selected month.
 
-CORe valid hours are 00, 03, 06, 09, 12, 15, 18, and 21z. Daily mode currently uses the four synoptic hours 00, 06, 12, and 18z.
+CORe valid hours are 00, 03, 06, 09, 12, 15, 18, and 21z. Daily mode uses the four synoptic hours 00, 06, 12, and 18z, matching how the R2 daily normals are built (FAQ #24).
+
+Time selection uses the canonical v2 contract (2026-09): the frontend and all link generators send `time_scale=3-hourly|daily|monthly` plus `date_mode=single|range|list|slice` with shape-specific params (`start_time`/`end_time`, `times`, `start_date`/`end_date`, `start_month`/`end_month`, `month`). URLs without `time_scale` parse under permanent legacy inference — old links and saved maps never break. A bare date with no hour param means the full synoptic day. 3-hourly ranges cross midnight and anomaly baselines hour-match each member. Full contract, decisions, and history: docs/TIME_SELECTION_PLAN.md; glance version: docs/MEMENTO.md.
 
 ### Display Modes
 

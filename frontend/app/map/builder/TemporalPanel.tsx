@@ -40,8 +40,8 @@ const subModeOpts = [
     { value: 'list',   label: 'List'   },
 ]
 
-// Slice (hours x dates) is a 3-hourly-only concept; daily/monthly and the
-// precip_total panels never offer the tab.
+// Slice (hours x dates) is a 3-hourly-only concept; daily and monthly never
+// offer the tab. For precip_total a slice SUMS its windows.
 const threeHourlySubModeOpts = [
     ...subModeOpts,
     { value: 'slice',  label: 'Slice'  },
@@ -298,7 +298,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     if (isMonthly) {
       return <TabStrip options={subModeOpts} value={monthSubMode} onChange={v => setMonthSubMode(v as SubMode)} fullWidth />
     }
-    const opts = isThreeHourly && !precipTotalVariable ? threeHourlySubModeOpts : subModeOpts
+    const opts = isThreeHourly ? threeHourlySubModeOpts : subModeOpts
     return <TabStrip options={opts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
   }
 
@@ -392,7 +392,7 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       )
     }
 
-    if (precipTotalVariable && dateSubMode === 'list') {
+    if (precipTotalVariable && dateSubMode === 'list' && !isThreeHourly) {
       // One ending hour applies to every date, so the stepper sits on the
       // first row only.
       return (

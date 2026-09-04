@@ -52,12 +52,12 @@ def is_single_hour_product(selection: TimeSelection) -> bool:
 
 
 def _clamp_to_variable(source: str, variable: str) -> str:
-    # r1-4xdaily is chosen by cadence, not offered per variable; the caller has
+    # r1-4xdaily is chosen by time scale, not offered per variable; the caller has
     # already confirmed the variable has an hourly baseline.
     if source == HOURLY_CLIMO_SOURCE:
         return source
     """
-    Substitute an equivalent-cadence source when the variable's registry does
+    Substitute an equivalent-time-scale source when the variable's registry does
     not support the resolved one (e.g. single-level fields have no monthly-pgb
     baseline; their monthly requests use r2-monthly instead).
     """
@@ -83,10 +83,10 @@ def _clamp_to_variable(source: str, variable: str) -> str:
 def resolve_climo_source(req: ClimoRequest, selection: TimeSelection) -> str:
     if req.mode == "raw":
         return req.climo_source
-    return _clamp_to_variable(_resolve_for_cadence(req, selection), req.variable)
+    return _clamp_to_variable(_resolve_for_time_scale(req, selection), req.variable)
 
 
-def _resolve_for_cadence(req: ClimoRequest, selection: TimeSelection) -> str:
+def _resolve_for_time_scale(req: ClimoRequest, selection: TimeSelection) -> str:
     if (
         req.variable == "precipitable_water"
         and is_single_hour_product(selection)

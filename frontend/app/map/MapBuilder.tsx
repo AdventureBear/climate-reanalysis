@@ -113,7 +113,16 @@ export default function MapBuilder() {
       const normalizedNotice = normalizedUnavailableInUrl(params)
         ? 'Normalized maps are not available for a single hour, so this opened as an anomaly map. Switch to Daily for a normalized map.'
         : null
-      setModeNotice(normalizedNotice)
+      // Decision 2 (docs/TIME_SELECTION_PLAN.md): a legacy link with a date
+      // but no hour at all used to render a 00z snapshot; it now renders the
+      // full-day composite. Say so once instead of silently changing the map.
+      const bareDateNotice =
+        !params.get('time_scale') && !params.get('hour') && !params.get('hours')
+        && !params.get('months') && params.get('mode') !== 'climatology'
+        && Boolean(params.get('date') ?? params.get('dates'))
+          ? 'This link now shows a full-day composite (the average of 00z, 06z, 12z, and 18z). For a single time, switch to 3-hourly and pick an hour.'
+          : null
+      setModeNotice([normalizedNotice, bareDateNotice].filter(Boolean).join(' ') || null)
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.

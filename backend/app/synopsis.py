@@ -837,6 +837,7 @@ def recipe_to_params(recipe: dict) -> dict:
         raise ValueError(f"unknown variable/level: {ui_var}/{ui_level}") from None
     t = recipe["time"]
     p: dict = {"variable": api_var, "level": api_level, "region": recipe["region"],
+               "time_scale": "3-hourly", "date_mode": "single",
                "date": t["date"].replace("-", ""), "hour": t["hour"]}
     if recipe.get("displayMode") == "anomaly":
         p["mode"] = "anomaly"

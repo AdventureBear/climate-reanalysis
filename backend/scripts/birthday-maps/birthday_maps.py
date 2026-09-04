@@ -49,7 +49,6 @@ from app.units import (  # noqa: E402
 SITE_BASE = "https://pyreweather.org"
 OUT_ROOT = SCRIPT_DIR / "out"
 GEOCODE_CACHE = OUT_ROOT / "geocode_cache.json"
-SYNOPTIC_HOURS = "00,06,12,18"
 
 # ── Trigger thresholds (first guesses — tune after seeing real output) ────────
 TRIG_NORM_ANOM_SIGMA = 2.0     # |2m temp anomaly| in climatological σ
@@ -76,11 +75,12 @@ WINDOW_DEG = 10.0              # half-width of the "near the birthplace" window
 # Time params for every map in the packet: a daily mean without --time, or the
 # single 3-hourly analysis nearest the birth moment with it.
 def daily_time_params(date: str) -> dict:
-    return {"date": date, "date_mode": "single", "hours": SYNOPTIC_HOURS}
+    # Canonical time params (docs/TIME_SELECTION_PLAN.md).
+    return {"time_scale": "daily", "date_mode": "single", "date": date}
 
 
 def moment_time_params(date: str, hour: str) -> dict:
-    return {"date": date, "date_mode": "single", "hour": hour}
+    return {"time_scale": "3-hourly", "date_mode": "single", "date": date, "hour": hour}
 
 
 # (slug, title, params) — params are /api/map query params; also the deep link.

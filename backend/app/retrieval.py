@@ -1122,7 +1122,7 @@ def _compute_monthly_from_synoptic(
 ) -> xr.DataArray:
     """
     Compute a monthly mean from synoptic CORe analyses when the monthly archive
-    has not caught up. Uses 00/06/12/18z only, matching the legacy composite cadence.
+    has not caught up. Uses 00/06/12/18z only, matching the daily composite time scale.
     """
     days = range(1, _cal.monthrange(year, month)[1] + 1)
     specs = [(f"{year}{month:02d}{d:02d}", h)

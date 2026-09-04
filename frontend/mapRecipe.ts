@@ -365,12 +365,15 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   }
 
   if (time.scale === 'monthly') {
+    // Availability checks and their retries run on the expanded months list
+    // (the helpers speak that shape); the emitted params are canonical.
     if (time.subMode === 'single') {
-      const params = { months: toApiMonth(time.month) }
-      const availabilityError = observationDateAvailabilityError(params)
-      return availabilityError
-        ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
-        : { ok: true, params }
+      const legacyShape = { months: toApiMonth(time.month) }
+      const availabilityError = observationDateAvailabilityError(legacyShape)
+      if (availabilityError) {
+        return { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(legacyShape) ?? undefined }
+      }
+      return { ok: true, params: { time_scale: 'monthly', date_mode: 'single', month: toApiMonth(time.month) } }
     }
     if (time.subMode === 'range') {
       const months = monthRange(time.monthStart, time.monthEnd)
@@ -378,22 +381,32 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
       if (months.length > MAX_COMPOSITE_MONTHS) {
         return { ok: false, error: `Month ranges are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
       }
-      const params = { months: months.join(',') }
-      const availabilityError = observationDateAvailabilityError(params)
-      return availabilityError
-        ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
-        : { ok: true, params }
+      const legacyShape = { months: months.join(',') }
+      const availabilityError = observationDateAvailabilityError(legacyShape)
+      if (availabilityError) {
+        return { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(legacyShape) ?? undefined }
+      }
+      return {
+        ok: true,
+        params: {
+          time_scale: 'monthly',
+          date_mode: 'range',
+          start_month: months[0],
+          end_month: months[months.length - 1],
+        },
+      }
     }
     const months = time.customMonths.filter(Boolean).map(toApiMonth)
     if (!months.length) return { ok: false, error: 'Add at least one month.' }
     if (months.length > MAX_COMPOSITE_MONTHS) {
       return { ok: false, error: `Month lists are limited to ${MAX_COMPOSITE_MONTHS} months per map.` }
     }
-    const params = { months: months.join(',') }
-    const availabilityError = observationDateAvailabilityError(params)
-    return availabilityError
-      ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
-      : { ok: true, params }
+    const legacyShape = { months: months.join(',') }
+    const availabilityError = observationDateAvailabilityError(legacyShape)
+    if (availabilityError) {
+      return { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(legacyShape) ?? undefined }
+    }
+    return { ok: true, params: { time_scale: 'monthly', date_mode: 'list', months: months.join(',') } }
   }
 
   if (time.scale === '3-hourly' && time.subMode === 'slice') {
@@ -457,16 +470,22 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
     return { ok: true, params }
   }
 
-  const params: Record<string, string> = {}
   if (time.scale === '3-hourly') {
-    params.hour = time.hour
-  } else {
-    params.hours = '00,06,12,18'
+    // range/list/slice returned above; only single remains.
+    const params = {
+      time_scale: '3-hourly',
+      date_mode: 'single',
+      date: toApiDate(time.date),
+      hour: time.hour,
+    }
+    const availabilityError = observationDateAvailabilityError(params)
+    if (availabilityError) return { ok: false, error: availabilityError }
+    return { ok: true, params }
   }
 
+  // Daily. Canonical daily implies the four synoptic times; no hours param.
   if (time.subMode === 'single') {
-    params.date = toApiDate(time.date)
-    params.date_mode = 'single'
+    const params = { time_scale: 'daily', date_mode: 'single', date: toApiDate(time.date) }
     const availabilityError = observationDateAvailabilityError(params)
     if (availabilityError) return { ok: false, error: availabilityError }
     return { ok: true, params }
@@ -479,11 +498,17 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
     if (dates.length > MAX_COMPOSITE_DATES) {
       return { ok: false, error: `Date ranges are limited to ${MAX_COMPOSITE_DATES} days per map.` }
     }
-    params.dates = dates.join(',')
-    params.date_mode = 'range'
-    const availabilityError = observationDateAvailabilityError(params)
+    const availabilityError = observationDateAvailabilityError({ dates: `${dates[0]},${dates[dates.length - 1]}` })
     if (availabilityError) return { ok: false, error: availabilityError }
-    return { ok: true, params }
+    return {
+      ok: true,
+      params: {
+        time_scale: 'daily',
+        date_mode: 'range',
+        start_date: dates[0],
+        end_date: dates[dates.length - 1],
+      },
+    }
   }
 
   const dates = time.customDates.filter(Boolean).map(toApiDate)
@@ -491,15 +516,9 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
   if (dates.length > MAX_COMPOSITE_DATES) {
     return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
   }
-  params.date_mode = 'list'
-  if (dates.length === 1) {
-    params.date = dates[0]
-  } else {
-    params.dates = dates.join(',')
-  }
-  const availabilityError = observationDateAvailabilityError(params)
+  const availabilityError = observationDateAvailabilityError({ dates: dates.join(',') })
   if (availabilityError) return { ok: false, error: availabilityError }
-  return { ok: true, params }
+  return { ok: true, params: { time_scale: 'daily', date_mode: 'list', dates: dates.join(',') } }
 }
 
 function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
@@ -520,27 +539,42 @@ function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult 
     return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
   }
   if (time.subMode === 'slice') {
-    return { ok: false, error: 'Precipitation totals do not support slice selections.' }
+    // Summed windows ending at hours x dates; the backend rejects ending
+    // times closer together than precip_window (double-counted rain).
+    const dates = time.customDates.filter(Boolean).map(toApiDate)
+    if (!dates.length) return { ok: false, error: 'Add at least one date.' }
+    const sliceHours = time.hours.filter(h => HOURS.includes(h))
+    if (!sliceHours.length) return { ok: false, error: 'Pick at least one hour.' }
+    const params = {
+      time_scale: '3-hourly',
+      date_mode: 'slice',
+      dates: dates.join(','),
+      hours: sliceHours.join(','),
+    }
+    const availabilityError = observationDateAvailabilityError({ dates: dates.join(',') })
+    return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
   }
   if (time.subMode !== 'range') {
-    const dateList = time.scale === 'daily'
-      ? time.customDates.filter(Boolean)
-      : time.customTimes.map(t => t.date).filter(Boolean)
-    const dates = dateList.map(toApiDate)
+    if (time.scale === '3-hourly') {
+      // Per-row ending hours: summed windows, one per (date, hour) row.
+      const rows = time.customTimes.filter(t => t.date && HOURS.includes(t.hour))
+      if (!rows.length) return { ok: false, error: 'Add at least one date and hour.' }
+      const params = {
+        time_scale: '3-hourly',
+        date_mode: 'list',
+        times: rows.map(t => `${toApiDate(t.date)}${t.hour}`).join(','),
+      }
+      const availabilityError = observationDateAvailabilityError({ dates: rows.map(t => toApiDate(t.date)).join(',') })
+      return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
+    }
+    const dates = time.customDates.filter(Boolean).map(toApiDate)
     if (!dates.length) return { ok: false, error: 'Add at least one date.' }
     if (dates.length > MAX_COMPOSITE_DATES) {
       return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
     }
-    // Precip lists share one ending hour; on the 3-hourly shape it rides in
-    // the first row.
-    const listEndHour = time.scale === 'daily'
-      ? endHour
-      : time.customTimes[0]?.hour && HOURS.includes(time.customTimes[0].hour)
-        ? time.customTimes[0].hour
-        : endHour
     const params = {
       date_mode: 'list',
-      [time.scale === 'daily' ? 'hours' : 'hour']: listEndHour,
+      hours: endHour,
       ...(dates.length === 1 ? { date: dates[0] } : { dates: dates.join(',') }),
     }
     const availabilityError = observationDateAvailabilityError(params)
@@ -721,6 +755,42 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
         .map(t => ({ date: apiDateToIso(t.slice(0, 8)), hour: t.slice(8) }))
       if (rows.length) return { scale: '3-hourly', subMode: 'list', customTimes: rows }
     }
+    if ((dateMode === 'single' || !dateMode) && date && hour && HOURS.includes(hour)) {
+      return { scale: '3-hourly', subMode: 'single', date: apiDateToIso(date), hour }
+    }
+  }
+  if (params.get('time_scale') === 'daily') {
+    if (dateMode === 'range') {
+      const start = params.get('start_date')
+      const end = params.get('end_date')
+      if (start && end) {
+        return { scale: 'daily', subMode: 'range', startDate: apiDateToIso(start), endDate: apiDateToIso(end) }
+      }
+    }
+    if (dateMode === 'list' && dates) {
+      const list = dates.split(',').map(s => s.trim()).filter(Boolean)
+      if (list.length) return { scale: 'daily', subMode: 'list', customDates: list.map(apiDateToIso) }
+    }
+    if ((dateMode === 'single' || !dateMode) && date) {
+      return { scale: 'daily', subMode: 'single', date: apiDateToIso(date) }
+    }
+  }
+  if (params.get('time_scale') === 'monthly') {
+    if (dateMode === 'range') {
+      const start = params.get('start_month')
+      const end = params.get('end_month')
+      if (start && end) {
+        return { scale: 'monthly', subMode: 'range', monthStart: apiMonthToIso(start), monthEnd: apiMonthToIso(end) }
+      }
+    }
+    if (dateMode === 'list' && months) {
+      const list = months.split(',').map(s => s.trim()).filter(Boolean)
+      if (list.length) return { scale: 'monthly', subMode: 'list', customMonths: list.map(apiMonthToIso) }
+    }
+    const monthParam = params.get('month')
+    if ((dateMode === 'single' || !dateMode) && monthParam) {
+      return { scale: 'monthly', subMode: 'single', month: apiMonthToIso(monthParam) }
+    }
   }
 
   if (mode === 'climatology') {
@@ -811,8 +881,9 @@ function precipTotalTimeRecipeFromUrl(params: URLSearchParams): TimeRecipe | und
   const validHour = hour && HOURS.includes(hour) ? hour : dailyHour ?? '00'
   if (!parsed) return undefined
   // Legacy precip list links (dates + one ending hour) parse as a slice now;
-  // precip has no slice concept — restore them as a per-row list.
-  if (parsed.scale === '3-hourly' && parsed.subMode === 'slice') {
+  // those meant a shared-hour list — restore that shape. Canonical slices
+  // (time_scale present) are real precip slices and pass through.
+  if (!params.get('time_scale') && parsed.scale === '3-hourly' && parsed.subMode === 'slice') {
     const endHour = parsed.hours[0] ?? '00'
     return {
       scale: '3-hourly',
@@ -882,14 +953,21 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     displayMode: resolvedApiVariable && RAW_ONLY_API_VARIABLES.has(resolvedApiVariable) ? 'raw' : parsedDisplayMode,
     climoSource: climoSource(params.get('climo_source')),
     time: parsedTime,
-    wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : {
-      on: windStepUsable,
-      step: windStepUsable ? windStep! : AUTO_DENSITY,
-      type: parsedWindType,
-      isotachs: params.get('isotachs') === '1',
-      isotachInterval: isotachInterval(params.get('isotach_interval')),
-      shading: params.get('fill_mode') !== 'none',
-    },
+    wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : (() => {
+      // An anomaly/normalized wind map is unreadable without glyphs: a link
+      // that says nothing about wind defaults to vector anomalies (#47).
+      // An explicit wind_step=0 stays a deliberate glyphs-off request.
+      const anomalyWindDefault = isWindApiVariable && windStep === null
+        && (parsedDisplayMode === 'anomaly' || parsedDisplayMode === 'normalized')
+      return {
+        on: windStepUsable || anomalyWindDefault,
+        step: windStepUsable ? windStep! : AUTO_DENSITY,
+        type: anomalyWindDefault && params.get('wind_type') === null ? 'vectors' as const : parsedWindType,
+        isotachs: params.get('isotachs') === '1',
+        isotachInterval: isotachInterval(params.get('isotach_interval')),
+        shading: params.get('fill_mode') !== 'none',
+      }
+    })(),
     windUnit: windUnit(params.get('wind_unit')),
     pwatUnit: pwatUnit(params.get('pwat_unit')),
     precipUnit: precipUnit(params.get('precip_unit')),

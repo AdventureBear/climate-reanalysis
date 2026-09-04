@@ -395,6 +395,25 @@ Two reasons, and the first is the one that matters.
 
 An eight-time daily mean is still available: request a 3-hourly range from 00z through 21z of one day. Its anomaly compares each of the eight times against the normal for that specific hour (the R1 4×-daily baseline) instead of the R2 daily normal, so it is close to — but not identical to — the standard daily anomaly. The same weather requested both ways can differ slightly because the two baselines come from different reanalysis datasets.
 
+## 25. What does an "anomaly" of a composite show?
+
+Exactly what it sounds like, once you know both halves. The observation side averages the selected grids — 4 synoptic times for a daily map, every 3-hourly step for a range, the chosen hour(s) × dates for a slice. The climatology side averages the *matching normals*: each selected time is paired with the 30-year normal for its own calendar day (and, for 3-hourly selections, its own hour). The map is the first average minus the second.
+
+That is mathematically identical to computing each individual time's anomaly and averaging those — subtraction and averaging commute. So "the anomaly of a composite" and "the composite of the anomalies" are the same map.
+
+## 26. Which climatology dataset is the baseline — R1, R2, or CORe?
+
+It depends on the map's time scale, because different datasets publish (or allow us to compute) normals at different granularities:
+
+| Map | Baseline | Who averaged the 30 years |
+|---|---|---|
+| 3-hourly (single, range, list, slice) | NCEP R1 4×-daily normals | NOAA — published finished files, one per day and hour |
+| Daily composite | NCEP R2 daily normals | PyRe — computed from R2's daily series and cached |
+| Monthly | R2 monthly, or CORe's own monthly means (the "Use CORe normals" setting, pressure-level variables) | PyRe — from the 1991–2020 monthly files |
+| PWAT single-hour | R2 daily centered 15-day mean/σ | PyRe — following the WPC standardized-anomaly convention (see the normalized-anomaly section) |
+
+Two consequences worth knowing. First, R1's files hold only 00/06/12/18z; the in-between hours (03/09/15/21z) are the blend of the two neighboring normals, so a 21z baseline is half 18z and half the next day's 00z. Second, because the daily and 3-hourly baselines come from two different reanalyses, the same weather requested as a daily composite and as an 8-step 3-hourly range produces close but not identical anomalies — part sampling difference, part R1-versus-R2 difference.
+
 ---
 
-*Last updated: 2026-09-03 — add new Q&A pairs at the appropriate level as they arise.*
+*Last updated: 2026-09-04 — add new Q&A pairs at the appropriate level as they arise.*

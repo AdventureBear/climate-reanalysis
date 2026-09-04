@@ -2,7 +2,7 @@
 // level, region, display mode, wind and overlay controls, units, and the
 // conversions between that state and a typed MapRecipe. App (and, later,
 // extracted panels) consume this instead of holding ~35 useState hooks inline.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   type ClimoSource,
   type DisplayMode,
@@ -288,10 +288,12 @@ export function useCompositeRecipe() {
       const scale = timeScale === 'daily' ? 'daily' : '3-hourly'
       if (dateSubMode === 'single') return { scale, subMode: 'single', date, hour }
       if (dateSubMode === 'range') return { scale, subMode: 'range', startDate, endDate, startHour, hour }
+      if (dateSubMode === 'slice') {
+        return { scale: '3-hourly', subMode: 'slice', customDates, hours: sliceHours.length ? sliceHours : [hour] }
+      }
       if (scale === 'daily') return { scale, subMode: 'list', customDates, hour }
-      // The precip list panel keeps one ending hour for all dates; the
-      // 3-hourly list shape carries it per row.
-      return { scale, subMode: 'list', customTimes: customDates.map(d => ({ date: d, hour })) }
+      // 3-hourly precip list: real per-row ending hours (summed windows).
+      return { scale, subMode: 'list', customTimes: listTimes }
     }
     if (isClimo) {
       return { scale: 'climatology', climoMonth }
@@ -477,12 +479,15 @@ export function useCompositeRecipe() {
       setIsotachInterval(recipe.wind.isotachInterval ?? 0)
       setWindShading(recipe.wind.shading !== false)
       setWindMaster(recipeIsWindVariable || glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
-    } else if (recipeIsWindVariable) {
+    } else {
+      // A link with no wind params means no glyph overlay — reflect that for
+      // every variable instead of leaving the mount defaults (barbs on) in
+      // the panel while the render obeys the URL.
       setWindOn(false)
       setIsotachsOn(false)
       setIsotachInterval(0)
       setWindShading(true)
-      setWindMaster(true)
+      setWindMaster(recipeIsWindVariable)
     }
   }
 
@@ -497,11 +502,10 @@ export function useCompositeRecipe() {
     // Monthly obs composites are not wired for most surface/named-level
     // fields (MSLP is exempt — its monthly archive record is wired).
     if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
-    // Slice exists only under 3-hourly; leaving that scale (or switching to
-    // precip_total, which has its own panels) falls back to List, keeping
-    // the dates.
-    if (dateSubMode === 'slice' && (!isThreeHourly || precipTotalVariable)) {
-      setDateSubMode(precipTotalVariable ? 'single' : 'list')
+    // Slice exists only under 3-hourly; leaving that scale falls back to
+    // List, keeping the dates.
+    if (dateSubMode === 'slice' && !isThreeHourly) {
+      setDateSubMode('list')
     }
     if (variable === 'radiation' && level === 'toa_radiation' && radiationWaveband === 'longwave' && radiationDirection === 'down') {
       setRadiationDirection('up')
@@ -562,7 +566,15 @@ export function useCompositeRecipe() {
     setDate(fallbackEnd)
   }, [precipTotalVariable, dateSubMode, startDate, startHour, endDate, hour, precipWindow, date])
 
+  // Default the wind overlay on when the user SWITCHES to a wind-paired
+  // variable — never on mount. Firing on mount stomped wind settings that a
+  // deep link had just applied (glyphs-off links rendered right once, then
+  // state showed barbs on and the next Generate drew them).
+  const prevApiVariableRef = useRef<string | null>(null)
   useEffect(() => {
+    const prev = prevApiVariableRef.current
+    prevApiVariableRef.current = apiVariable
+    if (prev === null || prev === apiVariable) return
     if (shouldDefaultWindOverlay(apiVariable)) {
       setWindOn(true)
       setWindType('barbs')

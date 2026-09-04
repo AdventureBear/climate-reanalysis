@@ -20,12 +20,12 @@ from app.map_pipeline.time_selection import parse_time_selection
 
 def test_pairs_dispatch_covers_every_single_variable_kind():
     """Every variable kind with a single-member fetcher must have a pairs
-    entry (or be deliberately excluded): the generalize-across-siblings rule.
-    precip_total is the one documented exclusion (endpoint rejects it)."""
+    entry: the generalize-across-siblings rule. precip_total's pairs entry
+    SUMS its members (windows) instead of averaging."""
     single_keys = {key for kind, key in OBS_FETCHERS if kind == "single"}
     pairs_keys = {key for kind, key in OBS_FETCHERS if kind == "pairs"}
-    assert single_keys - pairs_keys == {"precip_total"}
-    assert pairs_keys == set(PAIR_MEMBER_FETCHERS)
+    assert single_keys - pairs_keys == set()
+    assert pairs_keys == set(PAIR_MEMBER_FETCHERS) | {"precip_total"}
     assert "pairs" in WIND_COMPONENT_FETCHERS
 
 

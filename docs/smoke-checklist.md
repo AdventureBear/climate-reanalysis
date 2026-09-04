@@ -196,6 +196,21 @@ Expected map:
 - Precipitable water is shaded in inches.
 - Title includes the valid time `2024-09-06 12:00`.
 
+## Canonical Time-Selection Recipes (v2 contract)
+
+One render each through the backend URL and the frontend `/map/` URL:
+
+- 3-hourly range crossing midnight (the pairs fetch path + hour-matched baseline):
+  `time_scale=3-hourly&date_mode=range&start_time=<D1>21&end_time=<D2>06&variable=height&level=500&region=CONUS&mode=anomaly`
+- 3-hourly slice, multi-hour:
+  `time_scale=3-hourly&date_mode=slice&dates=<D1>,<D2>&hours=03,18&variable=temp&level=850&region=CONUS&mode=anomaly`
+- 3-hourly list:
+  `time_scale=3-hourly&date_mode=list&times=<D1>09,<D2>18&variable=height&level=500&region=CONUS`
+- Legacy bare date (Decision 2 — must render the daily composite, and the
+  frontend shows the changed-meaning notice):
+  `date=<D1>&variable=height&level=500&region=CONUS`
+- Legacy explicit `hour=00` (must stay a 00z snapshot, NOT a daily composite).
+
 ## Pass/Fail Notes
 
 Pass the core smoke check when all four known recipes render through both:

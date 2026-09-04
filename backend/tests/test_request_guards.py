@@ -929,7 +929,9 @@ def test_precip_total_accepts_one_daily_hour(monkeypatch):
     assert response.status_code == 200
 
 
-def test_precip_total_rejects_multiple_daily_hours(monkeypatch):
+def test_precip_total_rejects_overlapping_windows(monkeypatch):
+    """Four ending times 6 hours apart with 24-hour windows would count the
+    same rain four times — the spacing guard replaces the old one-hour rule."""
     monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
     client = TestClient(main_module.app)
 
@@ -946,7 +948,28 @@ def test_precip_total_rejects_multiple_daily_hours(monkeypatch):
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "precip_total daily maps use one ending synoptic time."
+    assert "at least 24 hours apart" in response.json()["detail"]
+
+
+def test_precip_total_accepts_spaced_slice(monkeypatch):
+    """Two ending times 12 hours apart with 12-hour windows: back-to-back
+    windows, no overlap — a valid summed product."""
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+
+    response = client.get(
+        "/api/map",
+        params={
+            "time_scale": "3-hourly", "date_mode": "slice",
+            "dates": "20260101", "hours": "00,12",
+            "variable": "precip_total",
+            "level": "1000",
+            "region": "CONUS",
+            "precip_window": "12",
+        },
+    )
+
+    assert response.status_code == 200
 
 
 def test_precip_total_accepts_date_list(monkeypatch):
