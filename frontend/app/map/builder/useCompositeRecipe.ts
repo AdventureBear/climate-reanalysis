@@ -251,6 +251,27 @@ export function useCompositeRecipe() {
   }
 
   function chooseTimeScale(next: TimeScale) {
+    // Carry the selected period between daily and 3-hourly — same data at a
+    // different granularity. Monthly deliberately does NOT carry either way:
+    // monthly maps are a different product (different archive, different
+    // baselines), so the user picks their daily dates explicitly.
+    const prev = timeScale
+    if (next === '3-hourly' && prev === 'daily') {
+      if (dateSubMode === 'list') {
+        // The same dates at one hour = a Slice (customDates is shared state).
+        setDateSubMode('slice')
+        if (sliceHours.length === 0) setSliceHours([hour])
+      } else if (dateSubMode === 'range') {
+        // The same days as a continuous span: 00z of the first through 21z
+        // of the last.
+        setStartHour('00')
+        setHour('21')
+      }
+    }
+    if (next === 'daily' && prev === '3-hourly' && dateSubMode === 'list') {
+      // Per-row times flatten to their dates.
+      setCustomDates([...new Set(listTimes.map(t => t.date).filter(Boolean))])
+    }
     setTimeScale(next)
     if (apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection) === 'precip_total' && next === 'daily') {
       setPrecipWindowState('24')

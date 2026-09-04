@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Settings, SlidersHorizontal } from 'lucide-react'
+import { Info, Settings, SlidersHorizontal, X } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
 import { SaveAccountPrompt } from './builder/SaveAccountPrompt'
@@ -50,6 +50,24 @@ export default function MapBuilder() {
     isBlankMap,
   } = recipe
 
+  // Mode notices describe the selection a link loaded with; the moment the
+  // user changes time scale or date mode themselves, the explanation no
+  // longer applies. Clearing rides the click, not an effect (dev-mode double
+  // effects wiped notices when this was effect-based).
+  const recipeForTimePanels = {
+    ...recipe,
+    setTimeScale: (v: Parameters<typeof recipe.setTimeScale>[0]) => {
+      setModeNotice(null)
+      setLegacySliceModal(null)
+      recipe.setTimeScale(v)
+    },
+    setDateSubMode: (v: Parameters<typeof recipe.setDateSubMode>[0]) => {
+      setModeNotice(null)
+      setLegacySliceModal(null)
+      recipe.setDateSubMode(v)
+    },
+  }
+
   const [regionsOpen, setRegionsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [colorLabOpen, setColorLabOpen] = useState(false)
@@ -73,8 +91,11 @@ export default function MapBuilder() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   // Explains a mode the builder had to change when opening a link (#72).
-  const [modeNotice, setModeNotice] = useState<string | null>(null)
+  const [modeNotice, setModeNotice] = useState<React.ReactNode>(null)
   const [preflightRetry, setPreflightRetry] = useState<MapRecipeRetry | null>(null)
+  // A legacy multi-date+hour link: the old builder attached the hour without
+  // the user choosing it. Explained in a modal with a one-click daily rebuild.
+  const [legacySliceModal, setLegacySliceModal] = useState<{ hour: string; count: number; dailyQs: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -86,6 +107,7 @@ export default function MapBuilder() {
   // URL → state synchronization. Runs for deep links and browser back/forward;
   // URL updates made by handleGenerate are skipped via the ref.
   const selfUpdatedParamsRef = useRef<string | null>(null)
+
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1024px)')
@@ -122,7 +144,24 @@ export default function MapBuilder() {
         && Boolean(params.get('date') ?? params.get('dates'))
           ? 'This link now shows a full-day composite (the average of 00z, 06z, 12z, and 18z). For a single time, switch to 3-hourly and pick an hour.'
           : null
-      setModeNotice([normalizedNotice, bareDateNotice].filter(Boolean).join(' ') || null)
+      // Legacy multi-date + one hour: the old builder attached the hour
+      // without the user choosing it. Explain in a modal and offer the
+      // daily rebuild; the slice still renders unchanged underneath.
+      if (!params.get('time_scale') && !params.get('hours') && !params.get('months')) {
+        const legacyHour = params.get('hour')
+        const legacyDates = (params.get('dates') ?? '').split(',').filter(Boolean)
+        if (legacyHour && legacyDates.length >= 2) {
+          const dailyParams = new URLSearchParams(params)
+          dailyParams.delete('hour')
+          dailyParams.set('time_scale', 'daily')
+          dailyParams.set('date_mode', 'list')
+          setLegacySliceModal({ hour: legacyHour, count: legacyDates.length, dailyQs: dailyParams.toString() })
+        }
+      }
+      const notices = [normalizedNotice, bareDateNotice].filter(Boolean)
+      setModeNotice(notices.length
+        ? notices.map((n, i) => <span key={i}>{i > 0 ? ' ' : ''}{n}</span>)
+        : null)
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.
@@ -201,6 +240,19 @@ export default function MapBuilder() {
     void generateFromParams(params)
   }
 
+  // One click rebuilds the link as a canonical daily list — recipe state,
+  // URL, and render all follow, exactly like a data-gap retry.
+  function handleLegacyDailyGenerate() {
+    if (!legacySliceModal) return
+    const params = new URLSearchParams(legacySliceModal.dailyQs)
+    setLegacySliceModal(null)
+    const dailyRecipe = mapRecipeFromUrl(params)
+    if (dailyRecipe) applyRecipeToState(dailyRecipe)
+    selfUpdatedParamsRef.current = params.toString()
+    window.history.replaceState(null, '', `?${params.toString()}`)
+    void generateFromParams(Object.fromEntries(params))
+  }
+
   // -- Save / load library maps -------------------------------------------------
   function handleSaveMap() {
     if (!user) { setSavePromptOpen(true); return }
@@ -233,7 +285,7 @@ export default function MapBuilder() {
       {/* Map toolbar: app-level controls, owned by this page (site navigation
           lives in the global header). Collapses to the Time Scale card on mobile. */}
       <div className="hidden md:flex items-center gap-3 border-b border-slate-800 bg-slate-900/60 px-4 py-2">
-        <TimeScaleControls recipe={recipe} header />
+        <TimeScaleControls recipe={recipeForTimePanels} header />
         <div className="ml-auto flex items-center gap-2">
           {colorLabAccess && (
             <button type="button" onClick={openColorLab} disabled={isBlankMap}
@@ -265,13 +317,13 @@ export default function MapBuilder() {
           <Section className="md:hidden">
             <CardRow>
               <VariableDisplayControl label="Time Scale">
-                <TimeScaleControls recipe={recipe} />
+                <TimeScaleControls recipe={recipeForTimePanels} />
               </VariableDisplayControl>
             </CardRow>
           </Section>
 
           <VariableLevelPanel recipe={recipe} />
-          <TemporalPanel recipe={recipe} isVertical={isVertical} />
+          <TemporalPanel recipe={recipeForTimePanels} isVertical={isVertical} />
 
           {/* Region */}
           <Section>
@@ -306,11 +358,71 @@ export default function MapBuilder() {
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
           retry={mapRetry ? { label: mapRetry.label, question: mapRetry.question, onClick: handleMapRetry } : null}
-          notice={[requestNotice, modeNotice].filter(Boolean).join(' ') || null}
+          notice={requestNotice || modeNotice
+            ? <>{requestNotice}{requestNotice && modeNotice ? ' ' : null}{modeNotice}</>
+            : null}
           onDismissNotice={() => { setRequestNotice(null); setModeNotice(null) }}
           onDismissError={() => { setError(null); setPreflightRetry(null) }}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
+
+      {legacySliceModal && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-[2px]" onClick={() => setLegacySliceModal(null)} />
+          <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="legacy-slice-title"
+              className="pointer-events-auto w-[min(94vw,42rem)] rounded-xl border border-slate-700/60 bg-slate-900 text-white shadow-[0_20px_70px_rgba(0,0,0,0.58)] ring-1 ring-white/5"
+            >
+              <div className="flex items-start justify-between gap-5 rounded-t-xl bg-sky-950/35 px-8 py-6 sm:px-11 sm:py-7">
+                <div className="flex min-w-0 items-center gap-4">
+                  <span className="flex shrink-0 items-center justify-center text-amber-400">
+                    <Info size={32} />
+                  </span>
+                  <span id="legacy-slice-title" className="text-base font-semibold text-slate-50">
+                    About this link
+                  </span>
+                </div>
+                <button type="button" onClick={() => setLegacySliceModal(null)} aria-label="Dismiss"
+                  className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="px-8 pb-2 pt-8 sm:px-11 sm:pt-9">
+                <p className="text-sm leading-7 text-white">
+                  This link is from an earlier version of the map builder, which attached a
+                  single slice of time ({legacySliceModal.hour}z) without the user choosing
+                  it. It maps {legacySliceModal.hour}z on each of the {legacySliceModal.count} dates,
+                  rather than the full days.
+                </p>
+                <p className="mt-5 text-sm leading-7 text-slate-100">
+                  Your link has been generated using the new Slice mode and looks the same
+                  as your prior map. If you intended to map full days, switch the time
+                  scale to Daily — or generate the daily version now.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3 px-8 pb-8 pt-6 sm:px-11 sm:pb-10">
+                <button
+                  type="button"
+                  onClick={handleLegacyDailyGenerate}
+                  className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-700/65 px-5 text-sm font-medium text-white transition-colors hover:bg-sky-600/75"
+                >
+                  Generate daily version
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLegacySliceModal(null)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+                >
+                  Keep this map
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <RegionsModal
         open={regionsOpen}

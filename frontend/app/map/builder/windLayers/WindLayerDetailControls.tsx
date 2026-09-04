@@ -28,9 +28,16 @@ export function WindLayerDetailControls({ recipe, densityOptions }: WindLayerPro
       <div className="flex items-center gap-2">
         <Switch
           checked={isWindVariable && windShading}
-          disabled={!isWindVariable || displayMode !== 'raw'}
+          disabled={!isWindVariable}
           label="Wind speed shading"
           onChange={() => {
+            // Anomaly/normalized maps shade the anomaly field itself — the
+            // switch stays on and says why, instead of graying out and
+            // looking off (same pattern as the last-layer guard).
+            if (displayMode !== 'raw') {
+              showNotice('Anomaly maps always shade the anomaly field; shading cannot be turned off here.')
+              return
+            }
             if (isLastWindLayer('shading')) {
               showNotice(LAST_WIND_LAYER_NOTICE)
               return
@@ -38,7 +45,7 @@ export function WindLayerDetailControls({ recipe, densityOptions }: WindLayerPro
             setWindShading(o => !o)
           }}
         />
-        <span className={`text-xs ${isWindVariable && displayMode === 'raw' ? 'text-slate-300' : 'text-slate-600'}`}>
+        <span className={`text-xs ${isWindVariable ? 'text-slate-300' : 'text-slate-600'}`}>
           Shading
         </span>
       </div>

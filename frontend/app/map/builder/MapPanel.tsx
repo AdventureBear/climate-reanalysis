@@ -35,7 +35,7 @@ function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }
 
 /** Dismissible explanation of something the builder changed on the user's
  *  behalf, e.g. a link asking for a mode that map cannot produce (#72). */
-function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+function Notice({ text, onDismiss }: { text: React.ReactNode; onDismiss: () => void }) {
   return (
     <div role="status"
       className="mb-3 flex w-full max-w-xl items-start gap-3 rounded border border-amber-600 bg-amber-950/60 px-4 py-3 text-sm text-amber-100">
@@ -149,7 +149,7 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
   // One-click informed retry when a composite has missing data (#95).
   retry?: { label: string; question?: string; onClick: () => void } | null
   // Dismissible note when the builder changed the request (#72).
-  notice?: string | null
+  notice?: React.ReactNode
   onDismissNotice?: () => void
   onDismissError?: () => void
 }) {

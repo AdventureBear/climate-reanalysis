@@ -71,29 +71,53 @@ export function OverlaysPanel({ recipe }: { recipe: CompositeRecipeState }) {
         if (!isBlankMap) setHlCenters(o => !o)
       },
     },
+    // When the map's own variable draws a layer, its toggle shows ON and
+    // explains itself on click — never off-and-grayed, which reads as
+    // "this layer is missing" (same pattern as the Wind row above).
     {
       key: 'pressure',
       label: 'Pressure',
-      checked: !isBlankMap && contourOverlays.includes('pressure'),
-      disabled: isBlankMap || apiVariable === 'surface_pressure',
-      onChange: () => setContourOverlays(prev =>
-        prev.includes('pressure') ? prev.filter(c => c !== 'pressure') : [...prev, 'pressure']),
+      checked: !isBlankMap && (apiVariable === 'surface_pressure' || contourOverlays.includes('pressure')),
+      disabled: isBlankMap,
+      onChange: () => {
+        if (isBlankMap) return
+        if (apiVariable === 'surface_pressure') {
+          showNotice('This map already draws isobars — they are the map itself and cannot be turned off.')
+          return
+        }
+        setContourOverlays(prev =>
+          prev.includes('pressure') ? prev.filter(c => c !== 'pressure') : [...prev, 'pressure'])
+      },
     },
     {
       key: 'height',
       label: 'Height',
-      checked: !isBlankMap && contourOverlays.includes('height'),
-      disabled: isBlankMap || apiVariable === 'height',
-      onChange: () => setContourOverlays(prev =>
-        prev.includes('height') ? prev.filter(c => c !== 'height') : [...prev, 'height']),
+      checked: !isBlankMap && (apiVariable === 'height' || contourOverlays.includes('height')),
+      disabled: isBlankMap,
+      onChange: () => {
+        if (isBlankMap) return
+        if (apiVariable === 'height') {
+          showNotice('This map already draws height contours — they are the map itself and cannot be turned off.')
+          return
+        }
+        setContourOverlays(prev =>
+          prev.includes('height') ? prev.filter(c => c !== 'height') : [...prev, 'height'])
+      },
     },
     {
       key: 'temp',
       label: 'Temp',
-      checked: !isBlankMap && contourOverlays.includes('temp'),
-      disabled: isBlankMap || apiVariable === 'temp' || apiVariable === 'temp_2m',
-      onChange: () => setContourOverlays(prev =>
-        prev.includes('temp') ? prev.filter(c => c !== 'temp') : [...prev, 'temp']),
+      checked: !isBlankMap && (apiVariable === 'temp' || apiVariable === 'temp_2m' || contourOverlays.includes('temp')),
+      disabled: isBlankMap,
+      onChange: () => {
+        if (isBlankMap) return
+        if (apiVariable === 'temp' || apiVariable === 'temp_2m') {
+          showNotice('This map already shades temperature — it is the map itself and cannot be turned off.')
+          return
+        }
+        setContourOverlays(prev =>
+          prev.includes('temp') ? prev.filter(c => c !== 'temp') : [...prev, 'temp'])
+      },
     },
   ] as const
 

@@ -56,7 +56,12 @@ def map_date_label(
         return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
 
     def date_list_label() -> str:
-        return ", ".join(fmt(date_str) for date_str in selection.date_list)
+        # Long enumerations stretch the figure to fit the title (a 15-date
+        # list rendered a half-blank map); truncate like the pairs label.
+        dates = selection.date_list
+        if len(dates) <= 3:
+            return ", ".join(fmt(date_str) for date_str in dates)
+        return ", ".join(fmt(date_str) for date_str in dates[:2]) + f", +{len(dates) - 2} more"
 
     def multi_date_label() -> str:
         if req.date_mode == "list":
