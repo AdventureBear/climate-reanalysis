@@ -160,17 +160,19 @@ export function HourStepper({ hour, setHour, compact = false }: { hour: string; 
   const idx = HOURS.indexOf(hour)
   const prev = () => setHour(HOURS[(idx - 1 + HOURS.length) % HOURS.length])
   const next = () => setHour(HOURS[(idx + 1) % HOURS.length])
+  // h-[34px] matches the .input class's computed height (text-sm line +
+  // py-1.5 + border), so the stepper sits flush beside date inputs.
   return (
-    <div className="flex items-center rounded overflow-hidden border border-slate-600 shrink-0">
+    <div className="flex h-[34px] items-stretch rounded overflow-hidden border border-slate-600 shrink-0">
       <button type="button" onClick={prev}
-        className={`${compact ? 'px-1' : 'px-1.5'} py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
+        className={`${compact ? 'px-1' : 'px-1.5'} flex items-center bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
         <ChevronLeft size={compact ? 11 : 13} />
       </button>
-      <span className={`${compact ? 'min-w-[2.35rem] px-1.5' : 'min-w-[3rem] px-2.5'} py-1 bg-slate-800 text-xs font-mono text-slate-200 select-none text-center`}>
+      <span className={`${compact ? 'min-w-[2.35rem] px-1.5' : 'min-w-[3rem] px-2.5'} flex flex-1 items-center justify-center bg-slate-800 text-xs font-mono text-slate-200 select-none`}>
         {hour}z
       </span>
       <button type="button" onClick={next}
-        className={`${compact ? 'px-1' : 'px-1.5'} py-1 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
+        className={`${compact ? 'px-1' : 'px-1.5'} flex items-center bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white cursor-pointer transition-colors`}>
         <ChevronRight size={compact ? 11 : 13} />
       </button>
     </div>

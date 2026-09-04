@@ -2,7 +2,7 @@
 // button with its composite-aware label. Wind glyph styling lives with the
 // variable (VariableLevelPanel) — the map mode alone decides whether glyphs
 // show actual or anomaly wind (#47).
-import { dateRange, monthRange, type DisplayMode } from '../../../mapRecipe'
+import { dateRange, hoursBetween, monthRange, type DisplayMode } from '../../../mapRecipe'
 import { CardRow, Section, TabStrip, VariableDisplayControl } from '../../../ui/controls'
 import type { CompositeRecipeState } from './useCompositeRecipe'
 
@@ -15,6 +15,7 @@ export function AnalysisPanel({ recipe, loading, className = '' }: {
     isClimo, isMonthly,
     monthSubMode, monthStart, monthEnd, customMonths,
     dateSubMode, startDate, endDate, customDates,
+    startHour, hour, listTimes, sliceHours,
     displayMode, setDisplayMode,
     apiVariable,
     rawOnlyVariable,
@@ -28,18 +29,40 @@ export function AnalysisPanel({ recipe, loading, className = '' }: {
     if (isMonthly) {
       if (monthSubMode === 'range') {
         const n = monthRange(monthStart, monthEnd).length
-        if (n > 1) return `Composite (${n} mo)`
+        if (n > 1) return `Generate (${n} mo)`
       } else if (monthSubMode === 'list') {
         const n = customMonths.filter(Boolean).length
-        if (n > 1) return `Composite (${n} mo)`
+        if (n > 1) return `Generate (${n} mo)`
       }
     } else {
-      if (dateSubMode === 'range' && startDate && endDate && startDate <= endDate) {
-        const n = dateRange(startDate, endDate).length
-        if (n > 1) return precipTotalVariable ? `Total (${n} days)` : `Composite (${n} days)`
+      const threeHourlyMembers = isThreeHourly && !precipTotalVariable
+      if (dateSubMode === 'range' && startDate && endDate) {
+        if (threeHourlyMembers) {
+          const span = hoursBetween(startDate, startHour, endDate, hour)
+          if (span !== null && span >= 0 && span % 3 === 0) {
+            const n = span / 3 + 1
+            if (n > 1) return `Generate (${n} intervals)`
+          }
+        } else if (precipTotalVariable) {
+          // A precip range is an accumulation window; count hours, matching
+          // the duration text next to the pickers.
+          const span = hoursBetween(startDate, startHour, endDate, hour)
+          if (span !== null && span > 0 && span % 3 === 0) return `Total (${span} hr)`
+        } else if (startDate <= endDate) {
+          const n = dateRange(startDate, endDate).length
+          if (n > 1) return `Generate (${n} days)`
+        }
       } else if (dateSubMode === 'list') {
-        const n = customDates.filter(Boolean).length
-        if (n > 1) return precipTotalVariable ? `Total (${n} dates)` : `Composite (${n} dates)`
+        const n = threeHourlyMembers
+          ? listTimes.filter(t => t.date).length
+          : customDates.filter(Boolean).length
+        if (n > 1) {
+          if (precipTotalVariable) return `Total (${n} dates)`
+          return threeHourlyMembers ? `Generate (${n} intervals)` : `Generate (${n} dates)`
+        }
+      } else if (dateSubMode === 'slice') {
+        const n = customDates.filter(Boolean).length * Math.max(sliceHours.length, 1)
+        if (n > 1) return `Generate (${n} intervals)`
       }
     }
     return 'Generate Map'

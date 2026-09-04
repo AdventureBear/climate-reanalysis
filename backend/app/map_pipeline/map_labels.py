@@ -120,8 +120,13 @@ def map_date_label(
         members = selection.date_hour_members
         first_d, first_h = members[0]
         last_d, last_h = members[-1]
-        if selection.selection_mode == "list" and len(members) <= 4:
-            return ", ".join(f"{fmt(d)} {h}z" for d, h in members)
+        if selection.selection_mode == "list":
+            n = len(members)
+            if n <= 3:
+                listed = ", ".join(f"{fmt(d)} {h}z" for d, h in members)
+            else:
+                listed = ", ".join(f"{fmt(d)} {h}z" for d, h in members[:2]) + f", +{n - 2} more"
+            return f"Composite ({n} times): {listed}"
         return f"{fmt(first_d)} {first_h}z – {fmt(last_d)} {last_h}z  ({len(members)} 3-hr intervals)"
 
     if req.mode in ("anomaly", "normalized"):

@@ -25,7 +25,9 @@ export const DATA_AVAILABILITY_NOTE = 'The data usually lag real time by 24-36 h
 // timeRecipeToParams/timeRecipeFromUrl requires matching corpus cases in
 // backend/tests/test_time_selection_corpus.py. See docs/TIME_SELECTION_PLAN.md.
 export type TimeScale = '3-hourly' | 'daily' | 'monthly' | 'climatology'
-export type SubMode = 'single' | 'range' | 'list'
+// 'slice' (hours x dates) is valid for 3-hourly only; the UI offers the tab
+// only there and the backend rejects it elsewhere.
+export type SubMode = 'single' | 'range' | 'list' | 'slice'
 export type DisplayMode = 'raw' | 'anomaly' | 'normalized'
 export type ClimoSource = 'monthly-pgb' | 'r2-daily' | 'r2-daily-15day' | 'r2-monthly' | 'core-3hourly' | 'cfsr-daily'
 export type WindUnit = 'kt' | 'm/s'
@@ -45,8 +47,12 @@ export type TimeRecipe =
   | { scale: 'monthly'; subMode: 'range'; monthStart: string; monthEnd: string }
   | { scale: 'monthly'; subMode: 'list'; customMonths: string[] }
   | { scale: '3-hourly'; subMode: 'single'; date: string; hour: string }
-  | { scale: '3-hourly'; subMode: 'range'; startDate: string; endDate: string; startHour?: string; hour: string }
-  | { scale: '3-hourly'; subMode: 'list'; customDates: string[]; hour: string }
+  // Range is a continuous span: start date+hour through end date+hour
+  // inclusive ('hour' is the END hour, matching the precip_total shape).
+  | { scale: '3-hourly'; subMode: 'range'; startDate: string; endDate: string; startHour: string; hour: string }
+  // List rows each carry their own hour.
+  | { scale: '3-hourly'; subMode: 'list'; customTimes: { date: string; hour: string }[] }
+  | { scale: '3-hourly'; subMode: 'slice'; customDates: string[]; hours: string[] }
   | { scale: 'daily'; subMode: 'single'; date: string; hour?: string }
   | { scale: 'daily'; subMode: 'range'; startDate: string; endDate: string; startHour?: string; hour?: string }
   | { scale: 'daily'; subMode: 'list'; customDates: string[]; hour?: string }
@@ -338,7 +344,7 @@ function dateHourToUtc(date: string, hour: string): Date | null {
   return Number.isNaN(parsed.valueOf()) ? null : parsed
 }
 
-function hoursBetween(startDate: string, startHour: string, endDate: string, endHour: string): number | null {
+export function hoursBetween(startDate: string, startHour: string, endDate: string, endHour: string): number | null {
   const start = dateHourToUtc(startDate, startHour)
   const end = dateHourToUtc(endDate, endHour)
   if (!start || !end) return null
@@ -388,6 +394,67 @@ function timeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult {
     return availabilityError
       ? { ok: false, error: availabilityError, retry: monthlyAvailabilityRetry(params) ?? undefined }
       : { ok: true, params }
+  }
+
+  if (time.scale === '3-hourly' && time.subMode === 'slice') {
+    const dates = time.customDates.filter(Boolean).map(toApiDate)
+    if (!dates.length) return { ok: false, error: 'Add at least one date.' }
+    if (dates.length > MAX_COMPOSITE_DATES) {
+      return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
+    }
+    const sliceHours = time.hours.filter(h => HOURS.includes(h))
+    if (!sliceHours.length) return { ok: false, error: 'Pick at least one hour.' }
+    if (dates.length * sliceHours.length > MAX_COMPOSITE_DATES * 4) {
+      return { ok: false, error: `Slices are limited to ${MAX_COMPOSITE_DATES * 4} date/hour combinations per map.` }
+    }
+    const params = {
+      time_scale: '3-hourly',
+      date_mode: 'slice',
+      dates: dates.join(','),
+      hours: sliceHours.join(','),
+    }
+    const availabilityError = observationDateAvailabilityError(params)
+    if (availabilityError) return { ok: false, error: availabilityError }
+    return { ok: true, params }
+  }
+
+  if (time.scale === '3-hourly' && time.subMode === 'range') {
+    const startHour = HOURS.includes(time.startHour) ? time.startHour : '00'
+    const endHour = HOURS.includes(time.hour) ? time.hour : '00'
+    const span = hoursBetween(time.startDate, startHour, time.endDate, endHour)
+    if (span === null || span < 0) return { ok: false, error: 'End time must be at or after the start time.' }
+    if (span / 3 + 1 > MAX_COMPOSITE_DATES * 4) {
+      return { ok: false, error: `Ranges are limited to ${MAX_COMPOSITE_DATES * 4} 3-hour steps per map.` }
+    }
+    const params = {
+      time_scale: '3-hourly',
+      date_mode: 'range',
+      start_time: `${toApiDate(time.startDate)}${startHour}`,
+      end_time: `${toApiDate(time.endDate)}${endHour}`,
+    }
+    const availabilityError = observationDateAvailabilityError({
+      dates: `${toApiDate(time.startDate)},${toApiDate(time.endDate)}`,
+    })
+    if (availabilityError) return { ok: false, error: availabilityError }
+    return { ok: true, params }
+  }
+
+  if (time.scale === '3-hourly' && time.subMode === 'list') {
+    const rows = time.customTimes.filter(t => t.date && HOURS.includes(t.hour))
+    if (!rows.length) return { ok: false, error: 'Add at least one date and hour.' }
+    const tokens = rows.map(t => `${toApiDate(t.date)}${t.hour}`)
+    if (new Set(tokens).size !== tokens.length) {
+      return { ok: false, error: 'Each date and hour can appear once per list.' }
+    }
+    if (tokens.length > MAX_COMPOSITE_DATES * 4) {
+      return { ok: false, error: `Time lists are limited to ${MAX_COMPOSITE_DATES * 4} entries per map.` }
+    }
+    const params = { time_scale: '3-hourly', date_mode: 'list', times: tokens.join(',') }
+    const availabilityError = observationDateAvailabilityError({
+      dates: rows.map(t => toApiDate(t.date)).join(','),
+    })
+    if (availabilityError) return { ok: false, error: availabilityError }
+    return { ok: true, params }
   }
 
   const params: Record<string, string> = {}
@@ -452,15 +519,28 @@ function precipTotalTimeRecipeToParams(time: TimeRecipe): MapRecipeParamsResult 
     const availabilityError = observationDateAvailabilityError(params)
     return availabilityError ? { ok: false, error: availabilityError } : { ok: true, params }
   }
+  if (time.subMode === 'slice') {
+    return { ok: false, error: 'Precipitation totals do not support slice selections.' }
+  }
   if (time.subMode !== 'range') {
-    const dates = time.customDates.filter(Boolean).map(toApiDate)
+    const dateList = time.scale === 'daily'
+      ? time.customDates.filter(Boolean)
+      : time.customTimes.map(t => t.date).filter(Boolean)
+    const dates = dateList.map(toApiDate)
     if (!dates.length) return { ok: false, error: 'Add at least one date.' }
     if (dates.length > MAX_COMPOSITE_DATES) {
       return { ok: false, error: `Date lists are limited to ${MAX_COMPOSITE_DATES} dates per map.` }
     }
+    // Precip lists share one ending hour; on the 3-hourly shape it rides in
+    // the first row.
+    const listEndHour = time.scale === 'daily'
+      ? endHour
+      : time.customTimes[0]?.hour && HOURS.includes(time.customTimes[0].hour)
+        ? time.customTimes[0].hour
+        : endHour
     const params = {
       date_mode: 'list',
-      [time.scale === 'daily' ? 'hours' : 'hour']: endHour,
+      [time.scale === 'daily' ? 'hours' : 'hour']: listEndHour,
       ...(dates.length === 1 ? { date: dates[0] } : { dates: dates.join(',') }),
     }
     const availabilityError = observationDateAvailabilityError(params)
@@ -610,6 +690,39 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
   const hour = params.get('hour')
   const dateMode = params.get('date_mode')
 
+  // Canonical v2 shapes (time_scale gate, docs/TIME_SELECTION_PLAN.md).
+  if (params.get('time_scale') === '3-hourly') {
+    if (dateMode === 'slice') {
+      const sliceDates = (dates ?? date ?? '').split(',').map(s => s.trim()).filter(Boolean)
+      const sliceHours = (hours ?? hour ?? '').split(',').map(s => s.trim()).filter(h => HOURS.includes(h))
+      if (sliceDates.length && sliceHours.length) {
+        return { scale: '3-hourly', subMode: 'slice', customDates: sliceDates.map(apiDateToIso), hours: sliceHours }
+      }
+    }
+    if (dateMode === 'range') {
+      const st = params.get('start_time') ?? ''
+      const et = params.get('end_time') ?? ''
+      if (st.length === 10 && et.length === 10 && HOURS.includes(st.slice(8)) && HOURS.includes(et.slice(8))) {
+        return {
+          scale: '3-hourly',
+          subMode: 'range',
+          startDate: apiDateToIso(st.slice(0, 8)),
+          endDate: apiDateToIso(et.slice(0, 8)),
+          startHour: st.slice(8),
+          hour: et.slice(8),
+        }
+      }
+    }
+    if (dateMode === 'list') {
+      const rows = (params.get('times') ?? '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(t => t.length === 10 && HOURS.includes(t.slice(8)))
+        .map(t => ({ date: apiDateToIso(t.slice(0, 8)), hour: t.slice(8) }))
+      if (rows.length) return { scale: '3-hourly', subMode: 'list', customTimes: rows }
+    }
+  }
+
   if (mode === 'climatology') {
     // Current URLs carry months=YYYYMM; legacy shared URLs carried date=YYYYMM01.
     const parsedMonth = months ? parseApiMonth(months.split(',')[0].trim()) : null
@@ -643,7 +756,20 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
     : date
       ? [date]
       : []
-  const scale = hours ? 'daily' : '3-hourly'
+  if (!parsedDates.length) return undefined
+
+  // Legacy hours=<not the synoptic set> always computed hours x dates — a
+  // slice. Only 00/06/12/18 (in any order) means a daily composite.
+  const hoursList = hours ? hours.split(',').map(s => s.trim()).filter(h => HOURS.includes(h)) : []
+  const isSynopticSet =
+    hoursList.length === 4 && ['00', '06', '12', '18'].every(h => hoursList.includes(h))
+  if (hoursList.length && !isSynopticSet) {
+    return { scale: '3-hourly', subMode: 'slice', customDates: parsedDates.map(apiDateToIso), hours: hoursList }
+  }
+
+  // Decision 2 (docs/TIME_SELECTION_PLAN.md): a bare date with no hour param
+  // at all is a daily composite, matching the backend's legacy parse.
+  const scale = hours || !hour ? 'daily' : '3-hourly'
   const validHour = hour && HOURS.includes(hour) ? hour : '00'
 
   if (parsedDates.length === 1) {
@@ -652,34 +778,27 @@ function timeRecipeFromUrl(params: URLSearchParams): TimeRecipe | undefined {
       ? { scale, subMode: 'single', date: isoDate }
       : { scale, subMode: 'single', date: isoDate, hour: validHour }
   }
-  if (parsedDates.length > 1 && (dateMode === 'range' || isConsecutiveDates(parsedDates))) {
-    const startDate = apiDateToIso(parsedDates[0])
-    const endDate = apiDateToIso(parsedDates[parsedDates.length - 1])
-    if (scale === 'daily') {
-      return { scale, subMode: 'range', startDate, endDate }
-    }
+  if (scale === '3-hourly') {
+    // Legacy multi-date + one hour always computed a same-hour slice, no
+    // matter whether the UI called it Range or List. Load it as what it is.
+    return { scale: '3-hourly', subMode: 'slice', customDates: parsedDates.map(apiDateToIso), hours: [validHour] }
+  }
+  if (dateMode === 'range' || isConsecutiveDates(parsedDates)) {
     return {
       scale,
       subMode: 'range',
-      startDate,
-      endDate,
-      hour: validHour,
+      startDate: apiDateToIso(parsedDates[0]),
+      endDate: apiDateToIso(parsedDates[parsedDates.length - 1]),
     }
   }
-  if (parsedDates.length > 1) {
-    const customDates = parsedDates.map(apiDateToIso)
-    return scale === 'daily'
-      ? { scale, subMode: 'list', customDates }
-      : { scale, subMode: 'list', customDates, hour: validHour }
-  }
-
-  return undefined
+  return { scale, subMode: 'list', customDates: parsedDates.map(apiDateToIso) }
 }
 
 function firstDateFromTimeRecipe(time: TimeRecipe): string | undefined {
   if (time.scale !== '3-hourly' && time.scale !== 'daily') return undefined
   if (time.subMode === 'single') return time.date
   if (time.subMode === 'range') return time.startDate
+  if (time.scale === '3-hourly' && time.subMode === 'list') return time.customTimes[0]?.date
   return time.customDates[0]
 }
 
@@ -691,6 +810,16 @@ function precipTotalTimeRecipeFromUrl(params: URLSearchParams): TimeRecipe | und
   const dailyHour = params.get('hours')?.split(',').map(s => s.trim()).find(h => HOURS.includes(h))
   const validHour = hour && HOURS.includes(hour) ? hour : dailyHour ?? '00'
   if (!parsed) return undefined
+  // Legacy precip list links (dates + one ending hour) parse as a slice now;
+  // precip has no slice concept — restore them as a per-row list.
+  if (parsed.scale === '3-hourly' && parsed.subMode === 'slice') {
+    const endHour = parsed.hours[0] ?? '00'
+    return {
+      scale: '3-hourly',
+      subMode: 'list',
+      customTimes: parsed.customDates.map(d => ({ date: d, hour: endHour })),
+    }
+  }
   const date = firstDateFromTimeRecipe(parsed)
   if (!date) return undefined
   if (explicitStartDate) {

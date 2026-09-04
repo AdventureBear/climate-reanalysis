@@ -1,9 +1,11 @@
 // Temporal Range card: date/month mode selection and the matching inputs for
 // every time scale (3-hourly, daily, monthly, climatology).
-import { Minus, Plus } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { ChevronDown, Plus, RotateCcw, X } from 'lucide-react'
 import {
   CORE_ARCHIVE_START_DATE,
   CORE_ARCHIVE_START_MONTH,
+  MAX_COMPOSITE_DATES,
   dateRange,
   dateRangeAvailabilityMessage,
   futureObservationDateMessage,
@@ -13,7 +15,8 @@ import {
   newestAllowedObservationDate,
   type SubMode,
 } from '../../../mapRecipe'
-import { CardRow, HourStepper, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
+import { CardRow, HourStepper, Label, Section, SelectField, TabStrip, VariableDisplayControl } from '../../../ui/controls'
+import { HOURS } from '../../../sharedOptions'
 import { defaultDate, type CompositeRecipeState } from './useCompositeRecipe'
 
 const MONTH_OPTIONS = [
@@ -37,6 +40,13 @@ const subModeOpts = [
     { value: 'list',   label: 'List'   },
 ]
 
+// Slice (hours x dates) is a 3-hourly-only concept; daily/monthly and the
+// precip_total panels never offer the tab.
+const threeHourlySubModeOpts = [
+    ...subModeOpts,
+    { value: 'slice',  label: 'Slice'  },
+]
+
 function dateHourToUtc(date: string, hour: string) {
   const parsed = new Date(`${date}T${hour}:00:00Z`)
   return Number.isNaN(parsed.valueOf()) ? null : parsed
@@ -57,6 +67,58 @@ function formatDuration(hours: number | null) {
 
 function formatPrecipRangeDuration(startDate: string, startHour: string, endDate: string, endHour: string) {
   return formatDuration(rangeHours(startDate, startHour, endDate, endHour))
+}
+
+// Stepping an hour past midnight rolls its paired date: 21z → 00z advances a
+// day, 00z → 21z goes back one. Null = no roll needed.
+function rolledDate(prevHour: string, nextHour: string, isoDate: string): string | null {
+  const step = prevHour === '21' && nextHour === '00' ? 1 : prevHour === '00' && nextHour === '21' ? -1 : 0
+  if (!step || !isoDate) return null
+  const d = new Date(`${isoDate}T00:00:00Z`)
+  if (Number.isNaN(d.valueOf())) return null
+  d.setUTCDate(d.getUTCDate() + step)
+  return d.toISOString().slice(0, 10)
+}
+
+// Header cell for the label row of a date/hour grid: same height as the
+// card's own label line (h-4), so total card height is unchanged.
+function HeaderCell({ children }: { children?: React.ReactNode }) {
+  return <div className="flex h-4 items-center">{children ? <Label>{children}</Label> : null}</div>
+}
+
+// Slice's hour picker: a stepper-sized button opening a toggle menu — click
+// an hour to select/deselect, selection shown by color. The at-least-one-hour
+// rule lives in the caller's onToggle.
+function HourMultiSelect({ selected, onToggle }: { selected: string[]; onToggle: (h: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const label = selected.length === 1 ? `${selected[0]}z` : `${selected.length} hrs`
+  return (
+    <div className="relative w-full">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="flex h-[34px] w-full items-center rounded border border-slate-600 bg-slate-800 px-2 text-xs font-mono text-slate-200 hover:bg-slate-700 cursor-pointer transition-colors">
+        {/* Invisible twin of the right chevron: balances the row so the
+            label centers exactly like the stepper's hour text. */}
+        <ChevronDown size={11} className="invisible" />
+        <span className="flex-1 text-center">{label}</span>
+        <ChevronDown size={11} className="text-slate-400" />
+      </button>
+      {open && (
+        <>
+          <button type="button" className="fixed inset-0 z-30 cursor-default" aria-label="Close hour menu" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-[36px] z-40 w-24 rounded-lg border border-slate-700 bg-slate-950 p-1 shadow-xl">
+            {HOURS.map(h => (
+              <button key={h} type="button" onClick={() => onToggle(h)}
+                className={`w-full rounded px-2 py-1 text-left text-xs font-mono cursor-pointer transition-colors ${
+                  selected.includes(h) ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-800'
+                }`}>
+                {h}z
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 function DateInput({
@@ -141,7 +203,20 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     startHour, setStartHour,
     hour, setHour,
     customDates, setCustomDates,
+    sliceHours, setSliceHours,
+    listTimes, setListTimes,
+    syncRangeStart,
   } = recipe
+
+  function toggleSliceHour(h: string) {
+    setSliceHours(prev => {
+      if (prev.includes(h)) {
+        // At least one hour stays selected.
+        return prev.length > 1 ? prev.filter(x => x !== h) : prev
+      }
+      return HOURS.filter(x => prev.includes(x) || x === h)  // keep chip order
+    })
+  }
 
   function renderTemporalModeControls() {
     if (isClimo) {
@@ -157,7 +232,8 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     if (isMonthly) {
       return <TabStrip options={subModeOpts} value={monthSubMode} onChange={v => setMonthSubMode(v as SubMode)} fullWidth />
     }
-    return <TabStrip options={subModeOpts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
+    const opts = isThreeHourly && !precipTotalVariable ? threeHourlySubModeOpts : subModeOpts
+    return <TabStrip options={opts} value={dateSubMode} onChange={v => setDateSubMode(v as SubMode)} fullWidth />
   }
 
   function renderTemporalInputs() {
@@ -198,8 +274,8 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
                   />
                   <button type="button" disabled={customMonths.length === 1}
                     onClick={() => setCustomMonths(prev => prev.filter((_, j) => j !== i))}
-                    className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
-                    <Minus size={13} />
+                    className="p-1 text-sky-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer transition-colors">
+                    <X size={13} />
                   </button>
                 </div>
               ))}
@@ -216,9 +292,21 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
 
     if (precipTotalVariable && dateSubMode === 'single') {
       return (
-        <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
-          <DateInput value={date} onChange={setDate} className="input min-w-0 flex-1" />
-          <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+        <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+          <HeaderCell>Date</HeaderCell>
+          <HeaderCell>Hour</HeaderCell>
+          <HeaderCell />
+          <DateInput value={date} onChange={setDate} className="input min-w-0" />
+          <HourStepper
+            hour={hour}
+            setHour={h => {
+              const rolled = rolledDate(hour, h, date)
+              if (rolled) setDate(rolled)
+              setHour(h)
+            }}
+            compact={isVertical}
+          />
+          <span />
         </div>
       )
     }
@@ -227,10 +315,21 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
       const duration = formatPrecipRangeDuration(startDate, startHour, endDate, hour)
       return (
         <div className="flex flex-col gap-1.5">
-          <div className="flex gap-1.5 items-center flex-wrap">
+          <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+            <HeaderCell>Date</HeaderCell>
+            <HeaderCell>Hour</HeaderCell>
+            <HeaderCell />
             <DateInput value={startDate} onChange={setStartDate} className="input min-w-0" />
-            <HourStepper hour={startHour} setHour={setStartHour} compact={isVertical} />
-            <span className="text-slate-600 text-xs">→</span>
+            <HourStepper
+              hour={startHour}
+              setHour={h => {
+                const rolled = rolledDate(startHour, h, startDate)
+                if (rolled) setStartDate(rolled)
+                setStartHour(h)
+              }}
+              compact={isVertical}
+            />
+            <span className="text-slate-600 text-xs select-none">Start</span>
             <DateInput
               value={endDate}
               onChange={value => {
@@ -239,9 +338,21 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
               }}
               className="input min-w-0"
             />
-            <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
-            <span className="text-slate-500 text-xs">{duration}</span>
+            <HourStepper
+              hour={hour}
+              setHour={h => {
+                const rolled = rolledDate(hour, h, endDate)
+                if (rolled) {
+                  setEndDate(rolled)
+                  setDate(rolled)
+                }
+                setHour(h)
+              }}
+              compact={isVertical}
+            />
+            <span className="text-slate-600 text-xs select-none">End</span>
           </div>
+          <span className="min-h-[16px] text-slate-500 text-xs">{duration}</span>
         </div>
       )
     }
@@ -249,24 +360,30 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     if (precipTotalVariable && dateSubMode === 'list') {
       return (
         <div className="flex flex-col gap-1.5">
-          <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Hour</span>
-            <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+          {/* Same shared grid as List/Slice. One ending hour applies to every
+              date, so the stepper sits on the first row only. */}
+          <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+            <HeaderCell>Date</HeaderCell>
+            <HeaderCell>Hour</HeaderCell>
+            <HeaderCell />
+            {customDates.map((d, i) => (
+              <Fragment key={i}>
+                <DateInput
+                  value={d}
+                  onChange={value => setCustomDates(prev => prev.map((x, j) => j === i ? value : x))}
+                  className="input min-w-0"
+                />
+                {i === 0 ? (
+                  <HourStepper hour={hour} setHour={setHour} compact={isVertical} />
+                ) : <span />}
+                <button type="button" disabled={customDates.length === 1}
+                  onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
+                  className="p-1 text-sky-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer transition-colors">
+                  <X size={13} />
+                </button>
+              </Fragment>
+            ))}
           </div>
-          {customDates.map((d, i) => (
-            <div key={i} className="flex gap-1.5 items-center">
-              <DateInput
-                value={d}
-                onChange={value => setCustomDates(prev => prev.map((x, j) => j === i ? value : x))}
-                className="input flex-1"
-              />
-              <button type="button" disabled={customDates.length === 1}
-                onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
-                className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
-                <Minus size={13} />
-              </button>
-            </div>
-          ))}
           <button type="button"
             onClick={() => setCustomDates(prev => [...prev, defaultDate()])}
             className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
@@ -279,31 +396,185 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
     // 3-hourly or daily
     return (
       <>
-        {dateSubMode === 'single' && (
-          <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 items-center`}>
-            <DateInput value={date} onChange={setDate} className="input min-w-0 flex-1" />
-            {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
+        {dateSubMode === 'single' && isThreeHourly && (
+          <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+            <HeaderCell>Date</HeaderCell>
+            <HeaderCell>Hour</HeaderCell>
+            <HeaderCell />
+            <DateInput value={date} onChange={setDate} className="input min-w-0" />
+            <HourStepper
+              hour={hour}
+              setHour={h => {
+                const rolled = rolledDate(hour, h, date)
+                if (rolled) setDate(rolled)
+                setHour(h)
+              }}
+              compact={isVertical}
+            />
+            <span />
+            <div className="col-span-3 flex items-center">
+              <button type="button" onClick={syncRangeStart}
+                title="Set Range's start date to this date"
+                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+                <RotateCcw size={12} /> Sync range start
+              </button>
+            </div>
           </div>
         )}
-        {dateSubMode === 'range' && (
+        {dateSubMode === 'single' && !isThreeHourly && (
+          <div className={`${isVertical ? 'gap-1' : 'gap-2'} flex min-w-0 flex-col gap-1.5`}>
+            <DateInput value={date} onChange={setDate} className="input min-w-0 w-full" />
+            <div className="flex items-center">
+              <button type="button" onClick={syncRangeStart}
+                title="Set Range's start date to this date"
+                className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+                <RotateCcw size={12} /> Sync range start
+              </button>
+            </div>
+          </div>
+        )}
+        {dateSubMode === 'range' && isThreeHourly && (
+          // A continuous span: start date+hour through end date+hour,
+          // the same layout as the precip_total range above. The interval
+          // count lives on the Generate button; this space is for feedback
+          // when the range is invalid.
+          <div className="flex flex-col gap-1.5">
+            <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+              <HeaderCell>Date</HeaderCell>
+              <HeaderCell>Hour</HeaderCell>
+              <HeaderCell />
+              <DateInput value={startDate} onChange={setStartDate} className="input min-w-0" />
+              <HourStepper
+                hour={startHour}
+                setHour={h => {
+                  const rolled = rolledDate(startHour, h, startDate)
+                  if (rolled) setStartDate(rolled)
+                  setStartHour(h)
+                }}
+                compact={isVertical}
+              />
+              <span className="text-slate-600 text-xs select-none">Start</span>
+              <DateInput value={endDate} onChange={setEndDate} className="input min-w-0" />
+              <HourStepper
+                hour={hour}
+                setHour={h => {
+                  const rolled = rolledDate(hour, h, endDate)
+                  if (rolled) setEndDate(rolled)
+                  setHour(h)
+                }}
+                compact={isVertical}
+              />
+              <span className="text-slate-600 text-xs select-none">End</span>
+            </div>
+            {(() => {
+              // Always-rendered line: interval count, or (same quiet gray)
+              // what's wrong — content changes, layout doesn't.
+              const span = rangeHours(startDate, startHour, endDate, hour)
+              const intervals = span === null || span % 3 !== 0 ? null : span / 3 + 1
+              const text = intervals === null
+                ? ''
+                : span! < 0
+                  ? 'End time must be later than the start time.'
+                  : intervals > MAX_COMPOSITE_DATES * 4
+                    ? `Ranges are limited to ${MAX_COMPOSITE_DATES * 4} fetches (${Math.floor((MAX_COMPOSITE_DATES * 4) / 8)} days)`
+                    : `${intervals} 3-hr intervals`
+              return <span className="min-h-[16px] text-slate-500 text-xs">{text}</span>
+            })()}
+          </div>
+        )}
+        {dateSubMode === 'range' && !isThreeHourly && (
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5 items-center flex-wrap">
               <DateInput value={startDate} onChange={setStartDate} className="input min-w-0" />
               <span className="text-slate-600 text-xs">→</span>
               <DateInput value={endDate} onChange={setEndDate} className="input min-w-0" />
-              {isThreeHourly && <HourStepper hour={hour} setHour={setHour} compact={isVertical} />}
-              {startDate && endDate && startDate <= endDate && (
-                <span className="text-slate-500 text-xs">{dateRange(startDate, endDate).length}d</span>
-              )}
+              {startDate && endDate && startDate <= endDate && (() => {
+                const n = dateRange(startDate, endDate).length
+                return (
+                  <span className="text-slate-500 text-xs">
+                    {n > MAX_COMPOSITE_DATES
+                      ? `Ranges are limited to ${MAX_COMPOSITE_DATES * 4} fetches (${MAX_COMPOSITE_DATES} days)`
+                      : `${n}d`}
+                  </span>
+                )
+              })()}
             </div>
-            {/*{!isThreeHourly && startDate && endDate && startDate < endDate && (*/}
-            {/*  <p className="text-[10px] text-slate-500 leading-tight">*/}
-            {/*    Composite dates average all 8 3-hour times.*/}
-            {/*  </p>*/}
-            {/*)}*/}
           </div>
         )}
-        {dateSubMode === 'list' && (
+        {dateSubMode === 'list' && isThreeHourly && (
+          // Each row is one (date, hour) member; one grid keeps the header
+          // and every row's columns aligned.
+          <div className="flex flex-col gap-1.5">
+            <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+              <HeaderCell>Date</HeaderCell>
+              <HeaderCell>Hour</HeaderCell>
+              <HeaderCell />
+              {listTimes.map((t, i) => (
+                <Fragment key={i}>
+                  <DateInput
+                    value={t.date}
+                    onChange={value => setListTimes(prev => prev.map((x, j) => j === i ? { ...x, date: value } : x))}
+                    className="input min-w-0"
+                  />
+                  <HourStepper
+                    hour={t.hour}
+                    setHour={value => setListTimes(prev => prev.map((x, j) => {
+                      if (j !== i) return x
+                      const rolled = rolledDate(x.hour, value, x.date)
+                      return { date: rolled ?? x.date, hour: value }
+                    }))}
+                    compact={isVertical}
+                  />
+                  <button type="button" disabled={listTimes.length === 1}
+                    onClick={() => setListTimes(prev => prev.filter((_, j) => j !== i))}
+                    className="p-1 text-sky-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer transition-colors">
+                    <X size={13} />
+                  </button>
+                </Fragment>
+              ))}
+            </div>
+            <button type="button"
+              onClick={() => setListTimes(prev => [...prev, { date: defaultDate(), hour: prev[prev.length - 1]?.hour ?? '00' }])}
+              className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+              <Plus size={12} /> Add Date & Time
+            </button>
+          </div>
+        )}
+        {dateSubMode === 'slice' && (
+          // Same grid as List; the Hour column holds one multi-select whose
+          // hours apply to every date. Selected hours echo in the gray line.
+          <div className="flex flex-col gap-1.5">
+            <div className="grid gap-x-1.5 gap-y-1.5 grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-center">
+              <HeaderCell>Date</HeaderCell>
+              <HeaderCell>Hour</HeaderCell>
+              <HeaderCell />
+              {customDates.map((d, i) => (
+                <Fragment key={i}>
+                  <DateInput
+                    value={d}
+                    onChange={value => setCustomDates(prev => prev.map((x, j) => j === i ? value : x))}
+                    className="input min-w-0"
+                  />
+                  {i === 0 ? <HourMultiSelect selected={sliceHours} onToggle={toggleSliceHour} /> : <span />}
+                  <button type="button" disabled={customDates.length === 1}
+                    onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
+                    className="p-1 text-sky-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer transition-colors">
+                    <X size={13} />
+                  </button>
+                </Fragment>
+              ))}
+            </div>
+            <button type="button"
+              onClick={() => setCustomDates(prev => [...prev, defaultDate()])}
+              className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 cursor-pointer w-fit">
+              <Plus size={12} /> Add Date
+            </button>
+            <span className="min-h-[16px] text-slate-500 text-xs">
+              {sliceHours.map(h => `${h}z`).join(', ')}
+            </span>
+          </div>
+        )}
+        {dateSubMode === 'list' && !isThreeHourly && (
           <div className="flex flex-col gap-1.5">
             {customDates.map((d, i) => (
               <div key={i} className="flex gap-1.5 items-center">
@@ -314,8 +585,8 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
                 />
                 <button type="button" disabled={customDates.length === 1}
                   onClick={() => setCustomDates(prev => prev.filter((_, j) => j !== i))}
-                  className="p-1 text-slate-600 hover:text-red-400 disabled:opacity-20 cursor-pointer transition-colors">
-                  <Minus size={13} />
+                  className="p-1 text-sky-400 hover:text-sky-300 disabled:opacity-20 cursor-pointer transition-colors">
+                  <X size={13} />
                 </button>
               </div>
             ))}
@@ -343,9 +614,18 @@ export function TemporalPanel({ recipe, isVertical }: { recipe: CompositeRecipeS
               </VariableDisplayControl>
             </CardRow>
             <CardRow>
-              <VariableDisplayControl label={isClimo ? 'Month' : (isMonthly ? 'Month' : 'Date')}>
-                {renderTemporalInputs()}
-              </VariableDisplayControl>
+              {/* Modes with an hour stepper render their own Date/Hour header
+                  row inside a shared grid, so the card label would duplicate
+                  Date; a plain shell of the same height replaces it. */}
+              {!isClimo && !isMonthly && (precipTotalVariable || isThreeHourly) ? (
+                <div className="flex min-h-[50px] flex-col gap-1">
+                  {renderTemporalInputs()}
+                </div>
+              ) : (
+                <VariableDisplayControl label={isClimo ? 'Month' : (isMonthly ? 'Month' : 'Date')}>
+                  {renderTemporalInputs()}
+                </VariableDisplayControl>
+              )}
             </CardRow>
           </Section>
   )

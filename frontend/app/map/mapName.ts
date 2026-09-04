@@ -91,8 +91,13 @@ function formatTime(time: TimeRecipe | undefined): string {
       return formatList(time.customDates)
     case '3-hourly':
       if (time.subMode === 'single') return `${time.date}_${time.hour}z`
-      if (time.subMode === 'range') return `${time.startDate}_to_${time.endDate}_${time.hour}z`
-      return `${formatList(time.customDates)}_${time.hour}z`
+      if (time.subMode === 'range') {
+        return `${time.startDate}_${time.startHour}z_to_${time.endDate}_${time.hour}z`
+      }
+      if (time.subMode === 'slice') {
+        return `${formatList(time.customDates)}_${time.hours.map(h => `${h}z`).join('_')}`
+      }
+      return formatList(time.customTimes.map(t => `${t.date}_${t.hour}z`))
   }
 }
 

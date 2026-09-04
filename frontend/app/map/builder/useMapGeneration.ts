@@ -12,6 +12,7 @@ export { gapRetryFromGap } from './dataGap'
 const IGNORED_PARAMS_HEADER = 'X-PyRe-Ignored-Params'
 
 function timeScaleFromParams(params: Record<string, string>): string {
+  if (params.time_scale) return params.time_scale
   if (params.mode === 'climatology') return 'climatology'
   if (params.months) return 'monthly'
   if (params.hour) return '3-hourly'

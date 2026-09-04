@@ -91,6 +91,13 @@ export function useCompositeRecipe() {
   const [startHour,   setStartHour]   = useState('21')
   const [hour,        setHour]        = useState('00')
   const [customDates, setCustomDates] = useState<string[]>([defaultDate()])
+  // Slice mode (3-hourly only): the chosen hours, applied to every date in
+  // customDates. Seeded from `hour` on first entry into the Slice tab.
+  const [sliceHours, setSliceHours] = useState<string[]>([])
+  // 3-hourly List rows: each row is its own (date, hour) member.
+  const [listTimes, setListTimes] = useState<{ date: string; hour: string }[]>(
+    [{ date: defaultDate(), hour: '00' }],
+  )
 
   const [month,        setMonth]        = useState(newestAllowedObservationMonth)
   const [monthStart,   setMonthStart]   = useState(newestAllowedObservationMonth)
@@ -229,6 +236,20 @@ export function useCompositeRecipe() {
     }
   }
 
+  function chooseDateSubMode(next: SubMode) {
+    if (next === 'slice' && sliceHours.length === 0) setSliceHours([hour])
+    setDateSubMode(next)
+  }
+
+  // One-shot links on the Single panel. They touch Range only; List and
+  // Slice keep whatever is entered. Nothing syncs without a click.
+  function syncRangeStart() {
+    setStartDate(date)
+  }
+  function syncRangeEnd() {
+    setEndDate(date)
+  }
+
   function chooseTimeScale(next: TimeScale) {
     setTimeScale(next)
     if (apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection) === 'precip_total' && next === 'daily') {
@@ -267,7 +288,10 @@ export function useCompositeRecipe() {
       const scale = timeScale === 'daily' ? 'daily' : '3-hourly'
       if (dateSubMode === 'single') return { scale, subMode: 'single', date, hour }
       if (dateSubMode === 'range') return { scale, subMode: 'range', startDate, endDate, startHour, hour }
-      return { scale, subMode: 'list', customDates, hour }
+      if (scale === 'daily') return { scale, subMode: 'list', customDates, hour }
+      // The precip list panel keeps one ending hour for all dates; the
+      // 3-hourly list shape carries it per row.
+      return { scale, subMode: 'list', customTimes: customDates.map(d => ({ date: d, hour })) }
     }
     if (isClimo) {
       return { scale: 'climatology', climoMonth }
@@ -280,7 +304,10 @@ export function useCompositeRecipe() {
     if (isThreeHourly) {
       if (dateSubMode === 'single') return { scale: '3-hourly', subMode: 'single', date, hour }
       if (dateSubMode === 'range') return { scale: '3-hourly', subMode: 'range', startDate, endDate, startHour, hour }
-      return { scale: '3-hourly', subMode: 'list', customDates, hour }
+      if (dateSubMode === 'slice') {
+        return { scale: '3-hourly', subMode: 'slice', customDates, hours: sliceHours.length ? sliceHours : [hour] }
+      }
+      return { scale: '3-hourly', subMode: 'list', customTimes: listTimes }
     }
     if (dateSubMode === 'single') return { scale: 'daily', subMode: 'single', date }
     if (dateSubMode === 'range') return { scale: 'daily', subMode: 'range', startDate, endDate }
@@ -359,14 +386,27 @@ export function useCompositeRecipe() {
           return
         case '3-hourly':
           setDateSubMode(time.subMode)
+          if (time.subMode === 'slice') {
+            setCustomDates(time.customDates)
+            setSliceHours(time.hours)
+            if (time.hours[0]) setHour(time.hours[0])
+            return
+          }
+          if (time.subMode === 'list') {
+            setListTimes(time.customTimes)
+            // Mirror into the shared date/hour state so the precip list
+            // panel (dates + one ending hour) hydrates too.
+            setCustomDates(time.customTimes.map(t => t.date))
+            if (time.customTimes[0]?.hour) setHour(time.customTimes[0].hour)
+            return
+          }
           setHour(time.hour)
           if (time.subMode === 'single') setDate(time.date)
           if (time.subMode === 'range') {
             setStartDate(time.startDate)
             setEndDate(time.endDate)
-            if (time.startHour) setStartHour(time.startHour)
+            setStartHour(time.startHour)
           }
-          if (time.subMode === 'list') setCustomDates(time.customDates)
           return
       }
     }
@@ -457,6 +497,12 @@ export function useCompositeRecipe() {
     // Monthly obs composites are not wired for most surface/named-level
     // fields (MSLP is exempt — its monthly archive record is wired).
     if (monthlyUnavailable && timeScale === 'monthly') setTimeScale('3-hourly')
+    // Slice exists only under 3-hourly; leaving that scale (or switching to
+    // precip_total, which has its own panels) falls back to List, keeping
+    // the dates.
+    if (dateSubMode === 'slice' && (!isThreeHourly || precipTotalVariable)) {
+      setDateSubMode(precipTotalVariable ? 'single' : 'list')
+    }
     if (variable === 'radiation' && level === 'toa_radiation' && radiationWaveband === 'longwave' && radiationDirection === 'down') {
       setRadiationDirection('up')
     }
@@ -471,6 +517,8 @@ export function useCompositeRecipe() {
     level,
     radiationWaveband,
     radiationDirection,
+    dateSubMode,
+    precipTotalVariable,
   ])
 
   useEffect(() => {
@@ -523,7 +571,10 @@ export function useCompositeRecipe() {
 
   return {
     timeScale, setTimeScale: chooseTimeScale,
-    dateSubMode, setDateSubMode,
+    dateSubMode, setDateSubMode: chooseDateSubMode,
+    sliceHours, setSliceHours,
+    listTimes, setListTimes,
+    syncRangeStart, syncRangeEnd,
     monthSubMode, setMonthSubMode,
     date, setDate,
     startDate, setStartDate,
