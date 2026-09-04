@@ -291,18 +291,22 @@ export function isConsecutiveDates(dates: string[]) {
   return dateRange(apiDateToIso(dates[0]), apiDateToIso(dates[dates.length - 1])).join(',') === dates.join(',')
 }
 
-/** True when a URL asks for normalized on a single-hour map.
+/** True when a URL asks for normalized where no sigma path exists.
  *
- * Most normalized maps need a standard deviation path appropriate to their
- * source and cadence. PWAT uses the R2 daily 15-day mean/std path; other
- * 3-hourly normalized maps still lack a usable sigma path. */
+ * Mirrors the backend gate in main.py: single-hour and 3-hourly selections
+ * compare against a mean-only hourly baseline, so normalized is unavailable.
+ * Daily and monthly selections — canonical (time_scale param) or legacy
+ * (hours/months params, or a bare date, which is a daily composite now) —
+ * carry sigma. PWAT is exempt via its R2 daily 15-day mean/std path. */
 export function normalizedUnavailableInUrl(params: URLSearchParams): boolean {
-  return (
-    params.get('mode') === 'normalized'
-    && params.get('variable') !== 'precipitable_water'
-    && !params.get('hours')
-    && !params.get('months')
-  )
+  if (params.get('mode') !== 'normalized' || params.get('variable') === 'precipitable_water') {
+    return false
+  }
+  const timeScale = params.get('time_scale')
+  // Slices keep the daily r2 baseline (which has sigma), so they support
+  // normalized; ranges and lists compare per-hour and do not.
+  if (timeScale) return timeScale === '3-hourly' && params.get('date_mode') !== 'slice'
+  return Boolean(params.get('hour')) && !params.get('hours') && !params.get('months')
 }
 
 function displayMode(value: string | null, params?: URLSearchParams): DisplayMode | undefined {
@@ -881,10 +885,18 @@ function precipTotalTimeRecipeFromUrl(params: URLSearchParams): TimeRecipe | und
   const validHour = hour && HOURS.includes(hour) ? hour : dailyHour ?? '00'
   if (!parsed) return undefined
   // Legacy precip list links (dates + one ending hour) parse as a slice now;
-  // those meant a shared-hour list — restore that shape. Canonical slices
-  // (time_scale present) are real precip slices and pass through.
+  // those meant a shared-hour list — restore that shape. Which tab depends on
+  // which serializer wrote the link: the Daily panels send the hour via
+  // 'hours' (24h windows), the old 3-hourly list sent it via 'hour'.
+  // Canonical slices (time_scale present) are real precip slices and pass
+  // through.
   if (!params.get('time_scale') && parsed.scale === '3-hourly' && parsed.subMode === 'slice') {
     const endHour = parsed.hours[0] ?? '00'
+    if (params.get('hours')) {
+      return params.get('date_mode') !== 'list' && parsed.customDates.length === 1
+        ? { scale: 'daily', subMode: 'single', date: parsed.customDates[0], hour: endHour }
+        : { scale: 'daily', subMode: 'list', customDates: parsed.customDates, hour: endHour }
+    }
     return {
       scale: '3-hourly',
       subMode: 'list',

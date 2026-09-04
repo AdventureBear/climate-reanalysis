@@ -138,16 +138,23 @@ export default function MapBuilder() {
       // Decision 2 (docs/TIME_SELECTION_PLAN.md): a legacy link with a date
       // but no hour at all used to render a 00z snapshot; it now renders the
       // full-day composite. Say so once instead of silently changing the map.
+      // precip_total is exempt from Decision 2 (windows keep their 00z ending
+      // hour), so its links render unchanged and get no notice.
       const bareDateNotice =
         !params.get('time_scale') && !params.get('hour') && !params.get('hours')
         && !params.get('months') && params.get('mode') !== 'climatology'
+        && params.get('variable') !== 'precip_total'
         && Boolean(params.get('date') ?? params.get('dates'))
           ? 'This link now shows a full-day composite (the average of 00z, 06z, 12z, and 18z). For a single time, switch to 3-hourly and pick an hour.'
           : null
       // Legacy multi-date + one hour: the old builder attached the hour
       // without the user choosing it. Explain in a modal and offer the
       // daily rebuild; the slice still renders unchanged underneath.
-      if (!params.get('time_scale') && !params.get('hours') && !params.get('months')) {
+      // precip_total is excluded: its ending hour defines the accumulation
+      // window (not an arbitrary slice), and the daily rebuild would trip
+      // the window-spacing guard for windows over 6 hours.
+      if (!params.get('time_scale') && !params.get('hours') && !params.get('months')
+        && params.get('variable') !== 'precip_total') {
         const legacyHour = params.get('hour')
         const legacyDates = (params.get('dates') ?? '').split(',').filter(Boolean)
         if (legacyHour && legacyDates.length >= 2) {

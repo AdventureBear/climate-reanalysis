@@ -70,6 +70,7 @@ from app.map_pipeline.time_selection import (  # noqa: E402
     MAX_DAILY_COMPOSITE_FETCHES,
     parse_time_selection,
 )
+from app.map_pipeline.climo_policy import is_single_hour_product  # noqa: E402
 CORE_ARCHIVE_START_DATE = "19500101"
 CORE_ARCHIVE_START_MONTH = "195001"
 DATA_AVAILABILITY_NOTE = "The data usually lag real time by 24-36 hours."
@@ -627,23 +628,9 @@ def get_map(
             start_hour=start_hour,
             precip_window=precip_window,
         )
-    # Single-hour products usually compare against a mean-only hourly baseline.
-    # PWAT is allowed because it has an R2 daily centered 15-day mean/std path.
-    # A bare date (hour absent) is a daily composite now, so it is exempt;
-    # canonical 3-hourly selections are rejected as a class below.
-    single_hour_normalized = (
-        (not time_scale and bool(hour) and not hours and not months)
-        or (time_scale == "3-hourly")
-    )
-    if mode == "normalized" and single_hour_normalized and variable != "precipitable_water":
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "normalized mode is not available for 3-hourly maps: the "
-                "per-hour climatology has no standard deviation. Use the daily "
-                "composite for normalized anomalies, or anomaly mode instead."
-            ),
-        )
+    # The normalized-mode gate lives below with the parsed selection preview:
+    # whether a sigma path exists depends on what was selected (single hour vs
+    # slice vs range), not on which parameter spelling said it.
     if hours:
         parsed_hours = [h.strip() for h in hours.split(",") if h.strip()]
         invalid_hours = [h for h in parsed_hours if h not in VALID_HOURS]
@@ -754,6 +741,25 @@ def get_map(
         # canonical params (which bypass the legacy param-based guards above)
         # get their availability check from the expanded selection.
         selection_preview = parse_time_selection(map_request)
+        # Normalized needs a standard deviation. Daily composites (including
+        # hour slices, which keep the daily r2 baseline — see SLICE-CLIMO in
+        # climo_policy.py) and monthly selections have one; single hours and
+        # 3-hourly ranges/lists compare against the mean-only hourly baseline.
+        # PWAT is exempt via its R2 daily centered 15-day mean/std path.
+        if (
+            mode == "normalized"
+            and variable != "precipitable_water"
+            and is_single_hour_product(selection_preview)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "normalized mode is not available for single-hour maps or "
+                    "3-hourly ranges/lists: the per-hour climatology has no "
+                    "standard deviation. Use a daily composite for normalized "
+                    "anomalies, or anomaly mode instead."
+                ),
+            )
         # precip_total sums one accumulation window per member; ending times
         # closer together than the window would count the same rain twice.
         if variable == "precip_total" and len(selection_preview.date_hour_members) > 1:

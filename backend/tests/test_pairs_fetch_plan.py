@@ -86,3 +86,22 @@ def test_hourly_climo_weighted_per_member_hour(monkeypatch):
     assert sorted(calls) == [(9, 1, 21), (9, 2, 0), (9, 2, 3)]
     assert mean == pytest.approx((21 + 0 + 3) / 3)
     assert std is None
+
+
+def test_daily_source_baseline_weights_days_by_member_count(monkeypatch):
+    """When the baseline is a daily source (e.g. PWAT's r2-daily-15day), a
+    midnight-crossing range weights each day's normal by its member count so
+    it matches the member-weighted observation mean (1:3 here, not 1:1)."""
+    def fake_fetch_climo(req, climo_source, month, day, grib_name, *, hour=None):
+        return {(9, 1): 10.0, (9, 2): 20.0}[(month, day)], 1.0
+
+    monkeypatch.setattr(fetch_plan, "fetch_climo", fake_fetch_climo)
+    selection = parse_time_selection(MapRequest(
+        time_scale="3-hourly", date_mode="range",
+        start_time="2026090121", end_time="2026090206",
+    ))
+    req = SimpleNamespace(
+        variable="precipitable_water", hour="", precip_window=3, skip_missing=0, level="surface",
+    )
+    mean, _std = fetch_daily_climo_for_selection(req, "r2-daily-15day", selection, "PWAT")
+    assert mean == pytest.approx((1 * 10.0 + 3 * 20.0) / 4)

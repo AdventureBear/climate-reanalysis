@@ -478,6 +478,16 @@ def _calendar_day_counts(dates: list[str]) -> list[tuple[tuple[int, int], int]]:
     return sorted(counts.items())
 
 
+def _member_calendar_day_counts(selection: TimeSelection) -> list[tuple[tuple[int, int], int]]:
+    """Weight each unique (month, day) by how many members fall on it, so the
+    baseline mean carries the same day weights as the member-weighted
+    observation mean (a range crossing midnight has unequal members per day).
+    Uniform selections (dates × identical hours) keep their old equal-day
+    ratios. Falls back to date_list when no members are expanded (monthly)."""
+    dates = [d for d, _ in selection.date_hour_members] or selection.date_list
+    return _calendar_day_counts(dates)
+
+
 def _member_day_hour_counts(selection: TimeSelection) -> list[tuple[tuple[int, int, int], int]]:
     """Weight each unique (month, day, hour) by how many members carry it —
     the hour-matched analogue of _calendar_day_counts, for the r1-4xdaily
@@ -502,14 +512,20 @@ def fetch_daily_climo_for_selection(req: FetchRequest, climo_source: str, select
             (month, day, hour), _ = member_weights[0]
             return fetch_climo(req, climo_source, month, day, grib_name, hour=hour)
         total = sum(weight for _, weight in member_weights)
-        climo_data = [
-            (weight, fetch_climo(req, climo_source, month, day, grib_name, hour=hour))
-            for (month, day, hour), weight in member_weights
-        ]
+        # Fetch the per-(month, day, hour) baseline slices concurrently, the
+        # same way the observation side fetches its members (_mean_pairs_obs);
+        # a long range needs up to ~185 unique slices and doing them one at a
+        # time on a cold cache took minutes.
+        with ThreadPoolExecutor(max_workers=min(len(member_weights), 8)) as pool:
+            futures = [
+                (weight, pool.submit(fetch_climo, req, climo_source, month, day, grib_name, hour=hour))
+                for (month, day, hour), weight in member_weights
+            ]
+            climo_data = [(weight, future.result()) for weight, future in futures]
         mean = sum(weight * cm for weight, (cm, _) in climo_data) / total
         return mean, None  # the hourly baseline is mean-only
 
-    days = _calendar_day_counts(selection.date_list)
+    days = _member_calendar_day_counts(selection)
     if len(days) == 1:
         (month, day), _ = days[0]
         return fetch_climo(req, climo_source, month, day, grib_name)
@@ -709,15 +725,19 @@ def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_sou
             (month, day, hour), _ = member_weights[0]
             return fetch_wind_climo_components(req, climo_source, month, day, hour=hour)
         total = sum(weight for _, weight in member_weights)
-        comps = [
-            (weight, fetch_wind_climo_components(req, climo_source, month, day, hour=hour))
-            for (month, day, hour), weight in member_weights
-        ]
+        # Concurrent like the scalar branch above; each key fetches U then V,
+        # so the pool overlaps members rather than doubling the serial wait.
+        with ThreadPoolExecutor(max_workers=min(len(member_weights), 8)) as pool:
+            futures = [
+                (weight, pool.submit(fetch_wind_climo_components, req, climo_source, month, day, hour=hour))
+                for (month, day, hour), weight in member_weights
+            ]
+            comps = [(weight, future.result()) for weight, future in futures]
         mean_u = sum(weight * cu for weight, (cu, _) in comps) / total
         mean_v = sum(weight * cv for weight, (_, cv) in comps) / total
         return mean_u, mean_v
 
-    days = _calendar_day_counts(selection.date_list)
+    days = _member_calendar_day_counts(selection)
     if len(days) == 1:
         (month, day), _ = days[0]
         return fetch_wind_climo_components(req, climo_source, month, day)
@@ -729,7 +749,7 @@ def fetch_daily_wind_climo_components_for_selection(req: FetchRequest, climo_sou
 
 
 def fetch_daily_wind_vector_climo_for_selection(req: FetchRequest, climo_source: str, selection: TimeSelection):
-    days = _calendar_day_counts(selection.date_list)
+    days = _member_calendar_day_counts(selection)
     if len(days) == 1:
         (month, day), _ = days[0]
         return fetch_wind_vector_climo(req, climo_source, month, day)

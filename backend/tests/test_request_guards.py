@@ -440,7 +440,7 @@ def test_non_pwat_normalized_single_hour_stays_blocked(monkeypatch):
     )
 
     assert response.status_code == 422
-    assert "3-hourly maps" in response.json()["detail"]
+    assert "no standard deviation" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -1294,6 +1294,33 @@ def test_legacy_precip_range_metadata_guard_still_fires(monkeypatch):
     })
     assert response.status_code == 422
     assert "only supported for precip_total maps" in response.json()["detail"]
+
+
+def test_canonical_slice_allows_normalized(monkeypatch):
+    """Slices keep the daily r2 baseline (sigma included; SLICE-CLIMO in
+    climo_policy.py), so normalized renders for both the synoptic-4 set and
+    custom hour sets — matching the legacy hours= spelling (#152)."""
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+    for hours in ("00,06,12,18", "03,18"):
+        response = client.get("/api/map", params={
+            "time_scale": "3-hourly", "date_mode": "slice",
+            "dates": "20260101,20260102", "hours": hours,
+            "variable": "height", "level": "500", "region": "CONUS", "mode": "normalized",
+        })
+        assert response.status_code == 200, (hours, response.json())
+
+
+def test_canonical_range_normalized_stays_blocked(monkeypatch):
+    monkeypatch.setattr(main_module, "create_map_buffer", lambda _req: io.BytesIO(b"png"))
+    client = TestClient(main_module.app)
+    response = client.get("/api/map", params={
+        "time_scale": "3-hourly", "date_mode": "range",
+        "start_time": "2026010121", "end_time": "2026010206",
+        "variable": "height", "level": "500", "region": "CONUS", "mode": "normalized",
+    })
+    assert response.status_code == 422
+    assert "no standard deviation" in response.json()["detail"]
 
 
 def test_legacy_bare_date_becomes_daily_composite(monkeypatch):

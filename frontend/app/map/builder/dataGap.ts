@@ -155,6 +155,32 @@ function canonicalListRetry(params: Record<string, string>, missing: string[]): 
   }
 }
 
+// Canonical 3-hourly slice (dates × hours): a trailing run of dates whose
+// members are all missing truncates the dates list. Slice mode is kept even
+// when one date remains — rewriting to date_mode=single would need an 'hour'
+// param the slice shape does not carry.
+function canonicalSliceRetry(params: Record<string, string>, missing: string[], total: number): GapRetry | null {
+  const hoursCount = params.hours.split(',').filter(Boolean).length
+  const missingPerDate = new Map<string, number>()
+  for (const m of missing) {
+    const date = m.split(' ')[0]
+    missingPerDate.set(date, (missingPerDate.get(date) ?? 0) + 1)
+  }
+  const sorted = params.dates.split(',').filter(Boolean).sort()
+  let cut = sorted.length
+  while (cut > 0 && missingPerDate.get(sorted[cut - 1]) === hoursCount) cut -= 1
+  const keep = sorted.slice(0, cut)
+  const trailingMembers = (sorted.length - cut) * hoursCount
+  // Trailing only when every missing member sits in the dropped dates.
+  if (keep.length > 0 && keep.length < sorted.length && trailingMembers === missing.length) {
+    return { label: `Generate through ${isoDate(keep[keep.length - 1])}`, params: { ...params, dates: keep.join(',') } }
+  }
+  if (missing.length < total && missing.length / total <= 0.05) {
+    return { label: `Generate without ${missing.length} missing time${missing.length === 1 ? '' : 's'}`, params: { ...params, skip_missing: '1' } }
+  }
+  return null
+}
+
 // Canonical daily range (start_date/end_date): trailing gap pulls end_date
 // back to the last complete date.
 function canonicalDailyRangeRetry(params: Record<string, string>, missing: string[], total: number): GapRetry | null {
@@ -214,6 +240,9 @@ export function gapRetryFromGap(gap: DataGap | null): GapRetry | null {
   if (params.times) return canonicalListRetry(params, missing)
   if (params.time_scale === 'daily' && params.start_date && params.end_date) {
     return canonicalDailyRangeRetry(params, missing, total)
+  }
+  if (params.time_scale === '3-hourly' && params.date_mode === 'slice' && params.dates && params.hours) {
+    return canonicalSliceRetry(params, missing, total)
   }
 
   // Date-hour members ("20250722 12z").

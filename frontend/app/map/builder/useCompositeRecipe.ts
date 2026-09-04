@@ -260,6 +260,18 @@ export function useCompositeRecipe() {
 
   function chooseDateSubMode(next: SubMode) {
     if (next === 'slice' && sliceHours.length === 0) setSliceHours([hour])
+    if (next === 'range' && timeScale === '3-hourly' && !precipTotalVariable) {
+      // startHour's mount default (21z) plus the shared 00z end hour is a
+      // backward span, so a fresh Range opened straight onto an error. Seed
+      // an invalid range as one full synoptic day (00z–21z, same shape the
+      // daily→3-hourly carry-over uses); valid custom hours are left alone.
+      const start = new Date(`${startDate}T${startHour}:00:00Z`)
+      const end = new Date(`${endDate}T${hour}:00:00Z`)
+      if (!(end.valueOf() > start.valueOf())) {
+        setStartHour('00')
+        setHour('21')
+      }
+    }
     if (timeScale === 'daily' && !precipTotalVariable) {
       // Seeding uses the raw setters: a mirrored view stays clean and keeps
       // mirroring until the user edits it directly.
