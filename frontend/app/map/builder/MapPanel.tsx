@@ -1,4 +1,4 @@
-// Rendered-map display: error banner, loading state, or the streamed PNG —
+// Rendered-map display: error modal, loading state, or the streamed PNG —
 // with Save and Share actions attached to the artifact itself (#38 Option A:
 // you act on the map you just made, not on distant chrome).
 import { useEffect, useState } from 'react'
@@ -28,21 +28,6 @@ function MapActions({ onSave, saving }: { onSave?: () => void; saving: boolean }
       <button type="button" onClick={() => void copyShareLink()}
         className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-600 bg-slate-800 px-3 text-xs text-slate-200 hover:bg-slate-700 transition-colors">
         {copied ? <Check size={14} /> : <LinkIcon size={14} />} {copied ? 'Link copied' : 'Share link'}
-      </button>
-    </div>
-  )
-}
-
-/** Dismissible explanation of something the builder changed on the user's
- *  behalf, e.g. a link asking for a mode that map cannot produce (#72). */
-function Notice({ text, onDismiss }: { text: React.ReactNode; onDismiss: () => void }) {
-  return (
-    <div role="status"
-      className="mb-3 flex w-full max-w-xl items-start gap-3 rounded border border-amber-600 bg-amber-950/60 px-4 py-3 text-sm text-amber-100">
-      <span className="flex-1">{text}</span>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss"
-        className="shrink-0 cursor-pointer rounded border border-amber-500 px-2 py-0.5 font-medium hover:bg-amber-900">
-        Got it
       </button>
     </div>
   )
@@ -139,7 +124,7 @@ function ErrorModal({
   )
 }
 
-export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null, notice = null, onDismissNotice, onDismissError }: {
+export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = false, retry = null, onDismissError }: {
   mapSrc: string | null
   error: string | null
   loading: boolean
@@ -148,14 +133,8 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
   saving?: boolean
   // One-click informed retry when a composite has missing data (#95).
   retry?: { label: string; question?: string; onClick: () => void } | null
-  // Dismissible note when the builder changed the request (#72).
-  notice?: React.ReactNode
-  onDismissNotice?: () => void
   onDismissError?: () => void
 }) {
-  const noticeEl = notice && onDismissNotice
-    ? <Notice text={notice} onDismiss={onDismissNotice} />
-    : null
   const errorModal = error && onDismissError
     ? <ErrorModal message={error} retry={retry} onDismiss={onDismissError} />
     : null
@@ -166,7 +145,6 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
           <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
             {(mapSrc || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center w-full h-full">
-                {noticeEl}
                 {loading && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
                 {mapSrc && (
                   <>
@@ -184,7 +162,6 @@ export function MapPanel({ mapSrc, error, loading, isVertical, onSave, saving = 
           <>
             {(mapSrc || loading) ? (
               <div className="bg-slate-900 border border-slate-700/60 rounded-xl p-5 flex flex-col items-center justify-center min-h-48">
-                {noticeEl}
                 {loading && <p className="text-slate-400 text-sm animate-pulse">Rendering map…</p>}
                 {mapSrc && (
                   <>

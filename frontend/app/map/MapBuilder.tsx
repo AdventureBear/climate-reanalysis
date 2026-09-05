@@ -133,12 +133,13 @@ export default function MapBuilder() {
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   // Explains a mode the builder had to change when opening a link (#72).
-  const [modeNotice, setModeNotice] = useState<React.ReactNode>(null)
+  const [modeNotice, setModeNotice] = useState<string | null>(null)
   const [preflightRetry, setPreflightRetry] = useState<MapRecipeRetry | null>(null)
   // A legacy multi-date+hour link: the old builder attached the hour without
   // the user choosing it. Explained in a modal with a one-click daily rebuild.
   const [legacySliceModal, setLegacySliceModal] = useState<{ hour: string; count: number; dailyQs: string } | null>(null)
   const [coreSubstitutionModal, setCoreSubstitutionModal] = useState<string | null>(null)
+  const [normalizedModal, setNormalizedModal] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -173,11 +174,12 @@ export default function MapBuilder() {
       const recipe = mapRecipeFromUrl(params)
       if (!recipe) return
       applyRecipeToState(recipe)
-      // A link asking for normalized on a single-hour map loads as anomaly
-      // (#72). Say so rather than quietly handing over a different map.
-      const normalizedNotice = normalizedUnavailableInUrl(params)
-        ? 'Normalized maps are not available for a single hour, so this opened as an anomaly map. Switch to Daily for a normalized map.'
-        : null
+      // A link asking for normalized where no standard deviation exists
+      // (single hours, 3-hourly ranges/lists) loads as anomaly (#72). Say so
+      // in the info modal rather than quietly handing over a different map.
+      setNormalizedModal(normalizedUnavailableInUrl(params)
+        ? 'This link asked for a normalized map, but normalized maps are not available for single hours or 3-hourly ranges and lists: the hourly climatology has no standard deviation. It opened as an anomaly map instead. Switch the time scale to Daily for a normalized map.'
+        : null)
       // Decision 2 (docs/TIME_SELECTION_PLAN.md): a legacy link with a date
       // but no hour at all used to render a 00z snapshot; it now renders the
       // full-day composite. Say so once instead of silently changing the map.
@@ -221,10 +223,7 @@ export default function MapBuilder() {
           ? coreSubstitutionMessage(recipe.time, recipe.variable)
           : null,
       )
-      const notices = [normalizedNotice, bareDateNotice].filter(Boolean)
-      setModeNotice(notices.length
-        ? notices.map((n, i) => <span key={i}>{i > 0 ? ' ' : ''}{n}</span>)
-        : null)
+      setModeNotice(bareDateNotice)
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.
@@ -431,10 +430,6 @@ export default function MapBuilder() {
         {/* -- Map panel ----------------------------------------------------- */}
         <MapPanel mapSrc={mapSrc} error={error} loading={loading} isVertical={isVertical}
           retry={mapRetry ? { label: mapRetry.label, question: mapRetry.question, onClick: handleMapRetry } : null}
-          notice={requestNotice || modeNotice
-            ? <>{requestNotice}{requestNotice && modeNotice ? ' ' : null}{modeNotice}</>
-            : null}
-          onDismissNotice={() => { setRequestNotice(null); setModeNotice(null) }}
           onDismissError={() => { setError(null); setPreflightRetry(null) }}
           onSave={authEnabled ? handleSaveMap : undefined} saving={saving} />
       </form>
@@ -485,6 +480,42 @@ export default function MapBuilder() {
             </button>
           }>
           <p className="text-sm leading-7 text-white">{coreSubstitutionModal}</p>
+        </InfoModal>
+      )}
+
+      {normalizedModal && !legacySliceModal && !coreSubstitutionModal && (
+        <InfoModal title="About this link" onDismiss={() => setNormalizedModal(null)}
+          actions={
+            <button
+              type="button"
+              onClick={() => setNormalizedModal(null)}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+            >
+              Dismiss
+            </button>
+          }>
+          <p className="text-sm leading-7 text-white">{normalizedModal}</p>
+        </InfoModal>
+      )}
+
+      {(requestNotice || modeNotice) && !legacySliceModal && !coreSubstitutionModal && !normalizedModal && (
+        <InfoModal title="About this map"
+          onDismiss={() => { setRequestNotice(null); setModeNotice(null) }}
+          actions={
+            <button
+              type="button"
+              onClick={() => { setRequestNotice(null); setModeNotice(null) }}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+            >
+              Dismiss
+            </button>
+          }>
+          {requestNotice && <p className="text-sm leading-7 text-white">{requestNotice}</p>}
+          {modeNotice && (
+            <p className={requestNotice ? 'mt-5 text-sm leading-7 text-slate-100' : 'text-sm leading-7 text-white'}>
+              {modeNotice}
+            </p>
+          )}
         </InfoModal>
       )}
 
