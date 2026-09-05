@@ -21,3 +21,19 @@ export const CLIMO_SOURCE_LABELS: Record<string, string> = {
   'r1-4xdaily': 'R1 hourly',
   'cfsr-daily': 'CFSR daily',
 }
+
+/** User copy for a link that asked for the CORe monthly baseline where none
+ * exists. Mirrors backend climo_policy at the level a reader needs — which
+ * baseline family replaced the request; the map sub-title stays authoritative
+ * for the exact source (PWAT and synoptic-composite edges land on R2). */
+export function coreSubstitutionMessage(time: { scale: string } | undefined, variable: string | undefined): string {
+  const body =
+    time?.scale === 'daily'
+      ? 'This map requires daily baselines, so R2 was used instead.'
+      : time?.scale === '3-hourly'
+        ? variable === 'precipitable_water'
+          ? 'This map requires sub-monthly baselines, so an R2 daily baseline was used instead.'
+          : 'This map requires hourly baselines, so R1 was used instead.'
+        : 'This variable has no CORe monthly baseline, so R2 was used instead.'
+  return `This link asked for the CORe monthly baseline, which exists only for monthly pressure-level maps. ${body} The baseline used is identified in the map’s sub-title.`
+}

@@ -231,3 +231,58 @@ Fail the smoke check if any recipe returns:
 
 First-run latency is not, by itself, a failure. A cold Render disk or missing
 climatology cache can make anomaly maps slower on the first render.
+
+
+
+
+Smoke tests issue #152
+1. The original #151 bug (glyphs-off link)
+- Step A — load a wind map with barbs on:                                                                                                                
+  http://localhost:5173/map?variable=wind_speed&level=850&region=CONUS&time_scale=3-hourly&date_mode=single&date=20260829&hour=12&wind_step=-1&wind_type=ba
+  rbs
+- Step B — open a link with no wind params:                                                                                                              
+  http://localhost:5173/map?variable=temp&level=850&region=CONUS&time_scale=3-hourly&date_mode=single&date=20260830&hour=12
+- Pass: step B renders with no glyphs and the wind glyph switch shows off (before this fix, the panel kept barbs on).
+
+2. Stale-state sweep (mode/contours/centers)
+- Step A — load a busy map:                                                                                                                              
+  http://localhost:5173/map?variable=height&level=500&region=CONUS&time_scale=daily&date_mode=single&date=20260829&mode=anomaly&contours=temp&centers=1
+- Step B — open a minimal link:                                                                                                                          
+  http://localhost:5173/map?variable=height&level=500&region=CONUS&time_scale=daily&date_mode=single&date=20260830
+- Pass: after step B the panel shows raw mode, contour overlays off, centers off, Daily/Single Aug 30.
+
+3. Old CORe link still renders as authored
+- http://localhost:5173/map?variable=height&level=500&region=CONUS&mode=anomaly&time_scale=monthly&date_mode=single&month=202511&climo_source=monthly-pgb
+- Pass: map title names the CORe monthly baseline. (Your dev saved maps with climoSource=monthly-pgb are the same check via the library.)
+
+4. Same map without the param → R2, and the toggle is gone 
+- http://localhost:5173/map?variable=height&level=500&region=CONUS&mode=anomaly&time_scale=monthly&date_mode=single&month=202511
+- Pass: title names the R2 monthly baseline. Open Settings (gear icon): the Anomalies section is only the explanatory note — no switch.
+
+5. CORe doesn't linger across links
+- Step A: the test 3 URL. Step B: the test 4 URL, pasted into the same tab.
+- Pass: step B's map is R2 — the previous link's monthly-pgb did not stick.
+
+6. Units survive links that don't mention them
+- Step A — set wind unit to m/s via URL:                                                                                                                 
+  http://localhost:5173/map?variable=wind_speed&level=850&region=CONUS&time_scale=3-hourly&date_mode=single&date=20260829&hour=12&wind_step=-1&wind_type=barbs&wind_unit=m/s
+- Step B — set elevated temperature to C via URL:                                                                                                        
+  http://localhost:5173/map?variable=temp&level=850&region=CONUS&time_scale=3-hourly&date_mode=single&date=20260830&hour=12&temp_unit=C
+- Step C — open a link naming neither:                                                                                                                   
+  http://localhost:5173/map?variable=height&level=500&region=CONUS&time_scale=daily&date_mode=single&date=20260830
+- Pass: after step C, Settings shows Wind = m/s and Elevated temperature = C, both preserved.
+
+7. Anomaly wind default (#47 regression)
+- http://localhost:5173/map?variable=wind_speed&level=250&region=CONUS&mode=anomaly&time_scale=monthly&date_mode=single&month=202511
+- Pass: glyphs render as vectors (not barbs), isotachs off.                                                                                              
+
+8. Cross-scale time reset
+   - Step A — slice link:                                                                                                                                   
+     http://localhost:5173/map?variable=height&level=500&region=CONUS&time_scale=3-hourly&date_mode=slice&dates=20260828,20260829&hours=00,12
+   - Step B — daily link:                                                                                                                                   
+     http://localhost:5173/map?variable=height&level=500&region=CONUS&time_scale=daily&date_mode=single&date=20260830
+   - Pass: after step B, the panel is Daily/Single with only Aug 30 — no leftover slice dates or hours in any tab.
+
+9. Legacy multi-date + hour modal
+   - http://localhost:5173/map?variable=height&level=500&region=CONUS&dates=20260827,20260828&hour=12
+   - Pass: the legacy-slice modal appears; choosing the daily rebuild renders, and the panel shows Daily/List with both dates.    

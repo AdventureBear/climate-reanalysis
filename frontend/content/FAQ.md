@@ -46,7 +46,7 @@ CORe is the designated successor to R1/R2 for NCEP operational reanalysis produc
 R2 is used as a **climatology baseline** — the reference against which we measure anomalies.
 
 - **For daily modes**: PyRe uses R2 **daily** climatologies — the mean and standard deviation of each calendar day (e.g., April 27) computed across 30 years (1991–2020). This gives a day-specific baseline that captures the seasonal cycle correctly.
-- **For monthly modes**: PyRe can use either the CORe-era monthly PGB climatology source or R2 **monthly** climatologies, depending on the selected climatology source. Monthly baselines are calendar-month means and standard deviations.
+- **For monthly modes**: PyRe uses R2 **monthly** climatologies. Monthly baselines are calendar-month means and standard deviations. (A CORe-derived monthly baseline exists for pressure-level variables and older shared links that requested it still render with it, but there is currently no control for choosing it — a fuller baseline picker, covering both the source and the base period, is planned.)
 - **For 3-hourly modes**: the baseline comes from R1 rather than R2, because it has to be specific to the hour as well as the day. See Q8.
 
 **Why R2 for sub-monthly climatology instead of CORe?** CORe is still relatively new and does not yet have a full 30-year daily/3-hourly climatology product wired into PyRe. R2 covers 1979–present with a stable, well-documented methodology, making it the best currently available 1991–2020 baseline for daily anomaly maps.
@@ -409,7 +409,7 @@ It depends on the map's time scale, because different datasets publish (or allow
 |---|---|---|
 | 3-hourly (single, range, list, slice) | NCEP R1 4×-daily normals | NOAA — published finished files, one per day and hour |
 | Daily composite | NCEP R2 daily normals | PyRe — computed from R2's daily series and cached |
-| Monthly | R2 monthly, or CORe's own monthly means (the "Use CORe normals" setting, pressure-level variables) | PyRe — from the 1991–2020 monthly files |
+| Monthly | R2 monthly normals (older shared links that requested CORe's own monthly means still render with them) | PyRe — from the 1991–2020 monthly files |
 | PWAT single-hour | R2 daily centered 15-day mean/σ | PyRe — following the WPC standardized-anomaly convention (see the normalized-anomaly section) |
 
 Two consequences worth knowing. First, R1's files hold only 00/06/12/18z; the in-between hours (03/09/15/21z) are the blend of the two neighboring normals, so a 21z baseline is half 18z and half the next day's 00z. Second, because the daily and 3-hourly baselines come from two different reanalyses, the same weather requested as a daily composite and as an 8-step 3-hourly range produces close but not identical anomalies — part sampling difference, part R1-versus-R2 difference.

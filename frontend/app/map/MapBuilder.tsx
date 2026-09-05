@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Info, Settings, SlidersHorizontal, X } from 'lucide-react'
+import { Settings, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../auth/authContext'
 import { AuthModal } from '../auth/AuthModal'
 import { SaveAccountPrompt } from './builder/SaveAccountPrompt'
@@ -9,11 +9,13 @@ import { saveMap } from '../../lib/library'
 import { SaveMapModal, type SaveTarget } from './projects/SaveMapModal'
 import { blobFromObjectUrl } from '../../lib/images'
 import { suggestedMapName } from './mapName'
-import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl, type MapRecipeRetry } from '../../mapRecipe'
+import { mapRecipeFromUrl, mapRecipeToParams, normalizedUnavailableInUrl, type MapRecipe, type MapRecipeRetry } from '../../mapRecipe'
+import { apiVariableForSelection } from '../../variableConfig'
 import { gapRetryFromGap } from './builder/useMapGeneration'
-import { normalizeColorStep } from '../../sharedOptions'
+import { coreSubstitutionMessage, normalizeColorStep } from '../../sharedOptions'
+import { InfoModal } from './InfoModal'
 import { getRegionLabel } from './builder/regionCatalog'
-import { useCompositeRecipe } from './builder/useCompositeRecipe'
+import { readStoredUnitPrefs, useCompositeRecipe } from './builder/useCompositeRecipe'
 import { AnalysisPanel } from './builder/AnalysisPanel'
 import { MapPanel } from './builder/MapPanel'
 import { OverlaysPanel } from './builder/OverlaysPanel'
@@ -45,10 +47,48 @@ export default function MapBuilder() {
     surfaceTemperatureUnit, setSurfaceTemperatureUnit,
     elevatedTemperatureUnit, setElevatedTemperatureUnit,
     apiVariable, apiLevel, isClimo,
-    preferCoreClimo, chooseCoreClimoPreference,
     currentMapRecipe, applyRecipeToState,
     isBlankMap,
   } = recipe
+
+  // Links never choose display units — renders always use the visitor's
+  // settings. A ref because the URL-sync effect registers once on mount and
+  // must read the units current at apply time, not mount-time values. Seeded
+  // straight from localStorage: the mount-effect deep-link render fires
+  // before the hook's own restore effect has committed to state.
+  const unitPrefsRef = useRef(readStoredUnitPrefs({ windUnit, pwatUnit, precipUnit, surfaceTemperatureUnit, elevatedTemperatureUnit }))
+  // Skip the first flush: it runs before the hook's localStorage restore has
+  // committed to state, and would clobber the storage-seeded ref with the
+  // mount defaults right before the deep-link render reads it.
+  const unitPrefsSyncedRef = useRef(false)
+  useEffect(() => {
+    if (!unitPrefsSyncedRef.current) {
+      unitPrefsSyncedRef.current = true
+      return
+    }
+    unitPrefsRef.current = { windUnit, pwatUnit, precipUnit, surfaceTemperatureUnit, elevatedTemperatureUnit }
+  })
+
+  // The single place units enter a link render. mapRecipeFromUrl discards any
+  // unit params a link carries; this serializes the link's recipe with the
+  // visitor's own units from Settings, current at call time via the ref.
+  function serializeWithUserUnits(linkRecipe: MapRecipe) {
+    const prefs = unitPrefsRef.current
+    const linkVariable = linkRecipe.variable && linkRecipe.level
+      ? apiVariableForSelection(linkRecipe.variable, linkRecipe.level, linkRecipe.humidityType, linkRecipe.radiationWaveband, linkRecipe.radiationDirection, linkRecipe.vorticityType)
+      : undefined
+    return mapRecipeToParams({
+      ...linkRecipe,
+      windUnit: prefs.windUnit,
+      pwatUnit: prefs.pwatUnit,
+      precipUnit: prefs.precipUnit,
+      tempUnit: linkVariable === 'temp_2m'
+        ? prefs.surfaceTemperatureUnit
+        : linkVariable === 'temp'
+          ? prefs.elevatedTemperatureUnit
+          : undefined,
+    })
+  }
 
   // Mode notices describe the selection a link loaded with; the moment the
   // user changes time scale or date mode themselves, the explanation no
@@ -59,11 +99,13 @@ export default function MapBuilder() {
     setTimeScale: (v: Parameters<typeof recipe.setTimeScale>[0]) => {
       setModeNotice(null)
       setLegacySliceModal(null)
+      setCoreSubstitutionModal(null)
       recipe.setTimeScale(v)
     },
     setDateSubMode: (v: Parameters<typeof recipe.setDateSubMode>[0]) => {
       setModeNotice(null)
       setLegacySliceModal(null)
+      setCoreSubstitutionModal(null)
       recipe.setDateSubMode(v)
     },
   }
@@ -96,6 +138,7 @@ export default function MapBuilder() {
   // A legacy multi-date+hour link: the old builder attached the hour without
   // the user choosing it. Explained in a modal with a one-click daily rebuild.
   const [legacySliceModal, setLegacySliceModal] = useState<{ hour: string; count: number; dailyQs: string } | null>(null)
+  const [coreSubstitutionModal, setCoreSubstitutionModal] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   // Last save destination, remembered across saves (and reloads) so saving
@@ -165,6 +208,19 @@ export default function MapBuilder() {
           setLegacySliceModal({ hour: legacyHour, count: legacyDates.length, dailyQs: dailyParams.toString() })
         }
       }
+      // The CORe baseline exists only for monthly pressure-level maps; the
+      // backend substitutes the time-scale-matched R2/R1 baseline everywhere
+      // else and says so only in server logs. Explain in the info modal
+      // instead of letting the sub-title quietly disagree with what the link
+      // asked for (#155 owns making the request itself validated).
+      setCoreSubstitutionModal(
+        params.get('climo_source') === 'monthly-pgb'
+        && params.get('mode') && params.get('mode') !== 'raw'
+        && (recipe.time?.scale !== 'monthly' && recipe.time?.scale !== 'climatology'
+            || !/^\d+$/.test(recipe.level ?? ''))
+          ? coreSubstitutionMessage(recipe.time, recipe.variable)
+          : null,
+      )
       const notices = [normalizedNotice, bareDateNotice].filter(Boolean)
       setModeNotice(notices.length
         ? notices.map((n, i) => <span key={i}>{i > 0 ? ' ' : ''}{n}</span>)
@@ -172,7 +228,7 @@ export default function MapBuilder() {
 
       // Shared/deep-linked URLs render immediately instead of showing an empty
       // panel until the user clicks Generate.
-      const recipeParams = mapRecipeToParams(recipe)
+      const recipeParams = serializeWithUserUnits(recipe)
       if (recipeParams.ok) {
         setPreflightRetry(null)
         const paramsForRender = recipeParams.params
@@ -254,10 +310,20 @@ export default function MapBuilder() {
     const params = new URLSearchParams(legacySliceModal.dailyQs)
     setLegacySliceModal(null)
     const dailyRecipe = mapRecipeFromUrl(params)
-    if (dailyRecipe) applyRecipeToState(dailyRecipe)
-    selfUpdatedParamsRef.current = params.toString()
-    window.history.replaceState(null, '', `?${params.toString()}`)
-    void generateFromParams(Object.fromEntries(params))
+    if (!dailyRecipe) return
+    applyRecipeToState(dailyRecipe)
+    // Re-serialize rather than reusing the legacy query string, so any unit
+    // params the old link carried are dropped for the visitor's own units.
+    const result = serializeWithUserUnits(dailyRecipe)
+    if (!result.ok) {
+      setError(result.error)
+      setPreflightRetry(result.retry ?? null)
+      return
+    }
+    const qs = new URLSearchParams(result.params).toString()
+    selfUpdatedParamsRef.current = qs
+    window.history.replaceState(null, '', `?${qs}`)
+    void generateFromParams(result.params)
   }
 
   // -- Save / load library maps -------------------------------------------------
@@ -374,61 +440,52 @@ export default function MapBuilder() {
       </form>
 
       {legacySliceModal && (
-        <>
-          <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-[2px]" onClick={() => setLegacySliceModal(null)} />
-          <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center p-4">
-            <div
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="legacy-slice-title"
-              className="pointer-events-auto w-[min(94vw,42rem)] rounded-xl border border-slate-700/60 bg-slate-900 text-white shadow-[0_20px_70px_rgba(0,0,0,0.58)] ring-1 ring-white/5"
+        <InfoModal title="About this link" onDismiss={() => setLegacySliceModal(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={handleLegacyDailyGenerate}
+                className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-700/65 px-5 text-sm font-medium text-white transition-colors hover:bg-sky-600/75"
+              >
+                Generate daily version
+              </button>
+              <button
+                type="button"
+                onClick={() => setLegacySliceModal(null)}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
+              >
+                Keep this map
+              </button>
+            </>
+          }>
+          <p className="text-sm leading-7 text-white">
+            This link is from an earlier version of the map builder, which attached a
+            single slice of time ({legacySliceModal.hour}z) without the user choosing
+            it. It maps {legacySliceModal.hour}z on each of the {legacySliceModal.count} dates,
+            rather than the full days.
+          </p>
+          <p className="mt-5 text-sm leading-7 text-slate-100">
+            Your link has been generated using the new Slice mode and looks the same
+            as your prior map. If you intended to map full days, switch the time
+            scale to Daily — or generate the daily version now.
+          </p>
+        </InfoModal>
+      )}
+
+      {coreSubstitutionModal && !legacySliceModal && (
+        <InfoModal title="About this link" onDismiss={() => setCoreSubstitutionModal(null)}
+          actions={
+            <button
+              type="button"
+              onClick={() => setCoreSubstitutionModal(null)}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
             >
-              <div className="flex items-start justify-between gap-5 rounded-t-xl bg-sky-950/35 px-8 py-6 sm:px-11 sm:py-7">
-                <div className="flex min-w-0 items-center gap-4">
-                  <span className="flex shrink-0 items-center justify-center text-amber-400">
-                    <Info size={32} />
-                  </span>
-                  <span id="legacy-slice-title" className="text-base font-semibold text-slate-50">
-                    About this link
-                  </span>
-                </div>
-                <button type="button" onClick={() => setLegacySliceModal(null)} aria-label="Dismiss"
-                  className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white">
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="px-8 pb-2 pt-8 sm:px-11 sm:pt-9">
-                <p className="text-sm leading-7 text-white">
-                  This link is from an earlier version of the map builder, which attached a
-                  single slice of time ({legacySliceModal.hour}z) without the user choosing
-                  it. It maps {legacySliceModal.hour}z on each of the {legacySliceModal.count} dates,
-                  rather than the full days.
-                </p>
-                <p className="mt-5 text-sm leading-7 text-slate-100">
-                  Your link has been generated using the new Slice mode and looks the same
-                  as your prior map. If you intended to map full days, switch the time
-                  scale to Daily — or generate the daily version now.
-                </p>
-              </div>
-              <div className="flex justify-end gap-3 px-8 pb-8 pt-6 sm:px-11 sm:pb-10">
-                <button
-                  type="button"
-                  onClick={handleLegacyDailyGenerate}
-                  className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-700/65 px-5 text-sm font-medium text-white transition-colors hover:bg-sky-600/75"
-                >
-                  Generate daily version
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLegacySliceModal(null)}
-                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 px-4 text-sm font-medium text-white transition-colors hover:bg-slate-700"
-                >
-                  Keep this map
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
+              Dismiss
+            </button>
+          }>
+          <p className="text-sm leading-7 text-white">{coreSubstitutionModal}</p>
+        </InfoModal>
       )}
 
       <RegionsModal
@@ -444,7 +501,6 @@ export default function MapBuilder() {
           surfaceTemperatureUnit={surfaceTemperatureUnit} onSurfaceTemperatureUnit={setSurfaceTemperatureUnit}
           elevatedTemperatureUnit={elevatedTemperatureUnit} onElevatedTemperatureUnit={setElevatedTemperatureUnit}
           precipitationUnit={precipUnit} onPrecipitationUnit={setPrecipUnit}
-          preferCoreClimo={preferCoreClimo} onPreferCoreClimo={chooseCoreClimoPreference}
           onClose={() => setSettingsOpen(false)} />
       )}
 

@@ -530,13 +530,17 @@ def get_map(
     direction: str = "",
     region: str = "CONUS",
     wind_step: int = 0,
-    wind_type: str = "vectors",
+    wind_type: str = "barbs",
     color_step: int = 1,
     scale_min: float | None = None,
     scale_max: float | None = None,
     scale_spec: str = "",
     mode: str = "raw",
-    climo_source: str = "monthly-pgb",
+    # Deep links serialize the parsed URL recipe, so a link with no
+    # climo_source sends no param — absent must mean R2, the baseline every
+    # link and panel default asks for. (monthly-pgb here made a bare monthly
+    # anomaly link silently render CORe while the panel said R2.)
+    climo_source: str = "r2-monthly",
     wind_unit: str = "kt",
     pwat_unit: str = "in",
     precip_unit: str = "in",

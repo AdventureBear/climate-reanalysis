@@ -42,7 +42,7 @@ import {
 
 export type TemperatureUnit = TempUnit
 
-const CORE_CLIMO_STORAGE_KEY = 'pyre.preferCoreClimo'
+const UNIT_PREFS_STORAGE_KEY = 'pyre.unitPrefs'
 const PRECIP_WINDOW_PRESETS = new Set(['3', '6', '12', '24'])
 const FAHRENHEIT_SURFACE_TEMP_REGIONS = new Set([
   'US',
@@ -84,74 +84,150 @@ export function defaultDate(): string {
   return d.toISOString().slice(0, 10)
 }
 
-export function useCompositeRecipe() {
-  const [timeScale,    setTimeScale]    = useState<TimeScale>('3-hourly')
-  const [dateSubMode,  setDateSubMode]  = useState<SubMode>('single')
-  const [monthSubMode, setMonthSubMode] = useState<SubMode>('single')
+export type UnitPrefs = {
+  windUnit: WindUnit
+  pwatUnit: PwatUnit
+  precipUnit: PrecipUnit
+  surfaceTemperatureUnit: TemperatureUnit
+  elevatedTemperatureUnit: TemperatureUnit
+}
 
-  const [date,        setDate]        = useState(defaultDate)
-  const [startDate,   setStartDate]   = useState(defaultDate)
-  const [endDate,     setEndDate]     = useState(defaultDate)
-  const [startHour,   setStartHour]   = useState('21')
-  const [hour,        setHour]        = useState('00')
-  const [customDates, setCustomDates] = useState<string[]>([defaultDate()])
+/** Stored unit settings merged over the given defaults. Safe during the
+ * static build (no localStorage there) and against bad or partial JSON.
+ * pwat and precip share one stored choice — their setters are coupled. */
+export function readStoredUnitPrefs(defaults: UnitPrefs): UnitPrefs {
+  try {
+    const stored = JSON.parse(localStorage.getItem(UNIT_PREFS_STORAGE_KEY) ?? '{}')
+    const precip = stored.precipUnit === 'in' || stored.precipUnit === 'mm' ? stored.precipUnit : undefined
+    return {
+      windUnit: stored.windUnit === 'kt' || stored.windUnit === 'm/s' ? stored.windUnit : defaults.windUnit,
+      pwatUnit: precip ?? defaults.pwatUnit,
+      precipUnit: precip ?? defaults.precipUnit,
+      surfaceTemperatureUnit: stored.surfaceTemperatureUnit === 'F' || stored.surfaceTemperatureUnit === 'C'
+        ? stored.surfaceTemperatureUnit : defaults.surfaceTemperatureUnit,
+      elevatedTemperatureUnit: stored.elevatedTemperatureUnit === 'F' || stored.elevatedTemperatureUnit === 'C'
+        ? stored.elevatedTemperatureUnit : defaults.elevatedTemperatureUnit,
+    }
+  } catch {
+    return defaults
+  }
+}
+
+// What an omitted link field means (#151). Single source for the
+// reset-then-apply step in applyRecipeToState and for the mount initializers.
+// A function, not a constant: the date defaults move with the calendar and
+// must be computed fresh on every apply. Session preferences (units, climo
+// baseline) are deliberately absent — a silent link leaves those alone.
+// Mount exceptions: a fresh page opens as a wind map with glyphs on
+// (windOn/windMaster true), but a link that says nothing about wind means no
+// glyph overlay, so the link defaults here are off.
+function defaultMapContent() {
+  const date = defaultDate()
+  const month = newestAllowedObservationMonth()
+  return {
+    timeScale: '3-hourly' as TimeScale,
+    dateSubMode: 'single' as SubMode,
+    monthSubMode: 'single' as SubMode,
+    date,
+    startDate: date,
+    endDate: date,
+    startHour: '21',
+    hour: '00',
+    customDates: [date],
+    sliceHours: [] as string[],
+    listTimes: [{ date, hour: '00' }],
+    month,
+    monthStart: month,
+    monthEnd: month,
+    customMonths: [month],
+    climoMonth: new Date().toISOString().slice(5, 7),
+    variable: 'wind_speed',
+    level: '850',
+    humidityType: 'relative' as HumidityType,
+    vorticityType: 'relative' as VorticityType,
+    radiationWaveband: 'shortwave' as RadiationWaveband,
+    radiationDirection: 'down' as RadiationDirection,
+    region: 'CONUS',
+    displayMode: 'raw' as DisplayMode,
+    climoSource: 'r2-monthly' as ClimoSource,
+    fillMode: 'contours' as FillMode,
+    colorStep: '1',
+    hlCenters: false,
+    contourOverlays: [] as string[],
+    precipWindow: '3' as PrecipWindow,
+    windOn: false,
+    windStep: AUTO_DENSITY as string,
+    windType: 'barbs' as WindOverlayType,
+    isotachsOn: false,
+    isotachInterval: 0 as IsotachInterval | 0,
+    windShading: true,
+    windMaster: false,
+  }
+}
+
+export function useCompositeRecipe() {
+  const [mount] = useState(defaultMapContent)
+
+  const [timeScale,    setTimeScale]    = useState<TimeScale>(mount.timeScale)
+  const [dateSubMode,  setDateSubMode]  = useState<SubMode>(mount.dateSubMode)
+  const [monthSubMode, setMonthSubMode] = useState<SubMode>(mount.monthSubMode)
+
+  const [date,        setDate]        = useState(mount.date)
+  const [startDate,   setStartDate]   = useState(mount.startDate)
+  const [endDate,     setEndDate]     = useState(mount.endDate)
+  const [startHour,   setStartHour]   = useState(mount.startHour)
+  const [hour,        setHour]        = useState(mount.hour)
+  const [customDates, setCustomDates] = useState<string[]>(mount.customDates)
   // Slice mode (3-hourly only): the chosen hours, applied to every date in
   // customDates. Seeded from `hour` on first entry into the Slice tab.
-  const [sliceHours, setSliceHours] = useState<string[]>([])
+  const [sliceHours, setSliceHours] = useState<string[]>(mount.sliceHours)
   // 3-hourly List rows: each row is its own (date, hour) member.
-  const [listTimes, setListTimes] = useState<{ date: string; hour: string }[]>(
-    [{ date: defaultDate(), hour: '00' }],
-  )
+  const [listTimes, setListTimes] = useState<{ date: string; hour: string }[]>(mount.listTimes)
 
-  const [month,        setMonth]        = useState(newestAllowedObservationMonth)
-  const [monthStart,   setMonthStart]   = useState(newestAllowedObservationMonth)
-  const [monthEnd,     setMonthEnd]     = useState(newestAllowedObservationMonth)
-  const [customMonths, setCustomMonths] = useState<string[]>([newestAllowedObservationMonth()])
+  const [month,        setMonth]        = useState(mount.month)
+  const [monthStart,   setMonthStart]   = useState(mount.monthStart)
+  const [monthEnd,     setMonthEnd]     = useState(mount.monthEnd)
+  const [customMonths, setCustomMonths] = useState<string[]>(mount.customMonths)
 
-  const [climoMonth, setClimoMonth] = useState(() => new Date().toISOString().slice(5, 7))
+  const [climoMonth, setClimoMonth] = useState(mount.climoMonth)
 
-  const [variable, setVariable] = useState('wind_speed')
-  const [level,    setLevel]    = useState('850')
-  const [humidityType, setHumidityType] = useState<HumidityType>('relative')
-  const [vorticityType, setVorticityType] = useState<VorticityType>('relative')
-  const [radiationWaveband, setRadiationWaveband] = useState<RadiationWaveband>('shortwave')
-  const [radiationDirection, setRadiationDirection] = useState<RadiationDirection>('down')
+  const [variable, setVariable] = useState(mount.variable)
+  const [level,    setLevel]    = useState(mount.level)
+  const [humidityType, setHumidityType] = useState<HumidityType>(mount.humidityType)
+  const [vorticityType, setVorticityType] = useState<VorticityType>(mount.vorticityType)
+  const [radiationWaveband, setRadiationWaveband] = useState<RadiationWaveband>(mount.radiationWaveband)
+  const [radiationDirection, setRadiationDirection] = useState<RadiationDirection>(mount.radiationDirection)
 
-  const [region,      setRegion]      = useState('CONUS')
+  const [region,      setRegion]      = useState(mount.region)
 
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('raw')
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(mount.displayMode)
 
+  // Fresh page (not a link): the default wind map opens with barbs drawn.
   const [windOn,    setWindOn]    = useState(true)
   // Auto by default: the backend applies its calibrated density, so
   // retuning it later reaches every Auto map without editing recipes.
-  const [windStep,  setWindStep]  = useState<string>(AUTO_DENSITY)
-  const [windType,  setWindType]  = useState<WindOverlayType>('barbs')
-  const [isotachsOn, setIsotachsOn] = useState(false)
+  const [windStep,  setWindStep]  = useState<string>(mount.windStep)
+  const [windType,  setWindType]  = useState<WindOverlayType>(mount.windType)
+  const [isotachsOn, setIsotachsOn] = useState(mount.isotachsOn)
   // 0 = auto: the backend picks the spacing from the level's wind scale.
-  const [isotachInterval, setIsotachInterval] = useState<IsotachInterval | 0>(0)
-  const [windShading, setWindShading] = useState(true)
+  const [isotachInterval, setIsotachInterval] = useState<IsotachInterval | 0>(mount.isotachInterval)
+  const [windShading, setWindShading] = useState(mount.windShading)
   const [windMaster, setWindMaster] = useState(true)
-  const [hlCenters, setHlCenters] = useState(false)
-  const [contourOverlays, setContourOverlays] = useState<string[]>([])
+  const [hlCenters, setHlCenters] = useState(mount.hlCenters)
+  const [contourOverlays, setContourOverlays] = useState<string[]>(mount.contourOverlays)
   const [windUnit, setWindUnit] = useState<WindUnit>('kt')
   const [pwatUnit, setPwatUnitState] = useState<PwatUnit>('in')
   const [precipUnit, setPrecipUnitState] = useState<PrecipUnit>('in')
-  const [precipWindow, setPrecipWindowState] = useState<PrecipWindow>('3')
+  const [precipWindow, setPrecipWindowState] = useState<PrecipWindow>(mount.precipWindow)
   const [surfaceTemperatureUnit, setSurfaceTemperatureUnit] = useState<TemperatureUnit>(defaultSurfaceTemperatureUnit)
   const [elevatedTemperatureUnit, setElevatedTemperatureUnit] = useState<TemperatureUnit>('C')
-  const [fillMode, setFillMode] = useState<FillMode>('contours')
-  const [colorStep, setColorStep] = useState('1')
-  // Baseline preference (#127). R2 monthly is the default, matching every map
-  // and share link made before the CORe option was reachable. Turning the
-  // preference on asks for CORe; climo_policy substitutes R2 wherever CORe has
-  // no baseline (surface variables, and all daily and 3-hourly maps), so the
-  // preference is a no-op outside monthly pressure-level maps.
-  const [preferCoreClimo, setPreferCoreClimo] = useState(false)
-  const climoSource: ClimoSource = preferCoreClimo ? 'monthly-pgb' : 'r2-monthly'
-  // Loading a recipe (share link, saved map) sets the source without changing
-  // the stored preference: that map's baseline is part of the map, not a
-  // standing choice.
-  const setClimoSource = (source: ClimoSource) => setPreferCoreClimo(source === 'monthly-pgb')
+  const [fillMode, setFillMode] = useState<FillMode>(mount.fillMode)
+  const [colorStep, setColorStep] = useState(mount.colorStep)
+  // No panel control chooses the baseline — the CORe toggle was shelved until
+  // the two-dial (source × base period) picker exists (#155). State remains so
+  // a link naming climo_source=monthly-pgb still renders and re-serializes as
+  // its author saw it; everything else stays on R2.
+  const [climoSource, setClimoSource] = useState<ClimoSource>('r2-monthly')
 
   function setPrecipUnit(next: PrecipUnit) {
     setPrecipUnitState(next)
@@ -163,21 +239,36 @@ export function useCompositeRecipe() {
     setPwatUnitState(next)
   }
 
-  // Restored after mount rather than in the initializer: localStorage does not
-  // exist during the static build, so reading it there would mismatch hydration.
+  // Unit settings survive reloads via localStorage until DB-backed prefs
+  // exist. Restored after mount rather than in the initializers: localStorage
+  // does not exist during the static build, so reading it there would
+  // mismatch hydration. Links never write these (units are settings, not map
+  // content), so the only writers are the Settings drawer's setters.
   useEffect(() => {
-    try {
-      setPreferCoreClimo(localStorage.getItem(CORE_CLIMO_STORAGE_KEY) === '1')
-    } catch { /* private browsing or storage disabled: keep the default */ }
+    const stored = readStoredUnitPrefs({ windUnit, pwatUnit, precipUnit, surfaceTemperatureUnit, elevatedTemperatureUnit })
+    setWindUnit(stored.windUnit)
+    setPwatUnitState(stored.pwatUnit)
+    setPrecipUnitState(stored.precipUnit)
+    setSurfaceTemperatureUnit(stored.surfaceTemperatureUnit)
+    setElevatedTemperatureUnit(stored.elevatedTemperatureUnit)
+    // Mount-only restore; the current values are only the merge defaults.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /** The settings toggle. Persists, unlike loading a recipe. */
-  function chooseCoreClimoPreference(next: boolean) {
-    setPreferCoreClimo(next)
+  // Skip the first flush: it runs before the restore above has committed and
+  // would overwrite the stored choices with the mount defaults.
+  const unitPersistReadyRef = useRef(false)
+  useEffect(() => {
+    if (!unitPersistReadyRef.current) {
+      unitPersistReadyRef.current = true
+      return
+    }
     try {
-      localStorage.setItem(CORE_CLIMO_STORAGE_KEY, next ? '1' : '0')
+      localStorage.setItem(UNIT_PREFS_STORAGE_KEY, JSON.stringify({
+        windUnit, precipUnit, surfaceTemperatureUnit, elevatedTemperatureUnit,
+      }))
     } catch { /* nothing to do if storage is unavailable */ }
-  }
+  }, [windUnit, precipUnit, surfaceTemperatureUnit, elevatedTemperatureUnit])
 
   const apiVariable = apiVariableForSelection(variable, level, humidityType, radiationWaveband, radiationDirection, vorticityType)
   const apiLevel = apiLevelForSelection(variable, level)
@@ -435,8 +526,55 @@ export function useCompositeRecipe() {
   }
 
   // Apply a recipe (from a shared URL or a saved library map) to the builder
-  // controls. Shared by the URL-sync effect and by loading a saved map.
+  // controls. Shared by the URL-sync effect, the data-gap retries, and the
+  // legacy daily rebuild. Reset-then-apply (#151): every map-content control
+  // first returns to its link-absence default, then the fields the recipe
+  // names overwrite it — one operation, so an omitted field can never leave
+  // stale panel state behind. Session preferences (units, climo baseline) are
+  // exempt from the reset: a link that is silent about them leaves the
+  // visitor's session choices alone.
   function applyRecipeToState(recipe: MapRecipe) {
+    const d = defaultMapContent()
+    setTimeScale(d.timeScale)
+    setDateSubMode(d.dateSubMode)
+    setMonthSubMode(d.monthSubMode)
+    setDate(d.date)
+    setStartDate(d.startDate)
+    setEndDate(d.endDate)
+    setStartHour(d.startHour)
+    setHour(d.hour)
+    setCustomDates(d.customDates)
+    setSliceHours(d.sliceHours)
+    setListTimes(d.listTimes)
+    setMonth(d.month)
+    setMonthStart(d.monthStart)
+    setMonthEnd(d.monthEnd)
+    setCustomMonths(d.customMonths)
+    setClimoMonth(d.climoMonth)
+    setVariable(d.variable)
+    setLevel(d.level)
+    setHumidityType(d.humidityType)
+    setVorticityType(d.vorticityType)
+    setRadiationWaveband(d.radiationWaveband)
+    setRadiationDirection(d.radiationDirection)
+    setRegion(d.region)
+    setDisplayMode(d.displayMode)
+    setClimoSource(d.climoSource)
+    setFillMode(d.fillMode)
+    setColorStep(d.colorStep)
+    setHlCenters(d.hlCenters)
+    setContourOverlays(d.contourOverlays)
+    setPrecipWindowState(d.precipWindow)
+    setWindOn(d.windOn)
+    setWindStep(d.windStep)
+    setWindType(d.windType)
+    setIsotachsOn(d.isotachsOn)
+    setIsotachInterval(d.isotachInterval)
+    setWindShading(d.windShading)
+    setWindMaster(d.windMaster)
+    rangeDirtyRef.current = false
+    listDirtyRef.current = false
+
     function applyTimeRecipe(time: TimeRecipe) {
       setTimeScale(time.scale)
       switch (time.scale) {
@@ -525,13 +663,14 @@ export function useCompositeRecipe() {
     if (recipe.region) setRegion(recipe.region)
     if (recipe.displayMode) setDisplayMode(recipe.displayMode)
     if (recipe.climoSource) setClimoSource(recipe.climoSource)
-    if (recipe.windUnit) setWindUnit(recipe.windUnit)
-    if (recipe.pwatUnit) setPwatUnit(recipe.pwatUnit)
-    if (recipe.precipUnit) setPrecipUnit(recipe.precipUnit)
+    // Units are deliberately NOT applied. They are the visitor's settings,
+    // not map content: a link's unit params style that link's render (the
+    // deep-link request passes them straight through) but never rewrite the
+    // Settings drawer. Regenerating re-renders in the visitor's own units.
     if (recipe.precipWindow) setPrecipWindowState(recipe.precipWindow)
     if (recipe.fillMode) setFillMode(recipe.fillMode)
-    setHlCenters(Boolean(recipe.centers))
-    setContourOverlays(recipe.contours ?? [])
+    if (recipe.centers) setHlCenters(true)
+    if (recipe.contours) setContourOverlays(recipe.contours)
     if (recipe.colorStep) setColorStep(recipe.colorStep)
     if (recipe.time) applyTimeRecipe(recipe.time)
     const recipeVariable =
@@ -551,10 +690,6 @@ export function useCompositeRecipe() {
       recipe.vorticityType ?? (recipe.variable === 'absv' ? 'absolute' : recipe.variable === 'rel_vorticity' ? 'relative' : vorticityType),
     )
     const recipeIsWindVariable = recipeApiVariable === 'wind_speed' || recipeApiVariable === 'wind_10m'
-    if (recipe.tempUnit) {
-      if (recipeApiVariable === 'temp_2m') setSurfaceTemperatureUnit(recipe.tempUnit)
-      if (recipeApiVariable === 'temp') setElevatedTemperatureUnit(recipe.tempUnit)
-    }
     if (recipe.wind) {
       // Legacy saved recipes may hold step '0'; state never holds a
       // sub-minimum density (#57).
@@ -567,13 +702,8 @@ export function useCompositeRecipe() {
       setWindShading(recipe.wind.shading !== false)
       setWindMaster(recipeIsWindVariable || glyphsOn || Boolean(recipe.wind.isotachs) || recipe.wind.shading === false)
     } else {
-      // A link with no wind params means no glyph overlay — reflect that for
-      // every variable instead of leaving the mount defaults (barbs on) in
-      // the panel while the render obeys the URL.
-      setWindOn(false)
-      setIsotachsOn(false)
-      setIsotachInterval(0)
-      setWindShading(true)
+      // A link with no wind params means no glyph overlay; the reset already
+      // put every wind layer there. Only the master switch tracks the variable.
       setWindMaster(recipeIsWindVariable)
     }
   }
@@ -713,7 +843,6 @@ export function useCompositeRecipe() {
     fillMode, setFillMode,
     colorStep, setColorStep,
     climoSource, setClimoSource,
-    preferCoreClimo, chooseCoreClimoPreference,
     apiVariable, apiLevel, levelOptions,
     isClimo, isMonthly, isThreeHourly,
     monthlyUnavailable, rawOnlyVariable, precipTotalVariable, precipTotalDailyWindow, isWindVariable,

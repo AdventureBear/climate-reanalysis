@@ -325,18 +325,6 @@ function windType(value: string | null): WindOverlayType | undefined {
   return value === 'barbs' || value === 'vectors' || value === 'isotachs' ? value : undefined
 }
 
-function windUnit(value: string | null): WindUnit | undefined {
-  return value === 'kt' || value === 'm/s' ? value : undefined
-}
-
-function pwatUnit(value: string | null): PwatUnit | undefined {
-  return value === 'mm' || value === 'in' ? value : undefined
-}
-
-function precipUnit(value: string | null): PrecipUnit | undefined {
-  return value === 'mm' || value === 'in' ? value : undefined
-}
-
 function precipWindow(value: string | null): PrecipWindow | undefined {
   if (!value) return undefined
   const hours = Number(value)
@@ -967,25 +955,24 @@ export function mapRecipeFromUrl(params: URLSearchParams): MapRecipe | null {
     time: parsedTime,
     wind: windStep === null && params.get('isotachs') !== '1' && !isWindApiVariable ? undefined : (() => {
       // An anomaly/normalized wind map is unreadable without glyphs: a link
-      // that says nothing about wind defaults to vector anomalies (#47).
+      // that says nothing about wind defaults to glyphs on (#47). Barbs, like
+      // everywhere else — vectors stay an explicit choice, not a default.
       // An explicit wind_step=0 stays a deliberate glyphs-off request.
       const anomalyWindDefault = isWindApiVariable && windStep === null
         && (parsedDisplayMode === 'anomaly' || parsedDisplayMode === 'normalized')
       return {
         on: windStepUsable || anomalyWindDefault,
         step: windStepUsable ? windStep! : AUTO_DENSITY,
-        type: anomalyWindDefault && params.get('wind_type') === null ? 'vectors' as const : parsedWindType,
+        type: parsedWindType,
         isotachs: params.get('isotachs') === '1',
         isotachInterval: isotachInterval(params.get('isotach_interval')),
         shading: params.get('fill_mode') !== 'none',
       }
     })(),
-    windUnit: windUnit(params.get('wind_unit')),
-    pwatUnit: pwatUnit(params.get('pwat_unit')),
-    precipUnit: precipUnit(params.get('precip_unit')),
+    // Unit params are deliberately not parsed: links never choose display
+    // units. The render paths add the visitor's own units before serializing.
     precipWindow: precipWindow(params.get('precip_window')),
     fillMode: params.get('fill_mode') === 'shaded' ? 'shaded' : undefined,
-    tempUnit: params.get('temp_unit') === 'F' || params.get('temp_unit') === 'C' ? (params.get('temp_unit') as TempUnit) : undefined,
     centers: params.get('centers') === '1' ? true : undefined,
     contours: params.get('contours') ? params.get('contours')!.split(',').filter(c => ['pressure', 'height', 'temp'].includes(c)) : undefined,
     colorStep: parsedColorStep ? String(normalizeColorStep(parsedColorStep)) : undefined,
